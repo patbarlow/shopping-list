@@ -1,0 +1,139 @@
+name: "Shopping List"
+options:
+  bundleIdPrefix: com.patbarlow
+  deploymentTarget:
+    iOS: "26.0"
+    macOS: "14.0"
+  xcodeVersion: "16.3"
+  generateEmptyDirectories: true
+  createIntermediateGroups: true
+  groupSortPosition: top
+
+settings:
+  base:
+    SWIFT_VERSION: "5.9"
+    DEVELOPMENT_TEAM: T544U3WVL6
+
+targets:
+  "Shopping List":
+    type: application
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: Shared
+      - path: iOS
+    resources:
+      - path: iOS/Assets.xcassets
+      - path: Shared/Config.plist
+    dependencies:
+      - target: "Shopping List Widget"
+        embed: true
+        codeSign: true
+    info:
+      path: iOS/Info.plist
+      properties:
+        CFBundleDisplayName: Shopping List
+        UILaunchScreen:
+          UIColorName: systemBackground
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+        "UISupportedInterfaceOrientations~ipad":
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSMicrophoneUsageDescription: "Used for voice input when adding items to your shopping list."
+        NSSpeechRecognitionUsageDescription: "Used to convert your voice into shopping list items."
+        CFBundleURLTypes:
+          - CFBundleURLName: com.patbarlow.shoppinglist
+            CFBundleURLSchemes:
+              - shoppinglist
+        NSUserActivityTypes:
+          - com.patbarlow.shoppinglist.quickAdd
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.patbarlow.shoppinglist
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        TARGETED_DEVICE_FAMILY: "1,2"
+        IPHONEOS_DEPLOYMENT_TARGET: "26.0"
+        CODE_SIGN_STYLE: Automatic
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    entitlements:
+      path: iOS/Shopping List.entitlements
+      properties:
+        com.apple.security.application-groups: []
+
+  "Shopping List Widget":
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "18.0"
+    sources:
+      - path: Widget
+      - path: Shared/AppIntents/QuickAddIntent.swift
+    info:
+      path: Widget/Info.plist
+      properties:
+        CFBundleDisplayName: Shopping List Widget
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.patbarlow.shoppinglist.widget
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        IPHONEOS_DEPLOYMENT_TARGET: "18.0"
+        CODE_SIGN_STYLE: Automatic
+
+  "Shopping List macOS":
+    type: application
+    platform: macOS
+    deploymentTarget: "14.0"
+    sources:
+      - path: Shared
+      - path: macOS
+    resources:
+      - path: macOS/Assets.xcassets
+      - path: Shared/Config.plist
+    info:
+      path: macOS/Info.plist
+      properties:
+        CFBundleDisplayName: Shopping List
+        NSHumanReadableCopyright: "© 2024 Pat Barlow"
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.patbarlow.shoppinglist.mac
+        MARKETING_VERSION: "1.0"
+        CURRENT_PROJECT_VERSION: "1"
+        MACOSX_DEPLOYMENT_TARGET: "14.0"
+        CODE_SIGN_STYLE: Automatic
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+    entitlements:
+      path: "macOS/Shopping List macOS.entitlements"
+      properties:
+        com.apple.security.app-sandbox: true
+        com.apple.security.network.client: true
+
+schemes:
+  "Shopping List":
+    build:
+      targets:
+        "Shopping List": all
+        "Shopping List Widget": all
+    run:
+      config: Debug
+    archive:
+      config: Release
+
+  "Shopping List macOS":
+    build:
+      targets:
+        "Shopping List macOS": all
+    run:
+      config: Debug
+    archive:
+      config: Release

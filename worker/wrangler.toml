@@ -1,0 +1,22 @@
+name = "shopping-list-api"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "shopping-list"
+database_id = "REPLACE_AFTER_DB_CREATE"
+
+[[durable_objects.bindings]]
+name = "HOUSEHOLD_ROOMS"
+class_name = "HouseholdRoom"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["HouseholdRoom"]
+
+# Secrets — set via `wrangler secret put <NAME>`, never committed:
+#   SESSION_SECRET      (run `openssl rand -hex 32`)
+#   ANTHROPIC_API_KEY   (from console.anthropic.com)
+#   RESEND_API_KEY      (from resend.com)
+#   RESEND_FROM         (e.g. "Shopping List <noreply@speaking.computer>")

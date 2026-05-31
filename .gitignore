@@ -1,0 +1,17 @@
+.DS_Store
+*.xcodeproj/xcuserdata/
+*.xcworkspace/xcuserdata/
+*.xcworkspace/xcshareddata/swiftpm/
+DerivedData/
+build/
+*.ipa
+*.dSYM.zip
+*.dSYM
+
+# Worker
+worker/node_modules/
+worker/.dev.vars
+worker/.wrangler/
+
+# Migration script
+scripts/node_modules/
