@@ -12,8 +12,8 @@ import Observation
         didSet { UserDefaults.standard.set(showCompleted, forKey: "show_completed") }
     }
 
-    private(set) var pendingCompleteIDs: Set<String> = []
-    @ObservationIgnored private var pendingTasks: [String: Task<Void, Never>] = [:]
+    private(set) var recentlyCompleted: [ShoppingItem] = []
+    @ObservationIgnored private var finalizeTask: Task<Void, Never>?
 
     private let api: APIService
     private let realtime: RealtimeService
@@ -40,25 +40,17 @@ import Observation
             .sorted { $0.aisleOrder < $1.aisleOrder }
             .compactMap { cat in
                 let bucket = items
-                    .filter { item in
-                        !item.checked
-                            || pendingCompleteIDs.contains(item.id)
-                            || showCompleted
-                    }
+                    .filter { showCompleted || !$0.checked }
                     .filter { $0.category == cat }
                     .sorted { a, b in
-                        let aVis = a.checked || pendingCompleteIDs.contains(a.id)
-                        let bVis = b.checked || pendingCompleteIDs.contains(b.id)
-                        if aVis != bVis { return !aVis }
+                        if a.checked != b.checked { return !a.checked }
                         return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
                     }
                 return bucket.isEmpty ? nil : (category: cat, items: bucket)
             }
     }
 
-    var uncheckedCount: Int {
-        items.filter { !$0.checked && !pendingCompleteIDs.contains($0.id) }.count
-    }
+    var uncheckedCount: Int { items.filter { !$0.checked }.count }
     var checkedCount: Int { items.filter { $0.checked }.count }
 
     var allKnownNames: [String] {
@@ -175,36 +167,44 @@ import Observation
     // MARK: - Complete / Undo (3-second window)
 
     func pendingToggle(_ item: ShoppingItem) {
-        if pendingCompleteIDs.contains(item.id) {
-            pendingTasks[item.id]?.cancel()
-            pendingTasks.removeValue(forKey: item.id)
-            pendingCompleteIDs.remove(item.id)
-        } else if item.checked {
+        if item.checked {
             Task { await uncompleteItem(item) }
         } else {
-            pendingCompleteIDs.insert(item.id)
-            let itemID = item.id
-            let task = Task { [weak self] in
-                guard let self else { return }
-                do {
-                    try await Task.sleep(nanoseconds: 3_000_000_000)
-                } catch {
-                    self.pendingCompleteIDs.remove(itemID)
-                    self.pendingTasks.removeValue(forKey: itemID)
-                    return
-                }
-                await self.finalizeComplete(id: itemID)
-            }
-            pendingTasks[item.id] = task
+            items.removeAll { $0.id == item.id }
+            recentlyCompleted.append(item)
+            scheduleFinalizeDebounced()
         }
     }
 
-    private func finalizeComplete(id: String) async {
-        pendingCompleteIDs.remove(id)
-        pendingTasks.removeValue(forKey: id)
-        guard let idx = items.firstIndex(where: { $0.id == id }) else { return }
-        items[idx].checked = true
-        _ = try? await api.patchItem(id: id, fields: ["checked": true])
+    func undoLastComplete() {
+        guard let item = recentlyCompleted.popLast() else { return }
+        items.insert(item, at: 0)
+        if recentlyCompleted.isEmpty {
+            finalizeTask?.cancel()
+            finalizeTask = nil
+        } else {
+            scheduleFinalizeDebounced()
+        }
+    }
+
+    private func scheduleFinalizeDebounced() {
+        finalizeTask?.cancel()
+        finalizeTask = Task { [weak self] in
+            guard let self else { return }
+            do { try await Task.sleep(nanoseconds: 3_000_000_000) } catch { return }
+            await self.finalizeAllCompleted()
+        }
+    }
+
+    private func finalizeAllCompleted() async {
+        let toFinalize = recentlyCompleted
+        recentlyCompleted.removeAll()
+        finalizeTask = nil
+        for var item in toFinalize {
+            item.checked = true
+            items.append(item)
+            _ = try? await api.patchItem(id: item.id, fields: ["checked": true])
+        }
     }
 
     private func uncompleteItem(_ item: ShoppingItem) async {
@@ -242,9 +242,10 @@ import Observation
     // MARK: - Delete
 
     func deleteItem(_ item: ShoppingItem) async {
-        pendingTasks[item.id]?.cancel()
-        pendingTasks.removeValue(forKey: item.id)
-        pendingCompleteIDs.remove(item.id)
+        if let idx = recentlyCompleted.firstIndex(where: { $0.id == item.id }) {
+            recentlyCompleted.remove(at: idx)
+            if recentlyCompleted.isEmpty { finalizeTask?.cancel(); finalizeTask = nil }
+        }
 
         items.removeAll { $0.id == item.id }
         do {
@@ -256,14 +257,15 @@ import Observation
     }
 
     func clearChecked() async {
-        for id in pendingCompleteIDs { pendingTasks[id]?.cancel() }
-        pendingCompleteIDs.removeAll()
-        pendingTasks.removeAll()
+        finalizeTask?.cancel()
+        finalizeTask = nil
+        let pendingToDelete = recentlyCompleted
+        recentlyCompleted.removeAll()
 
         let toDelete = items.filter { $0.checked }
         items.removeAll { $0.checked }
         await withTaskGroup(of: Void.self) { group in
-            for item in toDelete {
+            for item in toDelete + pendingToDelete {
                 group.addTask { try? await self.api.deleteItem(id: item.id) }
             }
         }
