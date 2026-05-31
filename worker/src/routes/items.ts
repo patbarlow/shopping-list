@@ -70,6 +70,11 @@ async function categorise(env: Env, itemName: string): Promise<{ category: strin
   }
 }
 
+// SQLite stores booleans as 0/1 integers; convert to JSON boolean for Swift
+function toResponse(item: ShoppingItem): object {
+  return { ...item, checked: item.checked === 1 };
+}
+
 async function broadcastToHousehold(
   env: Env,
   householdId: string,
@@ -115,7 +120,7 @@ app.get("/", async (c) => {
     .bind(householdId)
     .all<ShoppingItem>();
 
-  return c.json({ items: results ?? [] });
+  return c.json({ items: (results ?? []).map(toResponse) });
 });
 
 // POST /v1/items
@@ -173,7 +178,7 @@ app.post("/", async (c) => {
   // Broadcast to household partners (non-blocking — don't delay the response)
   void broadcastToHousehold(c.env, householdId, "create", item);
 
-  return c.json(item, 201);
+  return c.json(toResponse(item), 201);
 });
 
 // PATCH /v1/items/:id
@@ -221,7 +226,7 @@ app.patch("/:id", async (c) => {
 
   void broadcastToHousehold(c.env, existing.household_id, "update", updated);
 
-  return c.json(updated);
+  return c.json(toResponse(updated));
 });
 
 // DELETE /v1/items/:id
