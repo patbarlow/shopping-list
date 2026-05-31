@@ -19,6 +19,7 @@
 		3006F1C130CE6774B3CFB412 /* RealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 145A5C2183790DA7F940227E /* RealtimeService.swift */; };
 		3AA4D32E312E59213C4781A0 /* QuickAddControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = C166231E665E790EFEF9D05B /* QuickAddControl.swift */; };
 		5541F33E0D7E05FF861C63CC /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A479A9C18E0C1534C48FC1B /* AppServices.swift */; };
+		55E0FEE49D7F939D7E43BEA0 /* SentryHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97B1734E7407EC373454F34A /* SentryHelpers.swift */; };
 		583C7A3955E416FED458D5E6 /* AuthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F61A9645A5D8A828A41FF627 /* AuthStore.swift */; };
 		5B08B6EA1A58325E5B82E5D3 /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A479A9C18E0C1534C48FC1B /* AppServices.swift */; };
 		6844FE9AEEF9464DDFEF2AD2 /* AddItemIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 472F1E2215F1364F1486B646 /* AddItemIntents.swift */; };
@@ -26,16 +27,19 @@
 		78F81B3A671F48402FAC60F6 /* ShoppingListMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40912EDFFF62E3AE19133B58 /* ShoppingListMacApp.swift */; };
 		84F91FFA458ACB2F5CD27AA0 /* QuickAddIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EC68D8CDFA6582CFFEE3468 /* QuickAddIntent.swift */; };
 		87A3E29EC1A69EA55B4EC3BE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 85497421D6E5CB97F590B0D9 /* Assets.xcassets */; };
+		8AA6C0CBD1A9A1553BC0DF3B /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 0446326B7167B228FB08A0E0 /* Sentry */; };
 		94CFD6FD94772818C79FBC8F /* Household.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBEC057EB44C2C3C2778B9C3 /* Household.swift */; };
 		97184F439951502A053845E6 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF8B3203E96D1AB11A946F05 /* MenuBarView.swift */; };
 		9B2F9DB9E5CD05189A3135DB /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E78B88A5FF8FB6EA5401FF1 /* SpeechService.swift */; };
 		9D6EB5D8BB64F807F475B666 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DD716EEC8E998041577ECEC /* SettingsView.swift */; };
 		9EB1EF4FBDB51E3AE699592C /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7462B86AD882C4C18C4DF1DF /* APIService.swift */; };
 		B8214D6ACE92B72011B67251 /* ShoppingListWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BAFD47481FF6668160B32E1 /* ShoppingListWidgetBundle.swift */; };
+		BB854FA51974F86190EEB55E /* SentryHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97B1734E7407EC373454F34A /* SentryHelpers.swift */; };
 		BC032B773815D22A3A604589 /* ShoppingListStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AF17166DF5B1CFFFE31976C /* ShoppingListStore.swift */; };
 		C2066F40B513F05484129B77 /* Config.plist in Resources */ = {isa = PBXBuildFile; fileRef = 51AC4475E61BFC0BEDF456BE /* Config.plist */; };
 		C353F7364DD8CD159053DFD2 /* ShoppingListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 073DB8A85B43FA938555C6E5 /* ShoppingListView.swift */; };
 		C949EB6936EACF8E22E8CE3F /* Household.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBEC057EB44C2C3C2778B9C3 /* Household.swift */; };
+		CB63AF989EFD6BAFE481A032 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = AB030919B866882F6197616A /* Sentry */; };
 		D0790C24EDD13DEF551637F5 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D66242D110DC11081834249 /* ContentView.swift */; };
 		D24ACFBE02D2890078E1C101 /* QuickAddIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EC68D8CDFA6582CFFEE3468 /* QuickAddIntent.swift */; };
 		D6B230430BCA6A21F9320D47 /* ShoppingItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B06687513055194F342B4B7 /* ShoppingItem.swift */; };
@@ -43,7 +47,6 @@
 		F07175691572D0CBD85C95F9 /* HouseholdSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6D38131D7D37EDAF28861CE /* HouseholdSetupView.swift */; };
 		F0D12864AB22E27DA257D027 /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 93583231B106C19E6541BDB4 /* LoginView.swift */; };
 		F9842BDA56D48EBDEF84E491 /* RealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 145A5C2183790DA7F940227E /* RealtimeService.swift */; };
-		8945A59169C14F5BB9D738AB /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 53C3ABC548074D809D4F6FE3 /* Sentry */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -93,6 +96,7 @@
 		8D66242D110DC11081834249 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
 		8FFBEEBE4BE9C0570F7393EF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		93583231B106C19E6541BDB4 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		97B1734E7407EC373454F34A /* SentryHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SentryHelpers.swift; sourceTree = "<group>"; };
 		9BAFD47481FF6668160B32E1 /* ShoppingListWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingListWidgetBundle.swift; sourceTree = "<group>"; };
 		9E78B88A5FF8FB6EA5401FF1 /* SpeechService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechService.swift; sourceTree = "<group>"; };
 		A1FF7F0A82CA6C88EA34F90C /* Shopping List macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Shopping List macOS.entitlements"; sourceTree = "<group>"; };
@@ -105,6 +109,25 @@
 		F61A9645A5D8A828A41FF627 /* AuthStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthStore.swift; sourceTree = "<group>"; };
 		F6D38131D7D37EDAF28861CE /* HouseholdSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HouseholdSetupView.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		858728473C71332B79D6F202 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8AA6C0CBD1A9A1553BC0DF3B /* Sentry in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		CF3FB0114821D8F466F656D3 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				CB63AF989EFD6BAFE481A032 /* Sentry in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
 		0329C5F842F56CD6720BCA6F /* Views */ = {
@@ -238,6 +261,7 @@
 			children = (
 				7462B86AD882C4C18C4DF1DF /* APIService.swift */,
 				145A5C2183790DA7F940227E /* RealtimeService.swift */,
+				97B1734E7407EC373454F34A /* SentryHelpers.swift */,
 			);
 			path = Services;
 			sourceTree = "<group>";
@@ -250,9 +274,10 @@
 			buildConfigurationList = A7950939D72306618423E28F /* Build configuration list for PBXNativeTarget "Shopping List" */;
 			buildPhases = (
 				CD938E80E177DE182D458A9C /* Sources */,
+				D38E60C6F3A0B83841A5A855 /* Upload Debug Symbols to Sentry */,
 				18AE4294F6933708D0A3B5EC /* Resources */,
+				858728473C71332B79D6F202 /* Frameworks */,
 				5B83614A83EE897BCB4A7A39 /* Embed Foundation Extensions */,
-				EEA30799F5194C8BA1B4DB8C /* Upload Debug Symbols to Sentry */,
 			);
 			buildRules = (
 			);
@@ -261,7 +286,7 @@
 			);
 			name = "Shopping List";
 			packageProductDependencies = (
-				53C3ABC548074D809D4F6FE3 /* Sentry */,
+				0446326B7167B228FB08A0E0 /* Sentry */,
 			);
 			productName = "Shopping List";
 			productReference = B9A16E63C949B3C693249DA3 /* Shopping List.app */;
@@ -273,6 +298,7 @@
 			buildPhases = (
 				E5A7FF78EBE752FEA2D01F3D /* Sources */,
 				272B6A8D4E7129D4DEA19E01 /* Resources */,
+				CF3FB0114821D8F466F656D3 /* Frameworks */,
 			);
 			buildRules = (
 			);
@@ -280,6 +306,7 @@
 			);
 			name = "Shopping List macOS";
 			packageProductDependencies = (
+				AB030919B866882F6197616A /* Sentry */,
 			);
 			productName = "Shopping List macOS";
 			productReference = 00D4833C3DEA4099449458E8 /* Shopping List macOS.app */;
@@ -334,6 +361,9 @@
 			);
 			mainGroup = 843DD00487FE24CBF69FB425;
 			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				DBDD99EE1A80304C38F5E703 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
+			);
 			preferredProjectObjectVersion = 77;
 			productRefGroup = 7158AF20EF0D139F49F9F719 /* Products */;
 			projectDirPath = "";
@@ -342,9 +372,6 @@
 				56F4EBBC2A132D7A4679FB64 /* Shopping List */,
 				E8E28DC1B345AE816480FA78 /* Shopping List Widget */,
 				686FC9607845D061A9A05228 /* Shopping List macOS */,
-			);
-			packageReferences = (
-				C672C755A8FB45DBA9FF68B9 /* XCRemoteSwiftPackageReference "sentry-cocoa" */,
 			);
 		};
 /* End PBXProject section */
@@ -370,6 +397,28 @@
 		};
 /* End PBXResourcesBuildPhase section */
 
+/* Begin PBXShellScriptBuildPhase section */
+		D38E60C6F3A0B83841A5A855 /* Upload Debug Symbols to Sentry */ = {
+			isa = PBXShellScriptBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			inputFileListPaths = (
+			);
+			inputPaths = (
+				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${TARGET_NAME}",
+			);
+			name = "Upload Debug Symbols to Sentry";
+			outputFileListPaths = (
+			);
+			outputPaths = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+			shellPath = /bin/sh;
+			shellScript = "if which sentry-cli >/dev/null; then\n  export SENTRY_ORG=speaking-computer\n  export SENTRY_PROJECT=shopping-list\n  ERROR=$(sentry-cli debug-files upload --include-sources \"$DWARF_DSYM_FOLDER_PATH\" 2>&1 >/dev/null)\n  if [ ! $? -eq 0 ]; then\n    echo \"warning: sentry-cli - $ERROR\"\n  fi\nelse\n  echo \"warning: sentry-cli not installed, download from https://github.com/getsentry/sentry-cli/releases\"\nfi\n";
+		};
+/* End PBXShellScriptBuildPhase section */
+
 /* Begin PBXSourcesBuildPhase section */
 		CD938E80E177DE182D458A9C /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
@@ -386,6 +435,7 @@
 				F0D12864AB22E27DA257D027 /* LoginView.swift in Sources */,
 				D24ACFBE02D2890078E1C101 /* QuickAddIntent.swift in Sources */,
 				F9842BDA56D48EBDEF84E491 /* RealtimeService.swift in Sources */,
+				55E0FEE49D7F939D7E43BEA0 /* SentryHelpers.swift in Sources */,
 				9D6EB5D8BB64F807F475B666 /* SettingsView.swift in Sources */,
 				1AF982FB6A6A18F6D34A77BA /* ShoppingItem.swift in Sources */,
 				297C12E0C0BEE7509B62C2C5 /* ShoppingListApp.swift in Sources */,
@@ -407,6 +457,7 @@
 				97184F439951502A053845E6 /* MenuBarView.swift in Sources */,
 				84F91FFA458ACB2F5CD27AA0 /* QuickAddIntent.swift in Sources */,
 				3006F1C130CE6774B3CFB412 /* RealtimeService.swift in Sources */,
+				BB854FA51974F86190EEB55E /* SentryHelpers.swift in Sources */,
 				D6B230430BCA6A21F9320D47 /* ShoppingItem.swift in Sources */,
 				78F81B3A671F48402FAC60F6 /* ShoppingListMacApp.swift in Sources */,
 				BC032B773815D22A3A604589 /* ShoppingListStore.swift in Sources */,
@@ -547,6 +598,8 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = iOS/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
@@ -558,8 +611,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.patbarlow.shoppinglist;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_USER_SCRIPT_SANDBOXING = "NO";
 			};
 			name = Debug;
 		};
@@ -648,6 +699,8 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = iOS/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
@@ -659,8 +712,6 @@
 				PRODUCT_BUNDLE_IDENTIFIER = com.patbarlow.shoppinglist;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
-				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
-				ENABLE_USER_SCRIPT_SANDBOXING = "NO";
 			};
 			name = Release;
 		};
@@ -726,53 +777,26 @@
 		};
 /* End XCConfigurationList section */
 
-/* Begin PBXShellScriptBuildPhase section */
-		EEA30799F5194C8BA1B4DB8C /* Upload Debug Symbols to Sentry */ = {
-			isa = PBXShellScriptBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-			);
-			inputPaths = (
-				"${DWARF_DSYM_FOLDER_PATH}/${DWARF_DSYM_FILE_NAME}/Contents/Resources/DWARF/${TARGET_NAME}",
-			);
-			outputPaths = (
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-			shellPath = /bin/sh;
-			shellScript = "# This script is responsible for uploading debug symbols and source context for Sentry.
-if which sentry-cli >/dev/null; then
-  export SENTRY_ORG=speaking-computer
-  export SENTRY_PROJECT=shopping-list
-  ERROR=$(sentry-cli debug-files upload --include-sources \"$DWARF_DSYM_FOLDER_PATH\" 2>&1 >/dev/null)
-  if [ ! $? -eq 0 ]; then
-    echo \"warning: sentry-cli - $ERROR\"
-  fi
-else
-  echo \"warning: sentry-cli not installed, download from https://github.com/getsentry/sentry-cli/releases\"
-fi
-";
-			name = "Upload Debug Symbols to Sentry";
-		};
-/* End PBXShellScriptBuildPhase section */
-
-/* Begin PBXFrameworksBuildPhase section */
-/* End PBXFrameworksBuildPhase section */
-
 /* Begin XCRemoteSwiftPackageReference section */
-		C672C755A8FB45DBA9FF68B9 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
+		DBDD99EE1A80304C38F5E703 /* XCRemoteSwiftPackageReference "sentry-cocoa" */ = {
 			isa = XCRemoteSwiftPackageReference;
-			repositoryURL = "https://github.com/getsentry/sentry-cocoa/";
+			repositoryURL = "https://github.com/getsentry/sentry-cocoa";
 			requirement = {
 				kind = upToNextMajorVersion;
-				minimumVersion = 8.0.0;
+				minimumVersion = 8.46.0;
 			};
 		};
 /* End XCRemoteSwiftPackageReference section */
 
 /* Begin XCSwiftPackageProductDependency section */
-		53C3ABC548074D809D4F6FE3 /* Sentry */ = {
+		0446326B7167B228FB08A0E0 /* Sentry */ = {
 			isa = XCSwiftPackageProductDependency;
-			package = C672C755A8FB45DBA9FF68B9 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
+			package = DBDD99EE1A80304C38F5E703 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
+			productName = Sentry;
+		};
+		AB030919B866882F6197616A /* Sentry */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = DBDD99EE1A80304C38F5E703 /* XCRemoteSwiftPackageReference "sentry-cocoa" */;
 			productName = Sentry;
 		};
 /* End XCSwiftPackageProductDependency section */
