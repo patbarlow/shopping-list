@@ -84,7 +84,21 @@ struct ShoppingListView: View {
     // MARK: - Bottom Accessory
 
     private var addItemAccessory: some View {
-        VStack(alignment: .leading, spacing: 0) {
+        VStack(alignment: .trailing, spacing: 6) {
+            if !store.recentlyCompleted.isEmpty {
+                Button { store.undoLastComplete() } label: {
+                    Label("Undo", systemImage: "arrow.uturn.backward")
+                        .font(.subheadline.weight(.medium))
+                        .padding(.horizontal, 14)
+                        .padding(.vertical, 10)
+                }
+                .buttonStyle(.plain)
+                .glassEffect(in: Capsule())
+                .padding(.trailing, 12)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
+            VStack(alignment: .leading, spacing: 0) {
             // Suggestions — appear at top of the glass container as you type
             if isAdding && !suggestions.isEmpty {
                 ForEach(suggestions, id: \.self) { suggestion in
@@ -179,6 +193,8 @@ struct ShoppingListView: View {
         .contentShape(Rectangle())
         .onTapGesture { if !isAdding { startAdding() } }
         .animation(.easeOut(duration: 0.2), value: isAdding)
+        }
+        .animation(.spring(duration: 0.35), value: store.recentlyCompleted.isEmpty)
     }
 
     // MARK: - List
@@ -264,7 +280,6 @@ struct ShoppingListView: View {
             })
             .refreshable { await store.fetch() }
             .animation(.default, value: store.items.map { $0.id + ($0.checked ? "1" : "0") })
-            .animation(.default, value: store.pendingCompleteIDs)
         }
     }
 
@@ -272,7 +287,7 @@ struct ShoppingListView: View {
 
     private func unifiedItemRow(for item: ShoppingItem) -> some View {
         let isEditing = editingItemID == item.id
-        let isComplete = item.checked || store.pendingCompleteIDs.contains(item.id)
+        let isComplete = item.checked
         return VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .center, spacing: 10) {
                 if isEditing {
