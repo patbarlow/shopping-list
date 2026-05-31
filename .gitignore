@@ -15,3 +15,5 @@ worker/.wrangler/
 
 # Migration script
 scripts/node_modules/
+
+.sentryclirc
