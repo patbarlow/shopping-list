@@ -14,7 +14,7 @@
  *   cd worker && wrangler d1 execute shopping-list --remote --file=../migration.sql
  */
 
-const PB_URL = "http://tetsu.me:8090";
+const PB_URL = process.env.PB_URL ?? "http://tetsu.me:8090";
 const DB_NAME = "shopping-list";
 
 async function main() {
@@ -78,6 +78,8 @@ Items found. Now:
     `-- Generated: ${now}`,
     `-- Items: ${allItems.length}`,
     ``,
+    `PRAGMA foreign_keys = OFF;`,
+    ``,
   ];
 
   for (const item of allItems) {
@@ -99,12 +101,9 @@ Items found. Now:
     );
   }
 
+  lines.push(``, `PRAGMA foreign_keys = ON;`);
   const sql = lines.join("\n") + "\n";
-  await Bun.write("migration.sql", sql).catch(() => {
-    // Fall back to Node fs if not running under Bun
-    // eslint-disable-next-line @typescript-eslint/no-require-imports
-    require("fs").writeFileSync("migration.sql", sql);
-  });
+  import("fs").then(({ writeFileSync }) => writeFileSync("migration.sql", sql));
 
   console.log(`✓ Written migration.sql with ${allItems.length} items`);
   console.log(`
