@@ -5,7 +5,7 @@ compatibility_date = "2024-12-01"
 [[d1_databases]]
 binding = "DB"
 database_name = "shopping-list"
-database_id = "REPLACE_AFTER_DB_CREATE"
+database_id = "201be971-4245-4758-8e17-6872079dffc0"
 
 [[durable_objects.bindings]]
 name = "HOUSEHOLD_ROOMS"

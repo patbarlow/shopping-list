@@ -2,7 +2,7 @@ import Foundation
 
 @MainActor
 final class APIService {
-    static let defaultBaseURL = "https://shopping-list-api.ACCOUNT.workers.dev"
+    static let defaultBaseURL = "https://shopping-list-api.pat-barlow.workers.dev"
 
     var baseURL: String {
         UserDefaults.standard.string(forKey: "sl_base_url") ?? Self.defaultBaseURL
