@@ -274,10 +274,10 @@
 			buildConfigurationList = A7950939D72306618423E28F /* Build configuration list for PBXNativeTarget "Shopping List" */;
 			buildPhases = (
 				CD938E80E177DE182D458A9C /* Sources */,
-				D38E60C6F3A0B83841A5A855 /* Upload Debug Symbols to Sentry */,
 				18AE4294F6933708D0A3B5EC /* Resources */,
 				858728473C71332B79D6F202 /* Frameworks */,
 				5B83614A83EE897BCB4A7A39 /* Embed Foundation Extensions */,
+				D38E60C6F3A0B83841A5A855 /* Upload Debug Symbols to Sentry */,
 			);
 			buildRules = (
 			);
