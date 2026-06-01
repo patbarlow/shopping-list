@@ -13,6 +13,7 @@ import Observation
     }
 
     private(set) var recentlyCompleted: [ShoppingItem] = []
+    private(set) var undoDeadline: Date? = nil
     @ObservationIgnored private var finalizeTask: Task<Void, Never>?
 
     private let api: APIService
@@ -182,6 +183,7 @@ import Observation
         if recentlyCompleted.isEmpty {
             finalizeTask?.cancel()
             finalizeTask = nil
+            undoDeadline = nil
         } else {
             scheduleFinalizeDebounced()
         }
@@ -189,6 +191,7 @@ import Observation
 
     private func scheduleFinalizeDebounced() {
         finalizeTask?.cancel()
+        undoDeadline = Date().addingTimeInterval(3.0)
         finalizeTask = Task { [weak self] in
             guard let self else { return }
             do { try await Task.sleep(nanoseconds: 3_000_000_000) } catch { return }
@@ -199,6 +202,7 @@ import Observation
     private func finalizeAllCompleted() async {
         let toFinalize = recentlyCompleted
         recentlyCompleted.removeAll()
+        undoDeadline = nil
         finalizeTask = nil
         for var item in toFinalize {
             item.checked = true

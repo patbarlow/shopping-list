@@ -30,6 +30,9 @@ struct ShoppingListView: View {
     // ── Collapsible sections ───────────────────────────────────────────────────
     @State private var collapsedSections: Set<String> = []
 
+    // ── Pending complete (brief fill animation before item leaves) ─────────────
+    @State private var pendingCompleteIDs: Set<String> = []
+
     private var store: ShoppingListStore { services.shopping }
 
     // Suggestions shown above the text field when ≥2 chars typed
@@ -85,12 +88,24 @@ struct ShoppingListView: View {
 
     private var addItemAccessory: some View {
         VStack(alignment: .trailing, spacing: 6) {
+            // Undo toast — taller, with live countdown
             if !store.recentlyCompleted.isEmpty {
                 Button { store.undoLastComplete() } label: {
-                    Label("Undo", systemImage: "arrow.uturn.backward")
-                        .font(.subheadline.weight(.medium))
-                        .padding(.horizontal, 14)
-                        .padding(.vertical, 10)
+                    HStack(spacing: 10) {
+                        Label("Undo", systemImage: "arrow.uturn.backward")
+                            .font(.subheadline.weight(.medium))
+                        if let deadline = store.undoDeadline {
+                            TimelineView(.periodic(from: .now, by: 1)) { _ in
+                                Text("\(max(0, Int(deadline.timeIntervalSinceNow.rounded(.up))))")
+                                    .monospacedDigit()
+                                    .frame(width: 14, alignment: .center)
+                                    .font(.subheadline.weight(.medium))
+                                    .foregroundStyle(.secondary)
+                            }
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 18)
                 }
                 .buttonStyle(.plain)
                 .glassEffect(in: Capsule())
@@ -98,102 +113,112 @@ struct ShoppingListView: View {
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
-            VStack(alignment: .leading, spacing: 0) {
-            // Suggestions — appear at top of the glass container as you type
+            // Suggestions — detached glass container, floats above the input bar
             if isAdding && !suggestions.isEmpty {
-                ForEach(suggestions, id: \.self) { suggestion in
-                    Button {
-                        addText = suggestion
-                        focusedField = .newName
-                    } label: {
-                        HStack(spacing: 10) {
-                            Image(systemName: "magnifyingglass")
-                                .font(.caption)
-                                .foregroundStyle(.secondary)
-                                .frame(width: 16)
-                            Text(suggestion)
-                                .foregroundStyle(.primary)
-                            Spacer()
-                            Image(systemName: "arrow.up.left")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
+                VStack(alignment: .leading, spacing: 0) {
+                    ForEach(Array(suggestions.enumerated()), id: \.element) { idx, suggestion in
+                        if idx > 0 { Divider().padding(.leading, 42).opacity(0.3) }
+                        Button {
+                            addText = suggestion
+                            focusedField = .newName
+                        } label: {
+                            HStack(spacing: 10) {
+                                Image(systemName: "magnifyingglass")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                    .frame(width: 16)
+                                Text(suggestion)
+                                    .foregroundStyle(.primary)
+                                Spacer()
+                                Image(systemName: "arrow.up.left")
+                                    .font(.caption2)
+                                    .foregroundStyle(.tertiary)
+                            }
+                            .padding(.horizontal, 16)
+                            .padding(.vertical, 11)
+                            .contentShape(Rectangle())
                         }
-                        .padding(.horizontal, 16)
-                        .padding(.vertical, 11)
-                        .contentShape(Rectangle())
+                        .buttonStyle(.plain)
                     }
-                    .buttonStyle(.plain)
-                    Divider().padding(.leading, 42).opacity(0.3)
                 }
+                .fixedSize(horizontal: false, vertical: true)
+                .frame(maxWidth: .infinity, alignment: .leading)
+                .glassEffect(in: RoundedRectangle(cornerRadius: 16))
+                .clipShape(RoundedRectangle(cornerRadius: 16))
+                .padding(.horizontal, 12)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
-            // Name row
-            HStack(spacing: 12) {
-                if isAdding {
-                    Image(systemName: "circle")
-                        .foregroundStyle(.tertiary)
-                        .font(.body)
-                        .frame(width: 24, height: 24)
-                } else {
-                    Image(systemName: "plus")
-                        .font(.body.weight(.semibold))
-                        .foregroundStyle(.tint)
-                        .frame(width: 24, height: 24)
+            // Input bar
+            VStack(alignment: .leading, spacing: 0) {
+                // Name row
+                HStack(spacing: 12) {
+                    if isAdding {
+                        Image(systemName: "circle")
+                            .foregroundStyle(.tertiary)
+                            .font(.body)
+                            .frame(width: 24, height: 24)
+                    } else {
+                        Image(systemName: "plus")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.tint)
+                            .frame(width: 24, height: 24)
+                    }
+                    if isAdding {
+                        TextField("Item name", text: $addText)
+                            .focused($focusedField, equals: .newName)
+                            .submitLabel(.done)
+                            .onSubmit { commitAdd() }
+                    } else {
+                        Text("Add item…")
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                    }
                 }
-                if isAdding {
-                    TextField("Item name", text: $addText)
-                        .focused($focusedField, equals: .newName)
-                        .submitLabel(.done)
-                        .onSubmit { commitAdd() }
-                } else {
-                    Text("Add item…")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, isAdding ? 10 : 16)
+                .padding(.horizontal, 16)
+                .padding(.vertical, isAdding ? 10 : 16)
 
-            // Extra fields — only when actively adding
-            if isAdding {
-                Divider().padding(.horizontal, 16).opacity(0.2)
-                HStack(spacing: 12) {
-                    Color.clear.frame(width: 24)
-                    TextField("Qty", text: $addQty)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .focused($focusedField, equals: .newQty)
-                        .submitLabel(.next)
-                        .onSubmit { focusedField = .newNotes }
+                // Extra fields — only when actively adding
+                if isAdding {
+                    Divider().padding(.horizontal, 16).opacity(0.2)
+                    HStack(spacing: 12) {
+                        Color.clear.frame(width: 24)
+                        TextField("Qty", text: $addQty)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .focused($focusedField, equals: .newQty)
+                            .submitLabel(.next)
+                            .onSubmit { focusedField = .newNotes }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
+                    Divider().padding(.horizontal, 16).opacity(0.2)
+                    HStack(spacing: 12) {
+                        Color.clear.frame(width: 24)
+                        TextField("Note", text: $addNotes, axis: .vertical)
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
+                            .focused($focusedField, equals: .newNotes)
+                            .lineLimit(1...2)
+                            .submitLabel(.done)
+                            .onSubmit { commitAdd() }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.vertical, 8)
                 }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
-                Divider().padding(.horizontal, 16).opacity(0.2)
-                HStack(spacing: 12) {
-                    Color.clear.frame(width: 24)
-                    TextField("Note", text: $addNotes, axis: .vertical)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .focused($focusedField, equals: .newNotes)
-                        .lineLimit(1...2)
-                        .submitLabel(.done)
-                        .onSubmit { commitAdd() }
-                }
-                .padding(.horizontal, 16)
-                .padding(.vertical, 8)
             }
+            .fixedSize(horizontal: false, vertical: true)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .glassEffect(in: RoundedRectangle(cornerRadius: 20))
+            .clipShape(RoundedRectangle(cornerRadius: 20))
+            .padding(.horizontal, 12)
+            .padding(.bottom, 10)
+            .padding(.top, 6)
+            .contentShape(Rectangle())
+            .onTapGesture { if !isAdding { startAdding() } }
+            .animation(.easeOut(duration: 0.2), value: isAdding)
         }
-        .fixedSize(horizontal: false, vertical: true)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .glassEffect(in: RoundedRectangle(cornerRadius: 20))
-        .clipShape(RoundedRectangle(cornerRadius: 20))
-        .padding(.horizontal, 12)
-        .padding(.bottom, 10)
-        .padding(.top, 6)
-        .contentShape(Rectangle())
-        .onTapGesture { if !isAdding { startAdding() } }
-        .animation(.easeOut(duration: 0.2), value: isAdding)
-        }
+        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: suggestions)
         .animation(.spring(duration: 0.35), value: store.recentlyCompleted.isEmpty)
     }
 
@@ -288,23 +313,26 @@ struct ShoppingListView: View {
     private func unifiedItemRow(for item: ShoppingItem) -> some View {
         let isEditing = editingItemID == item.id
         let isComplete = item.checked
+        let isVisuallyComplete = isComplete || pendingCompleteIDs.contains(item.id)
         return VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .center, spacing: 10) {
                 if isEditing {
-                    Button { store.pendingToggle(item) } label: {
-                        Image(systemName: isComplete ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(isComplete ? .green : Color(.systemGray3))
+                    Button {
+                        triggerComplete(item)
+                    } label: {
+                        Image(systemName: isVisuallyComplete ? "checkmark.circle.fill" : "circle")
+                            .foregroundStyle(isVisuallyComplete ? .green : Color(.systemGray3))
                             .font(.body)
                             .frame(width: 24, height: 24)
                     }
                     .buttonStyle(.plain)
                 } else {
-                    Image(systemName: isComplete ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(isComplete ? .green : Color(.systemGray3))
+                    Image(systemName: isVisuallyComplete ? "checkmark.circle.fill" : "circle")
+                        .foregroundStyle(isVisuallyComplete ? .green : Color(.systemGray3))
                         .font(.body)
                         .frame(width: 24, height: 24)
                         .contentShape(Circle())
-                        .onTapGesture { store.pendingToggle(item) }
+                        .onTapGesture { triggerComplete(item) }
                 }
                 if isEditing {
                     TextField("Name", text: $editName)
@@ -416,7 +444,7 @@ struct ShoppingListView: View {
 
         if isAddField(old) && !isAddField(new) && isAdding {
             focusLossTask = Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 150_000_000)
+                try? await Task.sleep(nanoseconds: 50_000_000)
                 guard !Task.isCancelled, isAdding, !isAddField(focusedField) else { return }
                 let trimmed = addText.trimmingCharacters(in: .whitespaces)
                 if trimmed.isEmpty { cancelAdd() } else { commitAdd(refocus: false) }
@@ -446,9 +474,7 @@ struct ShoppingListView: View {
         if isAdding { focusedField = .newName; return }
         addText = ""; addQty = ""; addNotes = ""
         isAdding = true
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.15) {
-            focusedField = .newName
-        }
+        Task { @MainActor in focusedField = .newName }
     }
 
     private func commitAdd(refocus: Bool = true) {
@@ -481,6 +507,15 @@ struct ShoppingListView: View {
         addText = ""; addQty = ""; addNotes = ""
         isAdding = false
         focusedField = nil
+    }
+
+    private func triggerComplete(_ item: ShoppingItem) {
+        guard !item.checked else { store.pendingToggle(item); return }
+        withAnimation(.easeIn(duration: 0.12)) { pendingCompleteIDs.insert(item.id) }
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
+            pendingCompleteIDs.remove(item.id)
+            store.pendingToggle(item)
+        }
     }
 
     // MARK: - Edit actions
