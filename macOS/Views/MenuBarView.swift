@@ -348,6 +348,7 @@ private struct MacListView: View {
                 .padding(.vertical, 8)
             }
         }
+        .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
         .contentShape(Rectangle())
