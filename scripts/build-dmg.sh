@@ -2,9 +2,10 @@
 set -euo pipefail
 
 APP_NAME="Shopping List"
+APP_BINARY="Shopping List macOS"
 SCHEME="Shopping List macOS"
 BUILD_DIR="${TMPDIR}shoppinglist-build"
-APP_PATH="${BUILD_DIR}/Build/Products/Release/${APP_NAME}.app"
+APP_PATH="${BUILD_DIR}/Build/Products/Release/${APP_BINARY}.app"
 DMG_NAME="ShoppingList.dmg"
 DMG_PATH="${BUILD_DIR}/${DMG_NAME}"
 
