@@ -79,6 +79,18 @@ struct ShoppingListView: View {
             await store.load(householdId: household.id)
         }
         .onChange(of: focusedField) { old, new in handleFocusChange(old: old, new: new) }
+        .onChange(of: addText) { old, new in
+            // iOS TextField strips newlines on paste — detect multiline pastes via clipboard
+            guard isAdding,
+                  new.count - old.count > 2,
+                  let clip = UIPasteboard.general.string,
+                  clip.contains("\n") else { return }
+            let items = Self.parseMultipleItems(clip)
+            guard items.count > 1 else { return }
+            addText = ""; addQty = ""; addNotes = ""
+            isAdding = false; focusedField = nil
+            for name in items { Task { await store.addItem(name: name) } }
+        }
         .onReceive(NotificationCenter.default.publisher(for: .shoppingListQuickAdd)) { _ in
             startAdding()
         }
@@ -581,9 +593,10 @@ struct ShoppingListView: View {
     // MARK: - Parsing helpers
 
     /// Splits pasted text on newlines (preferred) or commas into individual item names.
+    /// Strips leading bullet characters and numbered-list prefixes from each line.
     static func parseMultipleItems(_ raw: String) -> [String] {
         let newlineItems = raw.components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .map { stripBulletPrefix($0) }
             .filter { !$0.isEmpty }
         if newlineItems.count > 1 { return newlineItems }
         return raw
@@ -592,6 +605,19 @@ struct ShoppingListView: View {
             .components(separatedBy: ",")
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
+    }
+
+    private static func stripBulletPrefix(_ raw: String) -> String {
+        let t = raw.trimmingCharacters(in: .whitespaces)
+        let bullets = ["• ", "•", "- ", "* ", "– ", "— ", "◦ ", "▪ ", "▸ ", "► "]
+        for b in bullets where t.hasPrefix(b) {
+            return String(t.dropFirst(b.count)).trimmingCharacters(in: .whitespaces)
+        }
+        // Numbered list: "1. " or "1) "
+        if let range = t.range(of: #"^\d+[.)]\s+"#, options: .regularExpression) {
+            return String(t[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+        }
+        return t
     }
 
     /// "250ml olive oil" → (name: "Olive Oil", qty: "250ml")

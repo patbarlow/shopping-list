@@ -24,6 +24,16 @@ struct AddItemView: View {
                     .focused($focused)
                     .onSubmit(addItems)
                     .padding(.horizontal)
+                    .onChange(of: text) { old, new in
+                        guard new.count - old.count > 2,
+                              let clip = UIPasteboard.general.string,
+                              clip.contains("\n") else { return }
+                        let items = Self.parseItems(clip)
+                        guard items.count > 1 else { return }
+                        text = ""
+                        for name in items { Task { await store.addItem(name: name) } }
+                        dismiss()
+                    }
 
                 if !parsedItems.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
@@ -83,7 +93,7 @@ struct AddItemView: View {
 
     static func parseItems(_ raw: String) -> [String] {
         let newlineItems = raw.components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .map { stripBulletPrefix($0) }
             .filter { !$0.isEmpty }
         if newlineItems.count > 1 { return newlineItems }
         return raw
@@ -92,5 +102,17 @@ struct AddItemView: View {
             .components(separatedBy: ",")
             .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
+    }
+
+    private static func stripBulletPrefix(_ raw: String) -> String {
+        let t = raw.trimmingCharacters(in: .whitespaces)
+        let bullets = ["• ", "•", "- ", "* ", "– ", "— ", "◦ ", "▪ ", "▸ ", "► "]
+        for b in bullets where t.hasPrefix(b) {
+            return String(t.dropFirst(b.count)).trimmingCharacters(in: .whitespaces)
+        }
+        if let range = t.range(of: #"^\d+[.)]\s+"#, options: .regularExpression) {
+            return String(t[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+        }
+        return t
     }
 }
