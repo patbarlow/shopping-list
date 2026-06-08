@@ -29,7 +29,9 @@ struct ShoppingListMacApp: App {
         .defaultSize(width: 380, height: 580)
         .commands {
             CommandGroup(after: .appInfo) {
-                CheckForUpdatesView(updater: updaterController.updater)
+                Button("Check for Updates…") {
+                    updaterController.checkForUpdates(nil)
+                }
             }
         }
     }
