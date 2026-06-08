@@ -19,7 +19,7 @@ if ! [[ "${VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
     exit 1
 fi
 
-if [ -n "$(git status --porcelain)" ]; then
+if [ -n "$(git status --porcelain | grep -v '^??')" ]; then
     echo "Error: working tree is dirty. Commit or stash changes first."
     exit 1
 fi
