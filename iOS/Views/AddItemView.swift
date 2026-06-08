@@ -82,7 +82,11 @@ struct AddItemView: View {
     }
 
     static func parseItems(_ raw: String) -> [String] {
-        raw
+        let newlineItems = raw.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        if newlineItems.count > 1 { return newlineItems }
+        return raw
             .replacingOccurrences(of: " and ", with: ",", options: .caseInsensitive)
             .replacingOccurrences(of: " & ", with: ",")
             .components(separatedBy: ",")

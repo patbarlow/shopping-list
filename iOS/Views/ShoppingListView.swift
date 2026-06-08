@@ -35,6 +35,12 @@ struct ShoppingListView: View {
 
     private var store: ShoppingListStore { services.shopping }
 
+    // Multi-item paste preview — shown when paste produces >1 item
+    private var parsedAddItems: [String] {
+        guard isAdding else { return [] }
+        return Self.parseMultipleItems(addText)
+    }
+
     // Suggestions shown above the text field when ≥2 chars typed
     private var suggestions: [String] {
         guard addText.count >= 2 else { return [] }
@@ -169,6 +175,15 @@ struct ShoppingListView: View {
                             .focused($focusedField, equals: .newName)
                             .submitLabel(.done)
                             .onSubmit { commitAdd() }
+                        if parsedAddItems.count > 1 {
+                            Text("\(parsedAddItems.count) items")
+                                .font(.caption2.weight(.semibold))
+                                .foregroundStyle(.white)
+                                .padding(.horizontal, 7)
+                                .padding(.vertical, 3)
+                                .background(.tint, in: Capsule())
+                                .transition(.scale(scale: 0.8).combined(with: .opacity))
+                        }
                     } else {
                         Text("Add item…")
                             .foregroundStyle(.secondary)
@@ -480,18 +495,25 @@ struct ShoppingListView: View {
     private func commitAdd(refocus: Bool = true) {
         let trimmed = addText.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else { cancelAdd(); return }
-        let (parsedName, parsedQty) = parseQtyName(trimmed)
-        let finalQty   = !addQty.trimmingCharacters(in: .whitespaces).isEmpty
-                            ? addQty.trimmingCharacters(in: .whitespaces)
-                            : parsedQty
-        let finalNotes = addNotes.trimmingCharacters(in: .whitespaces)
+        let items = Self.parseMultipleItems(trimmed)
         addText = ""; addQty = ""; addNotes = ""
-        Task {
-            await store.addItem(
-                name:     parsedName,
-                quantity: finalQty.flatMap  { $0.isEmpty ? nil : $0 },
-                notes:    finalNotes.isEmpty ? nil : finalNotes
-            )
+        if items.count > 1 {
+            for name in items {
+                Task { await store.addItem(name: name) }
+            }
+        } else {
+            let (parsedName, parsedQty) = parseQtyName(trimmed)
+            let finalQty   = !addQty.trimmingCharacters(in: .whitespaces).isEmpty
+                                ? addQty.trimmingCharacters(in: .whitespaces)
+                                : parsedQty
+            let finalNotes = addNotes.trimmingCharacters(in: .whitespaces)
+            Task {
+                await store.addItem(
+                    name:     parsedName,
+                    quantity: finalQty.flatMap  { $0.isEmpty ? nil : $0 },
+                    notes:    finalNotes.isEmpty ? nil : finalNotes
+                )
+            }
         }
         if refocus {
             DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
@@ -557,6 +579,20 @@ struct ShoppingListView: View {
     }
 
     // MARK: - Parsing helpers
+
+    /// Splits pasted text on newlines (preferred) or commas into individual item names.
+    static func parseMultipleItems(_ raw: String) -> [String] {
+        let newlineItems = raw.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+        if newlineItems.count > 1 { return newlineItems }
+        return raw
+            .replacingOccurrences(of: " and ", with: ",", options: .caseInsensitive)
+            .replacingOccurrences(of: " & ", with: ",")
+            .components(separatedBy: ",")
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
+    }
 
     /// "250ml olive oil" → (name: "Olive Oil", qty: "250ml")
     private func parseQtyName(_ input: String) -> (name: String, qty: String?) {
