@@ -1,9 +1,11 @@
 import SwiftUI
 import Sentry
+import Sparkle
 
 @main
 struct ShoppingListMacApp: App {
     @State private var services = AppServices()
+    private let updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
     init() {
         SentrySDK.start { options in
@@ -25,5 +27,10 @@ struct ShoppingListMacApp: App {
         }
         .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 380, height: 580)
+        .commands {
+            CommandGroup(after: .appInfo) {
+                CheckForUpdatesView(updater: updaterController.updater)
+            }
+        }
     }
 }

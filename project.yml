@@ -4,6 +4,9 @@ packages:
   Sentry:
     url: https://github.com/getsentry/sentry-cocoa
     from: "8.46.0"
+  Sparkle:
+    url: https://github.com/sparkle-project/Sparkle
+    from: "2.6.0"
 
 options:
   bundleIdPrefix: com.patbarlow
@@ -123,6 +126,8 @@ targets:
     dependencies:
       - package: Sentry
         product: Sentry
+      - package: Sparkle
+        product: Sparkle
     resources:
       - path: macOS/Assets.xcassets
       - path: Shared/Config.plist
@@ -131,6 +136,9 @@ targets:
       properties:
         CFBundleDisplayName: Shopping List
         NSHumanReadableCopyright: "© 2024 Pat Barlow"
+        SUFeedURL: "https://raw.githubusercontent.com/patbarlow/shopping-list/main/appcast.xml"
+        SUPublicEDKey: "DXaM+fPfK1BV4Q2ZFL72kY2QAEkgduZvo+77jYb5Dnk="
+        SUEnableInstallerLauncherService: true
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
