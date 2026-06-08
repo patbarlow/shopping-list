@@ -24,11 +24,7 @@ import Observation
         self.realtime = realtime
         let key = "show_completed"
         if UserDefaults.standard.object(forKey: key) == nil {
-            #if os(macOS)
-            self.showCompleted = true
-            #else
             self.showCompleted = false
-            #endif
         } else {
             self.showCompleted = UserDefaults.standard.bool(forKey: key)
         }
@@ -124,10 +120,49 @@ import Observation
         }
     }
 
+    // MARK: - Name helpers
+
+    // Extracts a leading quantity from an item name, e.g. "2 Cucumber" → ("Cucumber", "2")
+    static func extractQuantity(from raw: String) -> (name: String, qty: String?) {
+        let t = raw.trimmingCharacters(in: .whitespaces)
+        let pattern = #"^(\d+(?:[.,/]\d+)?(?:\s*(?:g|kg|ml|L|l|oz|lbs?|tbsp|tsp|cups?|pcs?|packs?|bunch|x))?)(?:\s+)(.+)$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
+            return (name: t, qty: nil)
+        }
+        let range = NSRange(t.startIndex..., in: t)
+        guard let match = regex.firstMatch(in: t, range: range),
+              let qr = Range(match.range(at: 1), in: t),
+              let nr = Range(match.range(at: 2), in: t) else {
+            return (name: t, qty: nil)
+        }
+        let qty  = String(t[qr]).trimmingCharacters(in: .whitespaces)
+        let name = String(t[nr]).trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty else { return (name: t, qty: nil) }
+        return (name: name, qty: qty.isEmpty ? nil : qty)
+    }
+
+    static func capitalizeFirst(_ s: String) -> String {
+        guard let first = s.first else { return s }
+        return first.uppercased() + s.dropFirst()
+    }
+
     // MARK: - Add
 
     func addItem(name: String, quantity: String? = nil, notes: String? = nil) async {
-        let trimmed = name.trimmingCharacters(in: .whitespaces)
+        var itemName = name.trimmingCharacters(in: .whitespaces)
+        let explicitQty = quantity?.trimmingCharacters(in: .whitespaces)
+        var itemQty: String?
+
+        if let q = explicitQty, !q.isEmpty {
+            itemQty = q
+        } else {
+            let parsed = Self.extractQuantity(from: itemName)
+            itemName = parsed.name
+            itemQty  = parsed.qty
+        }
+        itemName = Self.capitalizeFirst(itemName)
+
+        let trimmed = itemName
         guard !trimmed.isEmpty, let householdId else { return }
 
         recordInHistory(trimmed)
@@ -138,7 +173,7 @@ import Observation
         let placeholder = ShoppingItem(
             id:          itemId,
             name:        trimmed,
-            quantity:    quantity,
+            quantity:    itemQty,
             notes:       notes,
             householdId: householdId,
             addedBy:     api.currentUser?.id ?? ""
@@ -150,7 +185,7 @@ import Observation
                 id:          itemId,
                 householdId: householdId,
                 name:        trimmed,
-                quantity:    quantity,
+                quantity:    itemQty,
                 notes:       notes
             )
             // Server response includes the categorised item synchronously.

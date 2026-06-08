@@ -237,41 +237,27 @@ private struct MacListView: View {
     private var store: ShoppingListStore { services.shopping }
 
     var body: some View {
-        ZStack(alignment: .bottomTrailing) {
+        VStack(spacing: 0) {
             ScrollView {
                 LazyVStack(spacing: 8) {
-                    if isAdding { addCard }
-
-                    if store.items.isEmpty && !store.isLoading && !isAdding {
+                    if store.items.isEmpty && !store.isLoading {
                         emptyState
                     } else {
                         ForEach(store.groupedItems, id: \.category) { group in
                             categoryCard(group: group)
                         }
                     }
-
-                    Color.clear.frame(height: 68)
+                    Color.clear.frame(height: 4)
                 }
                 .padding(.horizontal, 12)
                 .padding(.top, 8)
             }
 
-            if !isAdding {
-                Button { startAdding() } label: {
-                    Image(systemName: "plus")
-                        .font(.title3.weight(.semibold))
-                        .foregroundStyle(.white)
-                        .frame(width: 44, height: 44)
-                        .background(.green, in: Circle())
-                        .shadow(color: .black.opacity(0.2), radius: 4, y: 2)
-                }
-                .buttonStyle(.plain)
-                .padding(.trailing, 16)
-                .padding(.bottom, 16)
-                .transition(.scale(scale: 0.8).combined(with: .opacity))
-            }
+            Divider().opacity(0.4)
+            addBar
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
         }
-        .animation(.spring(response: 0.25, dampingFraction: 0.8), value: isAdding)
         .navigationTitle("Shopping List")
         .toolbar { toolbarItems }
         .toolbarBackground(Color(.windowBackgroundColor), for: .windowToolbar)
@@ -321,35 +307,52 @@ private struct MacListView: View {
         }
     }
 
-    // MARK: Add card
+    // MARK: Add bar (persistent bottom)
 
-    private var addCard: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(alignment: .center, spacing: 10) {
-                Image(systemName: "circle")
-                    .foregroundStyle(.tertiary)
-                    .font(.body)
-                    .frame(width: 22, height: 22)
-                TextField("New item", text: $newItem)
-                    .textFieldStyle(.plain)
-                    .focused($focusedField, equals: .addName)
-                    .onSubmit { commitAdd() }
-                    .onKeyPress(.escape) { cancelAdd(); return .handled }
-            }
+    private var addBar: some View {
+        VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Color.clear.frame(width: 22)
-                TextField("Qty", text: $newQty)
-                    .textFieldStyle(.plain)
-                    .font(.subheadline)
-                    .foregroundStyle(.secondary)
-                    .focused($focusedField, equals: .addQty)
-                    .onSubmit { commitAdd() }
-                    .onKeyPress(.escape) { cancelAdd(); return .handled }
+                Image(systemName: isAdding ? "circle" : "plus")
+                    .foregroundStyle(isAdding ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Color.green))
+                    .font(isAdding ? .body : .body.weight(.semibold))
+                    .frame(width: 22, height: 22)
+
+                if isAdding {
+                    TextField("Item name", text: $newItem)
+                        .textFieldStyle(.plain)
+                        .focused($focusedField, equals: .addName)
+                        .onSubmit { commitAdd() }
+                        .onKeyPress(.escape) { cancelAdd(); return .handled }
+                } else {
+                    Text("Add item…")
+                        .foregroundStyle(.secondary)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            }
+            .padding(.horizontal, 12)
+            .padding(.vertical, isAdding ? 10 : 12)
+
+            if isAdding {
+                Divider().padding(.horizontal, 12).opacity(0.25)
+                HStack(spacing: 10) {
+                    Color.clear.frame(width: 22)
+                    TextField("Qty", text: $newQty)
+                        .textFieldStyle(.plain)
+                        .font(.subheadline)
+                        .foregroundStyle(.secondary)
+                        .focused($focusedField, equals: .addQty)
+                        .onSubmit { commitAdd() }
+                        .onKeyPress(.escape) { cancelAdd(); return .handled }
+                }
+                .padding(.horizontal, 12)
+                .padding(.vertical, 8)
             }
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 9)
+        .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+        .contentShape(Rectangle())
+        .onTapGesture { if !isAdding { startAdding() } }
+        .animation(.easeOut(duration: 0.18), value: isAdding)
     }
 
     // MARK: Category card
@@ -494,7 +497,7 @@ private struct MacListView: View {
         }
         if isAddField(old) && !isAddField(new) && isAdding {
             let trimmed = newItem.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty { cancelAdd() } else { commitAdd() }
+            if trimmed.isEmpty { cancelAdd() } else { commitAdd(refocus: false) }
         }
     }
 
@@ -513,11 +516,19 @@ private struct MacListView: View {
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { focusedField = .addName }
     }
 
-    private func commitAdd() {
+    private func commitAdd(refocus: Bool = true) {
         let trimmed = newItem.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { cancelAdd(); return }
+        guard !trimmed.isEmpty else {
+            if !refocus { cancelAdd() }
+            return
+        }
         let qty = newQty.trimmingCharacters(in: .whitespaces)
-        newItem = ""; newQty = ""; isAdding = false; focusedField = nil
+        newItem = ""; newQty = ""
+        if refocus {
+            Task { @MainActor in focusedField = .addName }
+        } else {
+            isAdding = false; focusedField = nil
+        }
         Task { await store.addItem(name: trimmed, quantity: qty.isEmpty ? nil : qty) }
     }
 
