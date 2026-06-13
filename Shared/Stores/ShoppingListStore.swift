@@ -8,10 +8,6 @@ import Observation
     var error: String?
     private(set) var householdId: String?
 
-    var showCompleted: Bool = false {
-        didSet { UserDefaults.standard.set(showCompleted, forKey: "show_completed") }
-    }
-
     private(set) var recentlyCompleted: [ShoppingItem] = []
     private(set) var undoDeadline: Date? = nil
     @ObservationIgnored private var finalizeTask: Task<Void, Never>?
@@ -22,12 +18,6 @@ import Observation
     init(api: APIService, realtime: RealtimeService) {
         self.api      = api
         self.realtime = realtime
-        let key = "show_completed"
-        if UserDefaults.standard.object(forKey: key) == nil {
-            self.showCompleted = false
-        } else {
-            self.showCompleted = UserDefaults.standard.bool(forKey: key)
-        }
     }
 
     // MARK: - Computed
@@ -37,18 +27,14 @@ import Observation
             .sorted { $0.aisleOrder < $1.aisleOrder }
             .compactMap { cat in
                 let bucket = items
-                    .filter { showCompleted || !$0.checked }
+                    .filter { !$0.checked }
                     .filter { $0.category == cat }
                     .sorted { a, b in
-                        if a.checked != b.checked { return !a.checked }
-                        return a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
+                        a.name.localizedCaseInsensitiveCompare(b.name) == .orderedAscending
                     }
                 return bucket.isEmpty ? nil : (category: cat, items: bucket)
             }
     }
-
-    var uncheckedCount: Int { items.filter { !$0.checked }.count }
-    var checkedCount: Int { items.filter { $0.checked }.count }
 
     var allKnownNames: [String] {
         let fromItems = items.map(\.name)
@@ -122,7 +108,6 @@ import Observation
 
     // MARK: - Name helpers
 
-    // Extracts a leading quantity from an item name, e.g. "2 Cucumber" → ("Cucumber", "2")
     static func extractQuantity(from raw: String) -> (name: String, qty: String?) {
         let t = raw.trimmingCharacters(in: .whitespaces)
         let pattern = #"^(\d+(?:[.,/]\d+)?(?:\s*(?:g|kg|ml|L|l|oz|lbs?|tbsp|tsp|cups?|pcs?|packs?|bunch|x))?)(?:\s+)(.+)$"#
@@ -167,8 +152,6 @@ import Observation
 
         recordInHistory(trimmed)
 
-        // Pre-generate a UUID so the optimistic placeholder and the server record
-        // share the same id — the realtime "create" event finds it and skips insert.
         let itemId = UUID().uuidString.lowercased()
         let placeholder = ShoppingItem(
             id:          itemId,
@@ -188,7 +171,7 @@ import Observation
                 quantity:    itemQty,
                 notes:       notes
             )
-            // Server response includes the categorised item synchronously.
+            // Server may normalise the name (via existing product record)
             if let idx = items.firstIndex(where: { $0.id == itemId }) {
                 items[idx] = serverItem
             } else if !items.contains(where: { $0.id == serverItem.id }) {
@@ -203,13 +186,9 @@ import Observation
     // MARK: - Complete / Undo (3-second window)
 
     func pendingToggle(_ item: ShoppingItem) {
-        if item.checked {
-            Task { await uncompleteItem(item) }
-        } else {
-            items.removeAll { $0.id == item.id }
-            recentlyCompleted.append(item)
-            scheduleFinalizeDebounced()
-        }
+        items.removeAll { $0.id == item.id }
+        recentlyCompleted.append(item)
+        scheduleFinalizeDebounced()
     }
 
     func undoLastComplete() {
@@ -239,29 +218,8 @@ import Observation
         recentlyCompleted.removeAll()
         undoDeadline = nil
         finalizeTask = nil
-        for var item in toFinalize {
-            item.checked = true
-            items.append(item)
-            _ = try? await api.patchItem(id: item.id, fields: ["checked": true])
-        }
-    }
-
-    private func uncompleteItem(_ item: ShoppingItem) async {
-        if let idx = items.firstIndex(where: { $0.id == item.id }) {
-            items[idx].checked = false
-        }
-        _ = try? await api.patchItem(id: item.id, fields: ["checked": false])
-    }
-
-    func toggleItem(_ item: ShoppingItem) async {
-        guard let idx = items.firstIndex(where: { $0.id == item.id }) else { return }
-        items[idx].checked.toggle()
-        do {
-            let updated = try await api.patchItem(id: item.id, fields: ["checked": !item.checked])
-            items[idx] = updated
-        } catch {
-            items[idx].checked = item.checked
-            self.error = error.localizedDescription
+        for item in toFinalize {
+            _ = try? await api.completeItem(id: item.id)
         }
     }
 
@@ -278,7 +236,7 @@ import Observation
         }
     }
 
-    // MARK: - Delete
+    // MARK: - Delete ("didn't buy it")
 
     func deleteItem(_ item: ShoppingItem) async {
         if let idx = recentlyCompleted.firstIndex(where: { $0.id == item.id }) {
@@ -292,21 +250,6 @@ import Observation
         } catch {
             items.append(item)
             self.error = error.localizedDescription
-        }
-    }
-
-    func clearChecked() async {
-        finalizeTask?.cancel()
-        finalizeTask = nil
-        let pendingToDelete = recentlyCompleted
-        recentlyCompleted.removeAll()
-
-        let toDelete = items.filter { $0.checked }
-        items.removeAll { $0.checked }
-        await withTaskGroup(of: Void.self) { group in
-            for item in toDelete + pendingToDelete {
-                group.addTask { try? await self.api.deleteItem(id: item.id) }
-            }
         }
     }
 

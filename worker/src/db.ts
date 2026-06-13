@@ -23,6 +23,7 @@ export interface HouseholdMember {
 export interface ShoppingItem {
   id: string;
   household_id: string;
+  product_id: string | null;
   name: string;
   quantity: string | null;
   notes: string | null;
@@ -32,6 +33,25 @@ export interface ShoppingItem {
   added_by: string;
   created_at: string;
   updated_at: string;
+}
+
+export interface Product {
+  id: string;
+  household_id: string;
+  name: string;
+  category: string;
+  aisle_order: number;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface PurchaseHistory {
+  id: string;
+  household_id: string;
+  product_id: string;
+  quantity: string | null;
+  purchased_by: string;
+  purchased_at: string;
 }
 
 export interface PublicUser {

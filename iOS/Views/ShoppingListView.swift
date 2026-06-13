@@ -441,26 +441,7 @@ struct ShoppingListView: View {
             Button { showSettings = true } label: { Image(systemName: "gear") }
         }
         ToolbarItem(placement: .navigationBarTrailing) {
-            Menu {
-                Button {
-                    withAnimation { store.showCompleted.toggle() }
-                } label: {
-                    Label(
-                        store.showCompleted ? "Hide Completed" : "Show Completed",
-                        systemImage: store.showCompleted ? "eye.slash" : "eye"
-                    )
-                }
-                if store.checkedCount > 0 {
-                    Divider()
-                    Button(role: .destructive) {
-                        Task { await store.clearChecked() }
-                    } label: {
-                        Label("Clear Completed", systemImage: "trash")
-                    }
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-            }
+            EmptyView()
         }
     }
 

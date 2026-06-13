@@ -281,22 +281,6 @@ private struct MacListView: View {
                     Label("Settings", systemImage: "gear")
                 }
                 Divider()
-                Button {
-                    withAnimation { store.showCompleted.toggle() }
-                } label: {
-                    Label(
-                        store.showCompleted ? "Hide Completed" : "Show Completed",
-                        systemImage: store.showCompleted ? "eye.slash" : "eye"
-                    )
-                }
-                if store.checkedCount > 0 {
-                    Button(role: .destructive) {
-                        Task { await store.clearChecked() }
-                    } label: {
-                        Label("Clear Completed", systemImage: "trash")
-                    }
-                }
-                Divider()
                 Toggle(isOn: $alwaysOnTop) {
                     Label("Always on Top", systemImage: "pin")
                 }
@@ -424,7 +408,7 @@ private struct MacListView: View {
                     .font(.body)
                     .frame(width: 22, height: 22)
                     .contentShape(Circle())
-                    .onTapGesture { Task { await store.toggleItem(item) } }
+                    .onTapGesture { store.pendingToggle(item) }
 
                 if isEditing {
                     TextField("Name", text: $editName)
