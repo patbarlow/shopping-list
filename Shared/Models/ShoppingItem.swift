@@ -124,9 +124,10 @@ enum ItemCategory: String, Codable, CaseIterable, Identifiable {
 
 struct ShoppingItem: Codable, Identifiable, Equatable {
     let id: String
+    let productId: String?
     var name: String
-    var quantity: String?   // e.g. "250ml", "3 packs" — requires quantity TEXT column in PocketBase
-    var notes: String?      // optional note — requires notes TEXT column in PocketBase
+    var quantity: String?
+    var notes: String?
     var category: ItemCategory
     var aisleOrder: Int
     var checked: Bool
@@ -136,19 +137,16 @@ struct ShoppingItem: Codable, Identifiable, Equatable {
 
     enum CodingKeys: String, CodingKey {
         case id, name, category, checked, created, quantity, notes
+        case productId    = "product_id"
         case aisleOrder   = "aisle_order"
         case householdId  = "household_id"
         case addedBy      = "added_by"
     }
 
-    /// Convenience init for a local optimistic placeholder created before
-    /// the PocketBase record exists.  The id should be a pre-generated
-    /// PocketBase-format ID (15 lowercase alphanumeric chars) so that the
-    /// realtime "create" event — which carries that same id — can be matched
-    /// and ignored rather than inserted as a duplicate.
     init(id: String, name: String, quantity: String?, notes: String?,
          householdId: String, addedBy: String) {
         self.id          = id
+        self.productId   = nil
         self.name        = name
         self.quantity    = quantity
         self.notes       = notes
@@ -163,6 +161,7 @@ struct ShoppingItem: Codable, Identifiable, Equatable {
     init(from decoder: Decoder) throws {
         let c = try decoder.container(keyedBy: CodingKeys.self)
         id          = try c.decode(String.self, forKey: .id)
+        productId   = try c.decodeIfPresent(String.self, forKey: .productId)
         name        = try c.decode(String.self, forKey: .name)
         quantity    = try c.decodeIfPresent(String.self, forKey: .quantity)
         notes       = try c.decodeIfPresent(String.self, forKey: .notes)

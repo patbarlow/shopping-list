@@ -79,6 +79,19 @@ final class APIService {
         return try await patch("/v1/items/\(id)", body: fields)
     }
 
+    func completeItem(id: String) async throws {
+        guard let url = URL(string: baseURL + "/v1/items/\(id)/complete") else { throw APIError.badURL }
+        var req = URLRequest(url: url)
+        req.httpMethod = "POST"
+        if let token = authToken { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+        let (_, response) = try await session.data(for: req)
+        if let http = response as? HTTPURLResponse {
+            if http.statusCode == 401 { throw APIError.unauthorized }
+            if http.statusCode == 404 { throw APIError.notFound }
+            if http.statusCode >= 400 { throw APIError.serverError("HTTP \(http.statusCode)") }
+        }
+    }
+
     func deleteItem(id: String) async throws {
         try await delete("/v1/items/\(id)")
     }

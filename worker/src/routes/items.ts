@@ -1,7 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../env";
 import { requireAuth, type AuthVariables } from "../middleware/auth";
-import { nowISO, type ShoppingItem } from "../db";
+import { nowISO, type ShoppingItem, type Product } from "../db";
 
 const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
@@ -101,6 +101,42 @@ async function assertMember(env: Env, householdId: string, userId: string): Prom
   return row !== null;
 }
 
+// Look up an existing product by name (case-insensitive) or create a new one.
+// Only calls the AI categoriser on first creation.
+async function upsertProduct(
+  env: Env,
+  householdId: string,
+  name: string,
+): Promise<Product> {
+  const existing = await env.DB
+    .prepare("SELECT * FROM products WHERE household_id = ? AND name = ?")
+    .bind(householdId, name)
+    .first<Product>();
+
+  if (existing) return existing;
+
+  const { category, aisleOrder } = await categorise(env, name);
+  const now = nowISO();
+  const id = crypto.randomUUID();
+
+  await env.DB
+    .prepare(
+      `INSERT INTO products (id, household_id, name, category, aisle_order, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)
+       ON CONFLICT(household_id, name) DO NOTHING`,
+    )
+    .bind(id, householdId, name, category, aisleOrder, now, now)
+    .run();
+
+  // Re-fetch in case another request beat us to the insert
+  const created = await env.DB
+    .prepare("SELECT * FROM products WHERE household_id = ? AND name = ?")
+    .bind(householdId, name)
+    .first<Product>();
+
+  return created!;
+}
+
 // GET /v1/items?household_id=xxx
 app.get("/", async (c) => {
   const user = c.var.user;
@@ -114,7 +150,7 @@ app.get("/", async (c) => {
   const { results } = await c.env.DB
     .prepare(
       `SELECT * FROM shopping_items
-       WHERE household_id = ?
+       WHERE household_id = ? AND checked = 0
        ORDER BY aisle_order ASC, name ASC`,
     )
     .bind(householdId)
@@ -144,21 +180,22 @@ app.post("/", async (c) => {
     return c.json({ error: "forbidden" }, 403);
   }
 
+  // Look up or create the canonical product for this name.
+  // This deduplicates across the household and only categorises once.
+  const product = await upsertProduct(c.env, householdId, name);
+
   const id = body.id ?? crypto.randomUUID();
   const now = nowISO();
-
-  // Categorise inline — the response already has the correct category (same
-  // behaviour as the old PocketBase hook mutating e.record before returning).
-  const { category, aisleOrder } = await categorise(c.env, name);
 
   const item: ShoppingItem = {
     id,
     household_id: householdId,
-    name,
+    product_id: product.id,
+    name: product.name,
     quantity: body.quantity ?? null,
     notes: body.notes ?? null,
-    category,
-    aisle_order: aisleOrder,
+    category: product.category,
+    aisle_order: product.aisle_order,
     checked: 0,
     added_by: user.id,
     created_at: now,
@@ -168,17 +205,50 @@ app.post("/", async (c) => {
   await c.env.DB
     .prepare(
       `INSERT INTO shopping_items
-         (id, household_id, name, quantity, notes, category, aisle_order, checked, added_by, created_at, updated_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+         (id, household_id, product_id, name, quantity, notes, category, aisle_order, checked, added_by, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
        ON CONFLICT(id) DO NOTHING`,
     )
-    .bind(id, householdId, name, item.quantity, item.notes, category, aisleOrder, user.id, now, now)
+    .bind(id, householdId, product.id, product.name, item.quantity, item.notes, product.category, product.aisle_order, user.id, now, now)
     .run();
 
-  // Broadcast to household partners (non-blocking — don't delay the response)
   void broadcastToHousehold(c.env, householdId, "create", item);
 
   return c.json(toResponse(item), 201);
+});
+
+// POST /v1/items/:id/complete — records a purchase and removes the list entry
+app.post("/:id/complete", async (c) => {
+  const user = c.var.user;
+  const itemId = c.req.param("id");
+
+  const existing = await c.env.DB
+    .prepare("SELECT * FROM shopping_items WHERE id = ?")
+    .bind(itemId)
+    .first<ShoppingItem>();
+
+  if (!existing) return c.json({ error: "not_found" }, 404);
+
+  if (!(await assertMember(c.env, existing.household_id, user.id))) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+
+  if (existing.product_id) {
+    const historyId = crypto.randomUUID();
+    await c.env.DB
+      .prepare(
+        `INSERT INTO purchase_history (id, household_id, product_id, quantity, purchased_by, purchased_at)
+         VALUES (?, ?, ?, ?, ?, ?)`,
+      )
+      .bind(historyId, existing.household_id, existing.product_id, existing.quantity, user.id, nowISO())
+      .run();
+  }
+
+  await c.env.DB.prepare("DELETE FROM shopping_items WHERE id = ?").bind(itemId).run();
+
+  void broadcastToHousehold(c.env, existing.household_id, "delete", existing);
+
+  return c.body(null, 204);
 });
 
 // PATCH /v1/items/:id
@@ -197,7 +267,7 @@ app.patch("/:id", async (c) => {
     return c.json({ error: "forbidden" }, 403);
   }
 
-  type PatchBody = Partial<Pick<ShoppingItem, "name" | "quantity" | "notes" | "checked" | "category" | "aisle_order">>;
+  type PatchBody = Partial<Pick<ShoppingItem, "name" | "quantity" | "notes" | "category" | "aisle_order">>;
   const body: PatchBody = await c.req.json<PatchBody>().catch(() => ({}));
 
   const updated: ShoppingItem = {
@@ -205,7 +275,6 @@ app.patch("/:id", async (c) => {
     name: body.name ?? existing.name,
     quantity: body.quantity !== undefined ? body.quantity : existing.quantity,
     notes: body.notes !== undefined ? body.notes : existing.notes,
-    checked: body.checked !== undefined ? (body.checked ? 1 : 0) : existing.checked,
     category: body.category ?? existing.category,
     aisle_order: body.aisle_order ?? existing.aisle_order,
     updated_at: nowISO(),
@@ -214,12 +283,12 @@ app.patch("/:id", async (c) => {
   await c.env.DB
     .prepare(
       `UPDATE shopping_items
-       SET name=?, quantity=?, notes=?, checked=?, category=?, aisle_order=?, updated_at=?
+       SET name=?, quantity=?, notes=?, category=?, aisle_order=?, updated_at=?
        WHERE id=?`,
     )
     .bind(
       updated.name, updated.quantity, updated.notes,
-      updated.checked, updated.category, updated.aisle_order,
+      updated.category, updated.aisle_order,
       updated.updated_at, itemId,
     )
     .run();
@@ -229,7 +298,7 @@ app.patch("/:id", async (c) => {
   return c.json(toResponse(updated));
 });
 
-// DELETE /v1/items/:id
+// DELETE /v1/items/:id — removes item without recording a purchase ("didn't buy it")
 app.delete("/:id", async (c) => {
   const user = c.var.user;
   const itemId = c.req.param("id");
