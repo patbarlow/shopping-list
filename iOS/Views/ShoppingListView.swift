@@ -355,6 +355,7 @@ struct ShoppingListView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
             }
+            .scrollDismissesKeyboard(.interactively)
             .simultaneousGesture(TapGesture().onEnded {
                 guard focusedField != nil else { return }
                 focusedField = nil
