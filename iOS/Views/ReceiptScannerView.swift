@@ -22,6 +22,7 @@ struct ReceiptScannerView: View {
     @State private var errorMessage: String? = nil
     @State private var selectedPhoto: PhotosPickerItem? = nil
     @State private var showCamera = false
+    @State private var showFilePicker = false
 
     var body: some View {
         NavigationStack {
@@ -56,6 +57,18 @@ struct ReceiptScannerView: View {
             CameraCapture { image in
                 showCamera = false
                 Task { await handleCapturedImage(image) }
+            }
+        }
+        .fileImporter(
+            isPresented: $showFilePicker,
+            allowedContentTypes: [.pdf],
+            allowsMultipleSelection: false
+        ) { result in
+            guard case .success(let urls) = result, let url = urls.first else { return }
+            _ = url.startAccessingSecurityScopedResource()
+            defer { url.stopAccessingSecurityScopedResource() }
+            if let data = try? Data(contentsOf: url) {
+                Task { await handlePDF(data) }
             }
         }
         .task {
@@ -101,6 +114,14 @@ struct ReceiptScannerView: View {
 
                 PhotosPicker(selection: $selectedPhoto, matching: .images) {
                     Label("Choose from Library", systemImage: "photo.on.rectangle")
+                        .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(.bordered)
+
+                Button {
+                    showFilePicker = true
+                } label: {
+                    Label("Choose PDF File", systemImage: "doc.fill")
                         .frame(maxWidth: .infinity)
                 }
                 .buttonStyle(.bordered)

@@ -73,4 +73,62 @@ app.get("/", async (c) => {
   return c.json({ frequently_purchased, recent_recipes });
 });
 
+// GET /v1/insights/history/days?household_id=xxx
+app.get("/history/days", async (c) => {
+  const user = c.var.user;
+  const householdId = c.req.query("household_id");
+  if (!householdId) return c.json({ error: "missing_household_id" }, 400);
+  if (!(await assertMember(c.env, householdId, user.id))) return c.json({ error: "forbidden" }, 403);
+
+  const { results } = await c.env.DB
+    .prepare(
+      `SELECT DATE(purchased_at) AS date, COUNT(*) AS item_count
+       FROM purchase_history
+       WHERE household_id = ?
+       GROUP BY date
+       ORDER BY date DESC
+       LIMIT 90`,
+    )
+    .bind(householdId)
+    .all<{ date: string; item_count: number }>();
+
+  return c.json({ days: results });
+});
+
+// GET /v1/insights/history/day/:date?household_id=xxx
+app.get("/history/day/:date", async (c) => {
+  const user = c.var.user;
+  const householdId = c.req.query("household_id");
+  const date = c.req.param("date");
+  if (!householdId) return c.json({ error: "missing_household_id" }, 400);
+  if (!(await assertMember(c.env, householdId, user.id))) return c.json({ error: "forbidden" }, 403);
+
+  const { results } = await c.env.DB
+    .prepare(
+      `SELECT ph.id,
+              p.name        AS product_name,
+              ph.quantity,
+              p.category,
+              p.aisle_order,
+              ph.purchased_at,
+              ph.price_paid
+       FROM purchase_history ph
+       JOIN products p ON ph.product_id = p.id
+       WHERE ph.household_id = ? AND DATE(ph.purchased_at) = ?
+       ORDER BY p.aisle_order, p.name`,
+    )
+    .bind(householdId, date)
+    .all<{
+      id: string;
+      product_name: string;
+      quantity: string | null;
+      category: string;
+      aisle_order: number;
+      purchased_at: string;
+      price_paid: number | null;
+    }>();
+
+  return c.json({ date, items: results });
+});
+
 export default app;

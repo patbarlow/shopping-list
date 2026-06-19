@@ -233,6 +233,7 @@ private struct MacListView: View {
     @State private var collapsedSections: Set<String> = []
     @State private var showSettings = false
     @State private var showRecipeImport = false
+    @State private var showHistory = false
     @AppStorage("mac_always_on_top") private var alwaysOnTop = true
 
     private var store: ShoppingListStore { services.shopping }
@@ -270,6 +271,10 @@ private struct MacListView: View {
             RecipeImportView(householdId: household.id)
                 .environment(services)
         }
+        .sheet(isPresented: $showHistory) {
+            MacHistoryView(householdId: household.id)
+                .environment(services)
+        }
         .task { await store.load(householdId: household.id) }
         .onChange(of: focusedField) { old, new in handleFocusChange(old: old, new: new) }
         .animation(.default, value: store.groupedItems.map {
@@ -288,6 +293,9 @@ private struct MacListView: View {
                 Divider()
                 Button { showRecipeImport = true } label: {
                     Label("Import Recipe…", systemImage: "link")
+                }
+                Button { showHistory = true } label: {
+                    Label("Purchase History", systemImage: "clock.arrow.circlepath")
                 }
                 Divider()
                 Toggle(isOn: $alwaysOnTop) {
@@ -622,5 +630,134 @@ private struct MacSettingsView: View {
         }
         .padding(24)
         .frame(width: 340, height: 280)
+    }
+}
+
+// MARK: - Mac History View
+
+private struct MacHistoryView: View {
+    let householdId: String
+    @Environment(AppServices.self) private var services
+    @Environment(\.dismiss) private var dismiss
+    @State private var days: [HistoryDay] = []
+    @State private var selectedDate: String? = nil
+    @State private var dayItems: [HistoryItem] = []
+    @State private var isLoadingDays = true
+    @State private var isLoadingItems = false
+
+    private var groupedDayItems: [(category: ItemCategory, items: [HistoryItem])] {
+        let grouped = Dictionary(grouping: dayItems) { ItemCategory(rawValue: $0.category) ?? .other }
+        return grouped
+            .sorted { $0.key.aisleOrder < $1.key.aisleOrder }
+            .map { (category: $0.key, items: $0.value.sorted { $0.productName < $1.productName }) }
+    }
+
+    var body: some View {
+        HSplitView {
+            // Day list (left panel)
+            VStack(alignment: .leading, spacing: 0) {
+                Text("History")
+                    .font(.headline)
+                    .padding(.horizontal, 12)
+                    .padding(.vertical, 10)
+                Divider()
+                if isLoadingDays {
+                    ProgressView().frame(maxWidth: .infinity).padding(.top, 20)
+                } else if days.isEmpty {
+                    Text("No history yet.")
+                        .foregroundStyle(.secondary)
+                        .font(.callout)
+                        .padding(16)
+                } else {
+                    List(selection: $selectedDate) {
+                        ForEach(days) { day in
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(day.dayOfWeek)
+                                    .font(.callout.weight(.medium))
+                                Text(day.displayDate)
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                                Text("\(day.itemCount) item\(day.itemCount == 1 ? "" : "s")")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
+                            }
+                            .tag(day.date)
+                            .padding(.vertical, 2)
+                        }
+                    }
+                    .listStyle(.sidebar)
+                }
+            }
+            .frame(minWidth: 160, idealWidth: 180, maxWidth: 200)
+
+            // Day detail (right panel)
+            VStack(alignment: .leading, spacing: 0) {
+                if let date = selectedDate {
+                    let displayDate = days.first(where: { $0.date == date })?.displayDate ?? date
+                    Text(displayDate)
+                        .font(.headline)
+                        .padding(.horizontal, 12)
+                        .padding(.vertical, 10)
+                    Divider()
+                    if isLoadingItems {
+                        ProgressView().frame(maxWidth: .infinity).padding(.top, 20)
+                    } else if dayItems.isEmpty {
+                        Text("No items found.")
+                            .foregroundStyle(.secondary)
+                            .font(.callout)
+                            .padding(16)
+                    } else {
+                        List {
+                            ForEach(groupedDayItems, id: \.category) { group in
+                                Section {
+                                    ForEach(group.items) { item in
+                                        HStack {
+                                            Text(item.productName)
+                                            if let qty = item.quantity, !qty.isEmpty {
+                                                Text(qty).foregroundStyle(.secondary).font(.callout)
+                                            }
+                                            Spacer()
+                                            if let price = item.pricePaid {
+                                                Text(String(format: "$%.2f", price))
+                                                    .foregroundStyle(.secondary)
+                                                    .font(.callout)
+                                            }
+                                        }
+                                    }
+                                } header: {
+                                    Label(group.category.rawValue, systemImage: group.category.sfSymbol)
+                                        .foregroundStyle(group.category.color)
+                                }
+                            }
+                        }
+                    }
+                } else {
+                    Text("Select a day to see what you purchased.")
+                        .foregroundStyle(.secondary)
+                        .font(.callout)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+            .frame(minWidth: 240, idealWidth: 300)
+        }
+        .toolbar {
+            ToolbarItem(placement: .cancellationAction) {
+                Button("Done") { dismiss() }
+            }
+        }
+        .frame(width: 520, height: 400)
+        .task {
+            days = (try? await services.api.fetchHistoryDays(householdId: householdId)) ?? []
+            isLoadingDays = false
+        }
+        .onChange(of: selectedDate) { _, date in
+            guard let date else { return }
+            isLoadingItems = true
+            dayItems = []
+            Task {
+                dayItems = (try? await services.api.fetchHistoryDay(householdId: householdId, date: date)) ?? []
+                isLoadingItems = false
+            }
+        }
     }
 }

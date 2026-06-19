@@ -358,6 +358,7 @@ export interface ReceiptLineItem {
 export interface ParsedReceipt {
   store_name: string | null;
   total_amount: number | null;
+  receipt_date: string | null;
   line_items: ReceiptLineItem[];
 }
 
@@ -386,8 +387,8 @@ export async function parseReceiptFromImage(
                 type: "text",
                 text:
                   `Extract all line items from this receipt. Return ONLY valid JSON:\n` +
-                  `{"store_name":"...","total_amount":12.34,"line_items":[{"description":"...","quantity":1,"unit_price":2.50,"total_price":2.50}]}\n` +
-                  `Use null for any field you cannot read clearly. Exclude tax/subtotal/total rows from line_items.`,
+                  `{"store_name":"...","total_amount":12.34,"receipt_date":"2026-06-20","line_items":[{"description":"...","quantity":1,"unit_price":2.50,"total_price":2.50}]}\n` +
+                  `Use null for any field you cannot read clearly. receipt_date must be ISO format (YYYY-MM-DD) or null. Exclude tax/subtotal/total rows from line_items.`,
               },
             ],
           },

@@ -135,6 +135,24 @@ final class APIService {
         let _: AnyDecodable = try await post("/v1/receipts/confirm", body: body)
     }
 
+    // MARK: - History
+
+    func fetchHistoryDays(householdId: String) async throws -> [HistoryDay] {
+        let response: HistoryDaysResponse = try await get(
+            "/v1/insights/history/days",
+            query: ["household_id": householdId]
+        )
+        return response.days
+    }
+
+    func fetchHistoryDay(householdId: String, date: String) async throws -> [HistoryItem] {
+        let response: HistoryDayResponse = try await get(
+            "/v1/insights/history/day/\(date)",
+            query: ["household_id": householdId]
+        )
+        return response.items
+    }
+
     // MARK: - Households
 
     func createHousehold(name: String) async throws -> Household {
@@ -269,6 +287,15 @@ private struct APIErrorResponse: Decodable {
 }
 
 // Sink type for fire-and-forget POST responses (e.g. /auth/email/start)
+private struct HistoryDaysResponse: Decodable {
+    let days: [HistoryDay]
+}
+
+private struct HistoryDayResponse: Decodable {
+    let date: String
+    let items: [HistoryItem]
+}
+
 private struct AnyDecodable: Decodable {}
 
 // MARK: - Errors

@@ -94,6 +94,7 @@ app.post("/scan", async (c) => {
   return c.json({
     store_name: receipt.store_name,
     total_amount: receipt.total_amount,
+    receipt_date: receipt.receipt_date ?? null,
     matches,
     unmatched,
   });

@@ -162,12 +162,14 @@ struct EditableIngredient: Identifiable {
 struct ReceiptScanResponse: Decodable {
     let storeName: String?
     let totalAmount: Double?
+    let receiptDate: String?
     let matches: [ReceiptMatchResponse]
     let unmatched: [ReceiptLineItemResponse]
 
     enum CodingKeys: String, CodingKey {
         case storeName    = "store_name"
         case totalAmount  = "total_amount"
+        case receiptDate  = "receipt_date"
         case matches, unmatched
     }
 }

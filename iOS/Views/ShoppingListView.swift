@@ -12,6 +12,9 @@ struct ShoppingListView: View {
     @State private var showSettings = false
     @State private var showRecipeImport = false
     @State private var showReceiptScanner = false
+    @State private var isSidebarOpen = false
+    @State private var selectedHistoryDate: String? = nil
+    @State private var historyDays: [HistoryDay] = []
 
     // ── Inline add ─────────────────────────────────────────────────────────────
     @State private var isAdding  = false
@@ -63,20 +66,30 @@ struct ShoppingListView: View {
     // MARK: - Body
 
     var body: some View {
-        NavigationStack {
-            mainList
-                .overlay(alignment: .bottom) {
-                    LinearGradient(
-                        colors: [.clear, Color(.systemBackground)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: 80)
-                    .padding(.bottom, -56)
-                    .allowsHitTesting(false)
-                }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    addItemAccessory
+        ZStack(alignment: .leading) {
+            NavigationStack {
+                Group {
+                    if let date = selectedHistoryDate {
+                        HistoryDayView(householdId: household.id, date: date) {
+                            selectedHistoryDate = nil
+                        }
+                        .environment(services)
+                    } else {
+                        mainList
+                            .overlay(alignment: .bottom) {
+                                LinearGradient(
+                                    colors: [.clear, Color(.systemBackground)],
+                                    startPoint: .top,
+                                    endPoint: .bottom
+                                )
+                                .frame(height: 80)
+                                .padding(.bottom, -56)
+                                .allowsHitTesting(false)
+                            }
+                            .safeAreaInset(edge: .bottom, spacing: 0) {
+                                addItemAccessory
+                            }
+                    }
                 }
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
@@ -90,35 +103,62 @@ struct ShoppingListView: View {
                 .sheet(isPresented: $showReceiptScanner) {
                     ReceiptScannerView(householdId: household.id).environment(services)
                 }
+            }
+            .task {
+                await store.load(householdId: household.id)
+                historyDays = (try? await services.api.fetchHistoryDays(householdId: household.id)) ?? []
+            }
+            .onChange(of: focusedField) { old, new in handleFocusChange(old: old, new: new) }
+            .onChange(of: addText) { old, new in
+                // iOS TextField strips newlines on paste — detect multiline pastes via clipboard
+                guard isAdding,
+                      new.count - old.count > 2,
+                      let clip = UIPasteboard.general.string,
+                      clip.contains("\n") else { return }
+                let items = Self.parseMultipleItems(clip)
+                guard items.count > 1 else { return }
+                addText = ""; addQty = ""; addNotes = ""
+                isAdding = false; focusedField = nil
+                for name in items { Task { await store.addItem(name: name) } }
+            }
+            .onReceive(NotificationCenter.default.publisher(for: .shoppingListQuickAdd)) { _ in
+                startAdding()
+            }
+            .onOpenURL { url in
+                if url.host == "quick-add" { startAdding() }
+            }
+            .onChange(of: services.pendingReceiptPDF) { _, pdf in
+                if pdf != nil { showReceiptScanner = true }
+            }
+            .onContinueUserActivity("com.patbarlow.shoppinglist.quickAdd") { _ in
+                startAdding()
+            }
+
+            // Sidebar scrim
+            if isSidebarOpen {
+                Color.black.opacity(0.4)
+                    .ignoresSafeArea()
+                    .onTapGesture {
+                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                            isSidebarOpen = false
+                        }
+                    }
+                    .transition(.opacity)
+            }
+
+            // Sidebar panel
+            SidebarView(
+                household: household,
+                historyDays: historyDays,
+                selectedDate: $selectedHistoryDate,
+                isOpen: $isSidebarOpen,
+                showRecipeImport: $showRecipeImport,
+                showSettings: $showSettings
+            )
+            .frame(width: 300)
+            .offset(x: isSidebarOpen ? 0 : -300)
         }
-        .task {
-            await store.load(householdId: household.id)
-        }
-        .onChange(of: focusedField) { old, new in handleFocusChange(old: old, new: new) }
-        .onChange(of: addText) { old, new in
-            // iOS TextField strips newlines on paste — detect multiline pastes via clipboard
-            guard isAdding,
-                  new.count - old.count > 2,
-                  let clip = UIPasteboard.general.string,
-                  clip.contains("\n") else { return }
-            let items = Self.parseMultipleItems(clip)
-            guard items.count > 1 else { return }
-            addText = ""; addQty = ""; addNotes = ""
-            isAdding = false; focusedField = nil
-            for name in items { Task { await store.addItem(name: name) } }
-        }
-        .onReceive(NotificationCenter.default.publisher(for: .shoppingListQuickAdd)) { _ in
-            startAdding()
-        }
-        .onOpenURL { url in
-            if url.host == "quick-add" { startAdding() }
-        }
-        .onChange(of: services.pendingReceiptPDF) { _, pdf in
-            if pdf != nil { showReceiptScanner = true }
-        }
-        .onContinueUserActivity("com.patbarlow.shoppinglist.quickAdd") { _ in
-            startAdding()
-        }
+        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isSidebarOpen)
     }
 
     // MARK: - Bottom Accessory
@@ -219,6 +259,15 @@ struct ShoppingListView: View {
                         Text("Add item…")
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                        Button {
+                            showReceiptScanner = true
+                        } label: {
+                            Image(systemName: "doc.text.viewfinder")
+                                .font(.body)
+                                .foregroundStyle(.secondary)
+                        }
+                        .buttonStyle(.plain)
+                        .padding(.trailing, 4)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -489,20 +538,35 @@ struct ShoppingListView: View {
     // MARK: - Toolbar
 
     @ToolbarContentBuilder
+    @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigationBarLeading) {
-            Button { showSettings = true } label: { Image(systemName: "gear") }
+            if selectedHistoryDate != nil {
+                Button {
+                    withAnimation { selectedHistoryDate = nil }
+                } label: {
+                    HStack(spacing: 4) {
+                        Image(systemName: "chevron.left")
+                            .font(.footnote.weight(.semibold))
+                        Text("List")
+                            .font(.subheadline)
+                    }
+                }
+            } else {
+                Button {
+                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+                        isSidebarOpen = true
+                    }
+                } label: {
+                    Image(systemName: "line.3.horizontal")
+                }
+            }
         }
-        ToolbarItem(placement: .navigationBarTrailing) {
-            Menu {
+        if selectedHistoryDate == nil {
+            ToolbarItem(placement: .navigationBarTrailing) {
                 Button { showRecipeImport = true } label: {
-                    Label("Import Recipe (URL)", systemImage: "link")
+                    Image(systemName: "link")
                 }
-                Button { showReceiptScanner = true } label: {
-                    Label("Scan Receipt", systemImage: "receipt")
-                }
-            } label: {
-                Image(systemName: "plus.circle")
             }
         }
     }
