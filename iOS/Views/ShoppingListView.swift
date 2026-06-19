@@ -33,6 +33,9 @@ struct ShoppingListView: View {
     // ── Pending complete (brief fill animation before item leaves) ─────────────
     @State private var pendingCompleteIDs: Set<String> = []
 
+    // ── Input commit guard (prevents focus-loss cancel during enter-to-add) ───
+    @State private var isCommitting = false
+
     private var store: ShoppingListStore { services.shopping }
 
     // Multi-item paste preview — shown when paste produces >1 item
@@ -243,6 +246,21 @@ struct ShoppingListView: View {
             .padding(.top, 6)
             .contentShape(Rectangle())
             .onTapGesture { if !isAdding { startAdding() } }
+            .simultaneousGesture(
+                DragGesture(minimumDistance: 15, coordinateSpace: .local)
+                    .onEnded { value in
+                        let dy = value.translation.height
+                        let dx = value.translation.width
+                        guard abs(dy) > abs(dx) * 0.8 else { return }
+                        if dy > 50 && focusedField != nil {
+                            focusedField = nil
+                        } else if dy < -40 && isAdding && focusedField == nil {
+                            focusedField = .newName
+                        } else if dy < -40 && !isAdding {
+                            startAdding()
+                        }
+                    }
+            )
             .animation(.easeOut(duration: 0.2), value: isAdding)
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: suggestions)
@@ -451,6 +469,7 @@ struct ShoppingListView: View {
         focusLossTask?.cancel()
 
         if isAddField(old) && !isAddField(new) && isAdding {
+            guard !isCommitting else { return }
             focusLossTask = Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 50_000_000)
                 guard !Task.isCancelled, isAdding, !isAddField(focusedField) else { return }
@@ -509,8 +528,11 @@ struct ShoppingListView: View {
             }
         }
         if refocus {
-            DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) {
+            isCommitting = true
+            focusLossTask?.cancel()
+            Task { @MainActor in
                 focusedField = .newName
+                isCommitting = false
             }
         } else {
             isAdding = false
