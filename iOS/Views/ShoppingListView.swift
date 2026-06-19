@@ -339,32 +339,31 @@ struct ShoppingListView: View {
                                         }
                                         let offset = swipeOffsets[item.id] ?? 0
                                         let progress = min(1.0, max(0, -offset / 100))
-                                        ZStack(alignment: .trailing) {
-                                            unifiedItemRow(for: item)
-                                                .padding(.horizontal, 14)
-                                                .padding(.vertical, 5)
-                                                .background {
-                                                    Color(.systemBackground).opacity(1 - progress)
-                                                    group.category.color.opacity(0.10 * (1 - progress))
-                                                    Color.red.opacity(progress)
-                                                }
-                                                .offset(x: offset)
-                                            Text("Delete")
-                                                .font(.footnote.weight(.semibold))
-                                                .foregroundStyle(.white)
-                                                .padding(.trailing, 28)
-                                                .opacity(max(0, (progress - 0.15) / 0.4))
-                                                .allowsHitTesting(false)
-                                        }
-                                        .frame(maxWidth: .infinity)
-                                        .gesture(swipeDeleteGesture(for: item))
-                                        .contextMenu {
-                                            Button(role: .destructive) {
-                                                Task { await store.deleteItem(item) }
-                                            } label: {
-                                                Label("Delete", systemImage: "trash")
+                                        unifiedItemRow(for: item)
+                                            .padding(.horizontal, 14)
+                                            .padding(.vertical, 5)
+                                            .background {
+                                                Color(.systemBackground)
+                                                group.category.color.opacity(0.10)
                                             }
-                                        }
+                                            .overlay { Color.red.opacity(progress) }
+                                            .overlay(alignment: .trailing) {
+                                                Text("Delete")
+                                                    .font(.footnote.weight(.semibold))
+                                                    .foregroundStyle(.white)
+                                                    .padding(.trailing, 28)
+                                                    .opacity(max(0, (progress - 0.3) / 0.4))
+                                            }
+                                            .offset(x: offset)
+                                            .frame(maxWidth: .infinity)
+                                            .gesture(swipeDeleteGesture(for: item))
+                                            .contextMenu {
+                                                Button(role: .destructive) {
+                                                    Task { await store.deleteItem(item) }
+                                                } label: {
+                                                    Label("Delete", systemImage: "trash")
+                                                }
+                                            }
                                     }
                                 }
                                 .padding(.bottom, 4)
@@ -514,7 +513,12 @@ struct ShoppingListView: View {
         focusLossTask?.cancel()
 
         if isAddField(old) && !isAddField(new) && isAdding {
-            guard !isCommitting else { return }
+            if isCommitting {
+                // Restore focus synchronously so SwiftUI can keep the keyboard up
+                // before UIKit fully processes the resign from the Return key press.
+                focusedField = old
+                return
+            }
             focusLossTask = Task { @MainActor in
                 try? await Task.sleep(nanoseconds: 50_000_000)
                 guard !Task.isCancelled, isAdding, !isAddField(focusedField) else { return }
@@ -575,8 +579,10 @@ struct ShoppingListView: View {
         if refocus {
             isCommitting = true
             focusLossTask?.cancel()
+            // handleFocusChange restores focus synchronously when isCommitting is true.
+            // Clear the flag after a brief window to let focus settle.
             Task { @MainActor in
-                focusedField = .newName
+                try? await Task.sleep(nanoseconds: 200_000_000)
                 isCommitting = false
             }
         } else {
@@ -695,11 +701,11 @@ struct ShoppingListView: View {
                         swipePassedThreshold.remove(k)
                     }
                 }
-                // Rubber-band past the max drag point
-                swipeOffsets[item.id] = dx < -100 ? -100 + (dx + 100) * 0.2 : dx
+                // Rubber-band past 200pt; full red reached at 100pt (50% of range)
+                swipeOffsets[item.id] = dx < -200 ? -200 + (dx + 200) * 0.2 : dx
 
-                // Haptic when crossing 50% of max drag (delete threshold)
-                let nowPast = (swipeOffsets[item.id] ?? 0) < -50
+                // Haptic when crossing the delete threshold at 100pt
+                let nowPast = (swipeOffsets[item.id] ?? 0) < -100
                 let wasPast = swipePassedThreshold.contains(item.id)
                 if nowPast != wasPast {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
