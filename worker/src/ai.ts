@@ -137,11 +137,17 @@ export interface ParsedRecipe {
   ingredients: ParsedIngredient[];
 }
 
+interface RawJsonLdRecipe {
+  recipe_name: string;
+  default_servings: number | null;
+  ingredients: string[]; // raw strings, not yet cleaned
+}
+
 /**
  * Try to extract Recipe schema.org JSON-LD from HTML.
- * Returns null if no recipe data found.
+ * Returns raw ingredient strings — caller must clean via Claude.
  */
-function extractJsonLdRecipe(html: string): ParsedRecipe | null {
+function extractJsonLdRecipe(html: string): RawJsonLdRecipe | null {
   const scriptMatches = html.matchAll(/<script[^>]*type=["']application\/ld\+json["'][^>]*>([\s\S]*?)<\/script>/gi);
   for (const match of scriptMatches) {
     try {
@@ -169,9 +175,8 @@ function extractJsonLdRecipe(html: string): ParsedRecipe | null {
           ? (n["recipeIngredient"] as string[])
           : [];
 
-        const ingredients = rawIngredients.map(parseRawIngredient);
-
-        return { recipe_name: name, default_servings: servings, ingredients };
+        // Return raw strings — caller will clean them via Claude
+        return { recipe_name: name, default_servings: servings, ingredients: rawIngredients };
       }
     } catch {
       // ignore parse errors, try next script tag
@@ -181,20 +186,53 @@ function extractJsonLdRecipe(html: string): ParsedRecipe | null {
 }
 
 /**
- * Parse a raw ingredient string like "2 cups all-purpose flour" into
- * a structured { name, quantity } object.
+ * Use Claude to clean raw JSON-LD ingredient strings into structured name/quantity pairs.
+ * Handles sites that embed notes, alternatives, and preparation hints in the ingredient strings.
  */
-function parseRawIngredient(raw: string): ParsedIngredient {
-  // Match optional leading quantity (number + optional unit) then ingredient name
-  const m = raw.match(
-    /^([\d\s/⁄¼½¾⅓⅔⅛⅜⅝⅞]+(?:\s*(?:cups?|tablespoons?|tbsps?|teaspoons?|tsps?|grams?|g|kilograms?|kg|millilitres?|ml|litres?|l|ounces?|oz|pounds?|lbs?|cans?|cloves?|slices?|pieces?|pinch(?:es)?|bunch(?:es)?|stalks?|heads?|sprigs?|sheets?))?\s*)(.+)/i,
+async function cleanIngredients(env: Env, rawIngredients: string[]): Promise<ParsedIngredient[]> {
+  if (rawIngredients.length === 0) return [];
+
+  const list = rawIngredients.map((s, i) => `${i + 1}. ${s}`).join("\n");
+  const reply = await callClaude(
+    env,
+    [
+      {
+        role: "user",
+        content:
+          `Parse these recipe ingredient strings into clean name/quantity pairs.\n` +
+          `Rules:\n` +
+          `- Strip parenthetical notes, alternatives, and hints (e.g. "(Note 1)", "((mince))", "(or yellow onion)", "(finely chopped)")\n` +
+          `- Keep only the core ingredient name (e.g. "ground beef", "garlic cloves", "onion", "olive oil")\n` +
+          `- Quantity is the primary amount — prefer metric if both are given; keep unit with number (e.g. "400g", "1/4 cup", "2")\n` +
+          `- Strip leading slashes, commas, or other punctuation from names\n` +
+          `- Use null for quantity if genuinely absent\n` +
+          `- Return EXACTLY ${rawIngredients.length} objects in the same order as input\n\n` +
+          `Return ONLY valid JSON array: [{"name":"...","quantity":"..."}]\n\n` +
+          `Ingredients:\n${list}`,
+      },
+    ],
+    2000,
   );
-  if (m) {
-    const quantity = m[1].trim() || null;
-    const name = m[2].trim().replace(/^[,;.]+/, "").trim();
-    return { name, quantity };
+
+  if (!reply) {
+    // Fallback: strip obvious parentheticals with regex
+    return rawIngredients.map((raw) => ({
+      name: raw.replace(/\s*\(+[^)]*\)+/g, "").replace(/^[/,;\s]+/, "").trim(),
+      quantity: null,
+    }));
   }
-  return { name: raw.trim(), quantity: null };
+
+  try {
+    const parsed = JSON.parse(reply.replace(/```json\n?|```/g, "").trim()) as ParsedIngredient[];
+    // Ensure we got the right count; pad or trim if needed
+    while (parsed.length < rawIngredients.length) parsed.push({ name: rawIngredients[parsed.length], quantity: null });
+    return parsed.slice(0, rawIngredients.length);
+  } catch {
+    return rawIngredients.map((raw) => ({
+      name: raw.replace(/\s*\(+[^)]*\)+/g, "").replace(/^[/,;\s]+/, "").trim(),
+      quantity: null,
+    }));
+  }
 }
 
 /** Strip HTML tags and collapse whitespace for Claude fallback parsing */
@@ -221,9 +259,12 @@ export async function parseRecipeFromUrl(env: Env, url: string): Promise<ParsedR
     return null;
   }
 
-  // Prefer structured JSON-LD data (fast, no AI needed)
+  // Prefer structured JSON-LD data, then clean ingredient strings via Claude
   const jsonLd = extractJsonLdRecipe(html);
-  if (jsonLd && jsonLd.ingredients.length > 0) return jsonLd;
+  if (jsonLd && jsonLd.ingredients.length > 0) {
+    const ingredients = await cleanIngredients(env, jsonLd.ingredients);
+    return { recipe_name: jsonLd.recipe_name, default_servings: jsonLd.default_servings, ingredients };
+  }
 
   // Fallback: ask Claude to extract from page text
   const text = htmlToText(html);
@@ -235,7 +276,9 @@ export async function parseRecipeFromUrl(env: Env, url: string): Promise<ParsedR
         content:
           `Extract the recipe from this webpage text. Return ONLY valid JSON matching this shape:\n` +
           `{"recipe_name":"...","default_servings":4,"ingredients":[{"name":"...","quantity":"..."}]}\n` +
-          `Use null for quantity if unknown. If this is not a recipe page, return {"error":"not_a_recipe"}.\n\n` +
+          `For each ingredient: use a clean core name only (no preparation notes, no alternatives in parentheses), ` +
+          `and extract the primary quantity with its unit. Use null for quantity if absent.\n` +
+          `If this is not a recipe page, return {"error":"not_a_recipe"}.\n\n` +
           `Page text:\n${text}`,
       },
     ],
