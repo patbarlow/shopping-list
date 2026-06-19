@@ -187,9 +187,32 @@ import Observation
         guard let householdId else { return }
         let userId = api.currentUser?.id ?? ""
 
+        let toMerge = ingredients.filter { $0.existingItemId != nil }
+        let toCreate = ingredients.filter { $0.existingItemId == nil }
+
+        // Merge into existing list items by patching their quantity
+        for ing in toMerge {
+            guard let existingId = ing.existingItemId else { continue }
+            let mergedQty = EditableIngredient.mergeQuantities(ing.existingListQty, ing.currentQuantity)
+            recordInHistory(ing.name.trimmingCharacters(in: .whitespaces))
+
+            // Optimistic update
+            if let idx = items.firstIndex(where: { $0.id == existingId }) {
+                items[idx].quantity = mergedQty
+            }
+
+            if let updated = try? await api.patchItem(id: existingId, fields: ["quantity": mergedQty ?? ""]) {
+                if let idx = items.firstIndex(where: { $0.id == existingId }) {
+                    items[idx] = updated
+                }
+            }
+        }
+
+        guard !toCreate.isEmpty else { return }
+
         // Optimistic insert with parsed categories so they land in the right aisle
         var placeholders: [ShoppingItem] = []
-        for ing in ingredients {
+        for ing in toCreate {
             let trimmed = ing.name.trimmingCharacters(in: .whitespaces)
             guard !trimmed.isEmpty else { continue }
             let id = UUID().uuidString.lowercased()
@@ -219,14 +242,12 @@ import Observation
 
         do {
             let serverItems = try await api.createBulkItems(householdId: householdId, items: apiItems)
-            // Replace placeholders with server responses
             for serverItem in serverItems {
                 if let idx = items.firstIndex(where: { $0.id == serverItem.id }) {
                     items[idx] = serverItem
                 }
             }
         } catch {
-            // Roll back optimistic items
             let ids = Set(placeholders.map(\.id))
             items.removeAll { ids.contains($0.id) }
             throw error

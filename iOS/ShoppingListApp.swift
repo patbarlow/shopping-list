@@ -1,5 +1,6 @@
 import SwiftUI
 import Sentry
+import UniformTypeIdentifiers
 
 
 @main
@@ -47,11 +48,18 @@ struct ShoppingListApp: App {
                     guard newPhase == .active,
                           services.auth.isLoggedIn,
                           let household = services.auth.household else { return }
-                    // Reconnect the SSE stream (iOS may have killed it while backgrounded)
-                    // and do an immediate fetch so the list is current before the stream
-                    // delivers its first event.
                     services.realtime.connect(householdId: household.id)
                     Task { await services.shopping.fetch() }
+                }
+                .onOpenURL { url in
+                    // Handle PDFs shared from other apps (e.g. Woolworths Rewards)
+                    guard url.isFileURL,
+                          url.pathExtension.lowercased() == "pdf" else { return }
+                    _ = url.startAccessingSecurityScopedResource()
+                    defer { url.stopAccessingSecurityScopedResource() }
+                    if let data = try? Data(contentsOf: url) {
+                        services.pendingReceiptPDF = data
+                    }
                 }
         }
     }

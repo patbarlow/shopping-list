@@ -8,6 +8,9 @@ import Observation
     let auth: AuthStore
     let shopping: ShoppingListStore
 
+    // Set when the OS delivers a shared PDF; ShoppingListView observes this to auto-open the scanner.
+    var pendingReceiptPDF: Data? = nil
+
     init() {
         let api      = APIService()
         let realtime = RealtimeService(api: api)

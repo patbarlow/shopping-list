@@ -3,11 +3,51 @@ import type { Env } from "../env";
 import { requireAuth, type AuthVariables } from "../middleware/auth";
 import { nowISO, type RecipeIngredient } from "../db";
 import { categorise, parseRecipeFromUrl, parseRecipeFromImage } from "../ai";
-import { upsertProduct } from "./items";
+import { upsertProduct, lookupProduct } from "./items";
 
 const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
 app.use("*", requireAuth);
+
+/**
+ * Categorise an ingredient and check if it already exists as an unchecked shopping item
+ * for the household. Uses the same fuzzy+Claude product matching as upsertProduct so
+ * "beef mince" correctly matches an existing "ground beef" entry.
+ */
+async function enrichIngredient(
+  env: Env,
+  householdId: string,
+  ing: { name: string; quantity: string | null },
+) {
+  const [{ category, aisleOrder }, product] = await Promise.all([
+    categorise(env, ing.name),
+    lookupProduct(env, householdId, ing.name),
+  ]);
+
+  let existingItemId: string | null = null;
+  let existingQuantity: string | null = null;
+
+  if (product) {
+    const existing = await env.DB
+      .prepare(
+        "SELECT id, quantity FROM shopping_items WHERE household_id = ? AND product_id = ? AND checked = 0 LIMIT 1",
+      )
+      .bind(householdId, product.id)
+      .first<{ id: string; quantity: string | null }>();
+    if (existing) {
+      existingItemId = existing.id;
+      existingQuantity = existing.quantity;
+    }
+  }
+
+  return {
+    ...ing,
+    category,
+    aisle_order: aisleOrder,
+    existing_item_id: existingItemId,
+    existing_quantity: existingQuantity,
+  };
+}
 
 async function assertMember(env: Env, householdId: string, userId: string): Promise<boolean> {
   const row = await env.DB
@@ -34,12 +74,9 @@ app.post("/parse-url", async (c) => {
   const parsed = await parseRecipeFromUrl(c.env, body.url);
   if (!parsed) return c.json({ error: "could_not_parse" }, 422);
 
-  // Categorise all ingredients in parallel
+  // Categorise and check shopping list in parallel for each ingredient
   const ingredients = await Promise.all(
-    parsed.ingredients.map(async (ing) => {
-      const { category, aisleOrder } = await categorise(c.env, ing.name);
-      return { ...ing, category, aisle_order: aisleOrder };
-    }),
+    parsed.ingredients.map((ing) => enrichIngredient(c.env, body.household_id!, ing)),
   );
 
   return c.json({
@@ -67,10 +104,7 @@ app.post("/parse-image", async (c) => {
   if (!parsed) return c.json({ error: "could_not_parse" }, 422);
 
   const ingredients = await Promise.all(
-    parsed.ingredients.map(async (ing) => {
-      const { category, aisleOrder } = await categorise(c.env, ing.name);
-      return { ...ing, category, aisle_order: aisleOrder };
-    }),
+    parsed.ingredients.map((ing) => enrichIngredient(c.env, body.household_id!, ing)),
   );
 
   return c.json({

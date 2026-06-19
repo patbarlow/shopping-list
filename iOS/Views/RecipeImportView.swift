@@ -264,13 +264,19 @@ struct RecipeImportView: View {
                             Text(ing.name)
                                 .foregroundStyle(ing.isIncluded ? Color.primary : Color.secondary)
 
-                            if let existingQty = ing.existingListQty {
+                            if ing.existingItemId != nil {
+                                let existingQty = ing.existingListQty ?? ""
                                 HStack(spacing: 4) {
-                                    Image(systemName: "checkmark.circle.fill")
-                                    Text(existingQty.isEmpty ? "already on your list" : "on your list: \(existingQty)")
+                                    Image(systemName: ing.isIncluded ? "arrow.triangle.merge" : "checkmark.circle.fill")
+                                    if ing.isIncluded {
+                                        let merged = EditableIngredient.mergeQuantities(ing.existingListQty, ing.currentQuantity)
+                                        Text(merged != nil ? "on list: \(existingQty) → \(merged!)" : "will combine with on-list qty")
+                                    } else {
+                                        Text(existingQty.isEmpty ? "already on your list" : "on your list: \(existingQty)")
+                                    }
                                 }
                                 .font(.caption)
-                                .foregroundStyle(.green)
+                                .foregroundStyle(ing.isIncluded ? Color.orange : Color.green)
                             }
                         }
 
@@ -351,21 +357,9 @@ struct RecipeImportView: View {
         recipeName      = result.recipeName
         defaultServings = result.defaultServings ?? 4
         currentServings = defaultServings
-
-        let currentItems = store.items
-        ingredients = result.ingredients.map { resp in
-            var ing = EditableIngredient(from: resp)
-            // Check if already on the shopping list (case-insensitive substring match)
-            if let match = currentItems.first(where: { item in
-                let a = item.name.lowercased()
-                let b = resp.name.lowercased()
-                return a == b || a.contains(b) || b.contains(a)
-            }) {
-                ing.existingListQty = match.quantity ?? ""
-                ing.isIncluded = false  // pre-decline items already on the list
-            }
-            return ing
-        }
+        // isIncluded and existingItemId/existingListQty are set by EditableIngredient.init(from:)
+        // using server-resolved product matching — no client-side string matching needed.
+        ingredients = result.ingredients.map { EditableIngredient(from: $0) }
         phase = .preview
     }
 

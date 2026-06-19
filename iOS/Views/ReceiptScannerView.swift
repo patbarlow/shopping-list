@@ -1,5 +1,6 @@
 import SwiftUI
 import PhotosUI
+import PDFKit
 
 struct ReceiptScannerView: View {
     let householdId: String
@@ -57,6 +58,13 @@ struct ReceiptScannerView: View {
                 Task { await handleCapturedImage(image) }
             }
         }
+        .task {
+            // Auto-scan a PDF shared from another app (e.g. Woolworths Rewards)
+            if let pdf = services.pendingReceiptPDF {
+                services.pendingReceiptPDF = nil
+                await handlePDF(pdf)
+            }
+        }
     }
 
     private var navTitle: String {
@@ -75,7 +83,7 @@ struct ReceiptScannerView: View {
         List {
             Section {
                 VStack(alignment: .leading, spacing: 8) {
-                    Text("Photograph your receipt to match prices with recently purchased items.")
+                    Text("Photograph your receipt, or share a PDF receipt directly to this app from Woolworths Rewards.")
                         .foregroundStyle(.secondary)
                         .font(.footnote)
                 }
@@ -211,6 +219,70 @@ struct ReceiptScannerView: View {
     }
 
     // MARK: - Actions
+
+    private func handlePDF(_ pdfData: Data) async {
+        phase = .scanning
+        errorMessage = nil
+        do {
+            // Render PDF pages to a single JPEG image for Claude Vision.
+            // Most receipts are single-page, but we stitch multi-page ones vertically.
+            guard let image = renderPDFToImage(pdfData) else {
+                phase = .capture; errorMessage = "Couldn't read that PDF."; return
+            }
+            guard let compressed = image.compressedForUpload() else {
+                phase = .capture; errorMessage = "Image error."; return
+            }
+            let result = try await services.api.scanReceipt(
+                householdId: householdId,
+                imageBase64: compressed.base64EncodedString()
+            )
+            applyResult(result)
+        } catch {
+            phase = .capture
+            errorMessage = "Couldn't read that receipt."
+        }
+    }
+
+    private func renderPDFToImage(_ data: Data) -> UIImage? {
+        guard let doc = PDFDocument(data: data), doc.pageCount > 0 else { return nil }
+
+        let scale: CGFloat = 2.0
+        var images: [UIImage] = []
+
+        for i in 0 ..< doc.pageCount {
+            guard let page = doc.page(at: i) else { continue }
+            let bounds = page.bounds(for: .mediaBox)
+            let pageSize = CGSize(width: bounds.width * scale, height: bounds.height * scale)
+
+            // UIGraphicsBeginImageContextWithOptions gives us a UIKit context (origin top-left).
+            // PDF draw expects origin bottom-left, so we apply a flip transform.
+            UIGraphicsBeginImageContextWithOptions(pageSize, true, 1.0)
+            defer { UIGraphicsEndImageContext() }
+            guard let ctx = UIGraphicsGetCurrentContext() else { continue }
+
+            ctx.setFillColor(UIColor.white.cgColor)
+            ctx.fill(CGRect(origin: .zero, size: pageSize))
+            ctx.translateBy(x: 0, y: pageSize.height)
+            ctx.scaleBy(x: scale, y: -scale)
+            page.draw(with: .mediaBox, to: ctx)
+
+            if let img = UIGraphicsGetImageFromCurrentImageContext() {
+                images.append(img)
+            }
+        }
+
+        guard !images.isEmpty else { return nil }
+        if images.count == 1 { return images[0] }
+
+        // Stitch pages vertically
+        let totalHeight = images.reduce(0) { $0 + $1.size.height }
+        let width = images.map(\.size.width).max() ?? 0
+        UIGraphicsBeginImageContextWithOptions(CGSize(width: width, height: totalHeight), true, 1.0)
+        defer { UIGraphicsEndImageContext() }
+        var y: CGFloat = 0
+        for img in images { img.draw(at: CGPoint(x: 0, y: y)); y += img.size.height }
+        return UIGraphicsGetImageFromCurrentImageContext()
+    }
 
     private func handlePhotoSelection(_ item: PhotosPickerItem) async {
         phase = .scanning

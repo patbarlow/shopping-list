@@ -108,6 +108,9 @@ struct ShoppingListView: View {
         .onOpenURL { url in
             if url.host == "quick-add" { startAdding() }
         }
+        .onChange(of: services.pendingReceiptPDF) { _, pdf in
+            if pdf != nil { showReceiptScanner = true }
+        }
         .onContinueUserActivity("com.patbarlow.shoppinglist.quickAdd") { _ in
             startAdding()
         }

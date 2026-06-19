@@ -40,6 +40,35 @@ async function assertMember(env: Env, householdId: string, userId: string): Prom
 }
 
 /**
+ * Read-only version of upsertProduct — find an existing product by name (exact or fuzzy)
+ * without inserting anything. Returns null if no matching product exists.
+ */
+export async function lookupProduct(env: Env, householdId: string, name: string): Promise<Product | null> {
+  const exact = await env.DB
+    .prepare("SELECT * FROM products WHERE household_id = ? AND name = ?")
+    .bind(householdId, name)
+    .first<Product>();
+  if (exact) return exact;
+
+  const { results: candidates } = await env.DB
+    .prepare(
+      `SELECT * FROM products
+       WHERE household_id = ?
+         AND (LOWER(name) LIKE '%' || LOWER(?) || '%' OR LOWER(?) LIKE '%' || LOWER(name) || '%')
+       LIMIT 10`,
+    )
+    .bind(householdId, name, name)
+    .all<Product>();
+
+  if (candidates.length > 0) {
+    const match = await findMatchingProduct(env, name, candidates.map((c) => c.name));
+    if (match) return candidates.find((c) => c.name.toLowerCase() === match.toLowerCase()) ?? null;
+  }
+
+  return null;
+}
+
+/**
  * Look up or create a canonical product for this household.
  * 1. Exact case-insensitive match → reuse immediately.
  * 2. Fuzzy LIKE candidates → ask Claude if any is the same product.

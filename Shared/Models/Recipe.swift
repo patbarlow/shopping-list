@@ -18,10 +18,14 @@ struct ParsedIngredientResponse: Decodable {
     let quantity: String?
     let category: String
     let aisleOrder: Int
+    let existingItemId: String?
+    let existingQuantity: String?
 
     enum CodingKeys: String, CodingKey {
         case name, quantity, category
-        case aisleOrder = "aisle_order"
+        case aisleOrder       = "aisle_order"
+        case existingItemId   = "existing_item_id"
+        case existingQuantity = "existing_quantity"
     }
 }
 
@@ -35,7 +39,8 @@ struct EditableIngredient: Identifiable {
     var category: String
     var aisleOrder: Int
     var isIncluded: Bool = true
-    var existingListQty: String?    // non-nil when already on the shopping list
+    var existingItemId: String?     // shopping_items.id of matched list entry (server-resolved)
+    var existingListQty: String?    // display qty of the existing list item
 
     init(from response: ParsedIngredientResponse) {
         self.name             = response.name
@@ -43,6 +48,10 @@ struct EditableIngredient: Identifiable {
         self.currentQuantity  = response.quantity
         self.category         = response.category
         self.aisleOrder       = response.aisleOrder
+        self.existingItemId   = response.existingItemId
+        self.existingListQty  = response.existingQuantity
+        // Pre-exclude items the server confirmed are already on the list
+        self.isIncluded       = response.existingItemId == nil
     }
 
     mutating func applyServingsScale(factor: Double) {
@@ -91,6 +100,61 @@ struct EditableIngredient: Identifiable {
         }
 
         return rest.isEmpty ? formatted : "\(formatted) \(rest)"
+    }
+
+    /// Combine an existing list quantity with a recipe quantity.
+    /// Adds the leading numbers when units match; falls back to "A + B" if units differ or
+    /// either string can't be parsed as a number.
+    static func mergeQuantities(_ existing: String?, _ adding: String?) -> String? {
+        let a = existing?.trimmingCharacters(in: .whitespaces) ?? ""
+        let b = adding?.trimmingCharacters(in: .whitespaces) ?? ""
+        if a.isEmpty { return b.isEmpty ? nil : b }
+        if b.isEmpty { return a }
+
+        guard let (numA, unitA) = parseLeadingNumber(a),
+              let (numB, unitB) = parseLeadingNumber(b),
+              unitA.lowercased() == unitB.lowercased()
+        else { return "\(a) + \(b)" }
+
+        let sum = numA + numB
+        let numStr = abs(sum - sum.rounded()) < 0.05 ? "\(Int(sum.rounded()))" : String(format: "%.1f", sum)
+        return unitA.isEmpty ? numStr : "\(numStr) \(unitA)"
+    }
+
+    private static func parseLeadingNumber(_ s: String) -> (Double, String)? {
+        let patterns: [(String, (NSTextCheckingResult, String) -> (Double, String)?)] = [
+            // mixed: "1 1/2 cup"
+            (#"^(\d+)\s+(\d+)/(\d+)\s*(.*)"#, { m, s in
+                guard let wr = Range(m.range(at: 1), in: s), let nr = Range(m.range(at: 2), in: s),
+                      let dr = Range(m.range(at: 3), in: s), let rr = Range(m.range(at: 4), in: s),
+                      let w = Double(s[wr]), let n = Double(s[nr]), let d = Double(s[dr]), d != 0
+                else { return nil }
+                return (w + n / d, String(s[rr]).trimmingCharacters(in: .whitespaces))
+            }),
+            // fraction: "1/2 cup"
+            (#"^(\d+)/(\d+)\s*(.*)"#, { m, s in
+                guard let nr = Range(m.range(at: 1), in: s), let dr = Range(m.range(at: 2), in: s),
+                      let rr = Range(m.range(at: 3), in: s),
+                      let n = Double(s[nr]), let d = Double(s[dr]), d != 0
+                else { return nil }
+                return (n / d, String(s[rr]).trimmingCharacters(in: .whitespaces))
+            }),
+            // decimal/integer: "500g" or "2 onions"
+            (#"^(\d+(?:\.\d+)?)\s*(.*)"#, { m, s in
+                guard let nr = Range(m.range(at: 1), in: s), let rr = Range(m.range(at: 2), in: s),
+                      let n = Double(s[nr])
+                else { return nil }
+                return (n, String(s[rr]).trimmingCharacters(in: .whitespaces))
+            }),
+        ]
+        for (pattern, extract) in patterns {
+            if let regex = try? NSRegularExpression(pattern: pattern),
+               let m = regex.firstMatch(in: s, range: NSRange(s.startIndex..., in: s)),
+               let result = extract(m, s) {
+                return result
+            }
+        }
+        return nil
     }
 }
 
