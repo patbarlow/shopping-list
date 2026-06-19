@@ -302,10 +302,10 @@ struct ShoppingListView: View {
                             } label: {
                                 HStack(spacing: 10) {
                                     Text(group.category.emoji)
-                                        .font(.body)
+                                        .font(.title3)
                                         .frame(width: 24, alignment: .center)
                                     Text(catKey)
-                                        .font(.callout.weight(.semibold))
+                                        .font(.body.weight(.semibold))
                                         .foregroundStyle(group.category.color)
                                     Spacer()
                                     Image(systemName: "chevron.down")
