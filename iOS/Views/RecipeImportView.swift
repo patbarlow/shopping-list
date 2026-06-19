@@ -1,17 +1,16 @@
 import SwiftUI
 import PhotosUI
 
+private enum IngFocusField: Hashable {
+    case name(UUID), qty(UUID)
+}
+
 struct RecipeImportView: View {
     let householdId: String
     @Environment(AppServices.self) private var services
     @Environment(\.dismiss) private var dismiss
 
-    private enum Phase {
-        case input
-        case loading(String)     // message
-        case preview
-        case confirming
-    }
+    private enum Phase { case input, loading(String), preview, confirming }
 
     @State private var phase: Phase = .input
     @State private var urlText = ""
@@ -20,37 +19,28 @@ struct RecipeImportView: View {
     @State private var currentServings = 4
     @State private var ingredients: [EditableIngredient] = []
     @State private var sourceUrl: String? = nil
-    @State private var editingIngredientId: UUID? = nil
     @State private var errorMessage: String? = nil
-
-    // Photo picker / camera
     @State private var selectedPhoto: PhotosPickerItem? = nil
     @State private var showCamera = false
+    @FocusState private var focusedField: IngFocusField?
+
+    private var store: ShoppingListStore { services.shopping }
+    private var includedCount: Int { ingredients.filter(\.isIncluded).count }
+    private var servingsFactor: Double { Double(currentServings) / Double(max(defaultServings, 1)) }
 
     var body: some View {
         NavigationStack {
             Group {
                 switch phase {
-                case .input:         inputView
-                case .loading(let msg): loadingView(msg)
-                case .preview:       previewView
-                case .confirming:    loadingView("Adding to list…")
+                case .input:              inputView
+                case .loading(let msg):   loadingView(msg)
+                case .preview:            previewView
+                case .confirming:         loadingView("Adding to list…")
                 }
             }
             .navigationTitle(navTitle)
             .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
-                }
-                if case .preview = phase {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Add \(ingredients.count)") { confirmImport() }
-                            .bold()
-                            .disabled(ingredients.isEmpty)
-                    }
-                }
-            }
+            .toolbar { toolbarItems }
         }
         .onChange(of: selectedPhoto) { _, item in
             guard let item else { return }
@@ -69,6 +59,13 @@ struct RecipeImportView: View {
         case .input:              return "Import Recipe"
         case .loading:            return "Importing…"
         case .preview, .confirming: return recipeName.isEmpty ? "Recipe" : recipeName
+        }
+    }
+
+    @ToolbarContentBuilder
+    private var toolbarItems: some ToolbarContent {
+        ToolbarItem(placement: .cancellationAction) {
+            Button("Cancel") { dismiss() }
         }
     }
 
@@ -103,9 +100,7 @@ struct RecipeImportView: View {
                     }
                     .buttonStyle(.bordered)
 
-                    Button {
-                        showCamera = true
-                    } label: {
+                    Button { showCamera = true } label: {
                         Label("Camera", systemImage: "camera")
                             .frame(maxWidth: .infinity)
                     }
@@ -129,27 +124,18 @@ struct RecipeImportView: View {
 
     private func loadingView(_ message: String) -> some View {
         VStack(spacing: 20) {
-            ProgressView()
-                .scaleEffect(1.4)
-            Text(message)
-                .foregroundStyle(.secondary)
+            ProgressView().scaleEffect(1.4)
+            Text(message).foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Preview
 
-    private var servingsFactor: Double {
-        Double(currentServings) / Double(max(defaultServings, 1))
-    }
-
     private var previewView: some View {
         List {
             Section {
-                HStack {
-                    Text("Recipe name")
-                        .foregroundStyle(.secondary)
-                    Spacer()
+                LabeledContent("Recipe") {
                     TextField("Name", text: $recipeName)
                         .multilineTextAlignment(.trailing)
                 }
@@ -160,78 +146,152 @@ struct RecipeImportView: View {
                     Spacer()
                     Stepper("\(currentServings)", value: $currentServings, in: 1...100)
                         .fixedSize()
-                        .onChange(of: currentServings) { _, _ in
-                            rescaleIngredients()
-                        }
+                        .onChange(of: currentServings) { _, _ in rescaleIngredients() }
                 }
             }
 
             Section {
                 ForEach($ingredients) { $ing in
                     ingredientRow(ingredient: $ing)
+                        .listRowBackground(ing.isIncluded ? Color.clear : Color.secondary.opacity(0.04))
                 }
-                .onDelete { offsets in
-                    ingredients.remove(atOffsets: offsets)
-                }
+                .onDelete { offsets in ingredients.remove(atOffsets: offsets) }
             } header: {
-                Text("\(ingredients.count) ingredient\(ingredients.count == 1 ? "" : "s")")
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func ingredientRow(ingredient: Binding<EditableIngredient>) -> some View {
-        let isEditing = editingIngredientId == ingredient.id
-        if isEditing {
-            VStack(spacing: 0) {
                 HStack {
-                    TextField("Ingredient", text: ingredient.name)
-                        .bold()
+                    Text("\(includedCount) of \(ingredients.count) to add")
                     Spacer()
-                    Button("Done") { editingIngredientId = nil }
-                        .font(.footnote)
-                        .foregroundStyle(.accent)
-                }
-                Divider().padding(.vertical, 6)
-                HStack {
-                    Text("Qty")
-                        .foregroundStyle(.secondary)
-                        .font(.footnote)
-                    TextField("optional", text: Binding(
-                        get: { ingredient.wrappedValue.currentQuantity ?? "" },
-                        set: {
-                            ingredient.wrappedValue.currentQuantity = $0.isEmpty ? nil : $0
-                            ingredient.wrappedValue.userEditedQty = true
+                    if ingredients.contains(where: { !$0.isIncluded }) {
+                        Button("Include all") {
+                            withAnimation(.easeInOut(duration: 0.15)) {
+                                for i in ingredients.indices { ingredients[i].isIncluded = true }
+                            }
                         }
-                    ))
-                    .multilineTextAlignment(.trailing)
-                    .font(.footnote)
-                }
-            }
-            .padding(.vertical, 4)
-        } else {
-            Button {
-                editingIngredientId = ingredient.id
-            } label: {
-                HStack {
-                    Circle()
-                        .stroke(Color.secondary.opacity(0.3), lineWidth: 1.5)
-                        .frame(width: 22, height: 22)
-                    Text(ingredient.wrappedValue.name)
-                        .foregroundStyle(.primary)
-                    Spacer()
-                    if let qty = ingredient.wrappedValue.currentQuantity, !qty.isEmpty {
-                        Text(qty)
-                            .font(.footnote)
-                            .foregroundStyle(.secondary)
-                            .padding(.horizontal, 8)
-                            .padding(.vertical, 3)
-                            .background(Color.secondary.opacity(0.1), in: Capsule())
+                        .font(.caption)
+                        .foregroundStyle(Color.accentColor)
                     }
                 }
             }
-            .buttonStyle(.plain)
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            confirmBar
+        }
+        .simultaneousGesture(
+            TapGesture().onEnded { focusedField = nil }
+        )
+    }
+
+    private var confirmBar: some View {
+        VStack(spacing: 0) {
+            Divider()
+            Button(action: confirmImport) {
+                Group {
+                    if includedCount == 0 {
+                        Text("Nothing selected")
+                    } else {
+                        Text("Add \(includedCount) item\(includedCount == 1 ? "" : "s") to list")
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .bold()
+            }
+            .buttonStyle(.borderedProminent)
+            .disabled(includedCount == 0)
+            .padding(.horizontal)
+            .padding(.vertical, 12)
+        }
+        .background(.regularMaterial)
+    }
+
+    // MARK: - Ingredient row
+
+    @ViewBuilder
+    private func ingredientRow(ingredient: Binding<EditableIngredient>) -> some View {
+        let ing = ingredient.wrappedValue
+        let isEditing = focusedField == .name(ing.id) || focusedField == .qty(ing.id)
+
+        HStack(spacing: 14) {
+            // Toggle circle — same visual as shopping list checkboxes
+            Button {
+                withAnimation(.easeInOut(duration: 0.15)) {
+                    ingredient.wrappedValue.isIncluded.toggle()
+                }
+                if !ingredient.wrappedValue.isIncluded { focusedField = nil }
+            } label: {
+                Image(systemName: ing.isIncluded ? "circle" : "minus.circle.fill")
+                    .font(.system(size: 22))
+                    .foregroundStyle(ing.isIncluded ? Color.secondary.opacity(0.4) : Color.secondary.opacity(0.35))
+                    .animation(.easeInOut(duration: 0.15), value: ing.isIncluded)
+            }
+            .buttonStyle(.plain)
+
+            if isEditing {
+                VStack(alignment: .leading, spacing: 6) {
+                    TextField("Ingredient", text: ingredient.name)
+                        .focused($focusedField, equals: .name(ing.id))
+                        .font(.body)
+                        .submitLabel(.next)
+                        .onSubmit { focusedField = .qty(ing.id) }
+
+                    HStack {
+                        TextField("Quantity (optional)", text: Binding(
+                            get: { ingredient.wrappedValue.currentQuantity ?? "" },
+                            set: {
+                                ingredient.wrappedValue.currentQuantity = $0.isEmpty ? nil : $0
+                                ingredient.wrappedValue.userEditedQty = true
+                            }
+                        ))
+                        .focused($focusedField, equals: .qty(ing.id))
+                        .font(.footnote)
+                        .foregroundStyle(.secondary)
+                        .submitLabel(.done)
+                        .onSubmit { focusedField = nil }
+
+                        Spacer()
+
+                        Button("Done") { focusedField = nil }
+                            .font(.footnote)
+                            .foregroundStyle(Color.accentColor)
+                    }
+                }
+                .padding(.vertical, 2)
+            } else {
+                Button {
+                    guard ing.isIncluded else { return }
+                    focusedField = .name(ing.id)
+                } label: {
+                    HStack {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(ing.name)
+                                .foregroundStyle(ing.isIncluded ? Color.primary : Color.secondary)
+
+                            if let existingQty = ing.existingListQty {
+                                HStack(spacing: 4) {
+                                    Image(systemName: "checkmark.circle.fill")
+                                    Text(existingQty.isEmpty ? "already on your list" : "on your list: \(existingQty)")
+                                }
+                                .font(.caption)
+                                .foregroundStyle(.green)
+                            }
+                        }
+
+                        Spacer()
+
+                        if let qty = ing.currentQuantity, !qty.isEmpty {
+                            Text(qty)
+                                .font(.footnote)
+                                .foregroundStyle(.secondary)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(Color.secondary.opacity(0.1), in: Capsule())
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+            }
+        }
+        .opacity(ing.isIncluded ? 1.0 : 0.35)
+        .animation(.easeInOut(duration: 0.15), value: ing.isIncluded)
+        .animation(.easeInOut(duration: 0.15), value: isEditing)
     }
 
     // MARK: - Actions
@@ -260,13 +320,10 @@ struct RecipeImportView: View {
             guard let data = try await item.loadTransferable(type: Data.self),
                   let image = UIImage(data: data),
                   let compressed = image.compressedForUpload()
-            else {
-                phase = .input
-                errorMessage = "Couldn't load that photo."
-                return
-            }
-            let base64 = compressed.base64EncodedString()
-            let result = try await services.api.parseRecipeFromImage(householdId: householdId, imageBase64: base64)
+            else { phase = .input; errorMessage = "Couldn't load that photo."; return }
+            let result = try await services.api.parseRecipeFromImage(
+                householdId: householdId, imageBase64: compressed.base64EncodedString()
+            )
             applyParsedRecipe(result)
         } catch {
             phase = .input
@@ -278,11 +335,11 @@ struct RecipeImportView: View {
         phase = .loading("Reading recipe…")
         errorMessage = nil
         do {
-            guard let compressed = image.compressedForUpload() else {
-                phase = .input; errorMessage = "Image error."; return
-            }
-            let base64 = compressed.base64EncodedString()
-            let result = try await services.api.parseRecipeFromImage(householdId: householdId, imageBase64: base64)
+            guard let compressed = image.compressedForUpload()
+            else { phase = .input; errorMessage = "Image error."; return }
+            let result = try await services.api.parseRecipeFromImage(
+                householdId: householdId, imageBase64: compressed.base64EncodedString()
+            )
             applyParsedRecipe(result)
         } catch {
             phase = .input
@@ -294,8 +351,22 @@ struct RecipeImportView: View {
         recipeName      = result.recipeName
         defaultServings = result.defaultServings ?? 4
         currentServings = defaultServings
-        ingredients     = result.ingredients.map { EditableIngredient(from: $0) }
-        phase           = .preview
+
+        let currentItems = store.items
+        ingredients = result.ingredients.map { resp in
+            var ing = EditableIngredient(from: resp)
+            // Check if already on the shopping list (case-insensitive substring match)
+            if let match = currentItems.first(where: { item in
+                let a = item.name.lowercased()
+                let b = resp.name.lowercased()
+                return a == b || a.contains(b) || b.contains(a)
+            }) {
+                ing.existingListQty = match.quantity ?? ""
+                ing.isIncluded = false  // pre-decline items already on the list
+            }
+            return ing
+        }
+        phase = .preview
     }
 
     private func rescaleIngredients() {
@@ -307,13 +378,14 @@ struct RecipeImportView: View {
 
     private func confirmImport() {
         guard case .preview = phase else { return }
+        let toAdd = ingredients.filter(\.isIncluded)
+        guard !toAdd.isEmpty else { return }
         phase = .confirming
         Task {
             do {
-                try await services.shopping.addBulkItems(ingredients)
-                // Save recipe for history (fire and forget)
+                try await store.addBulkItems(toAdd)
                 Task {
-                    let ingPayload: [[String: Any]] = ingredients.map {
+                    let ingPayload: [[String: Any]] = toAdd.map {
                         var d: [String: Any] = ["name": $0.name]
                         if let q = $0.currentQuantity { d["quantity"] = q }
                         return d
@@ -335,7 +407,7 @@ struct RecipeImportView: View {
     }
 }
 
-// MARK: - Camera capture wrapper
+// MARK: - Camera capture
 
 struct CameraCapture: UIViewControllerRepresentable {
     let onCapture: (UIImage) -> Void
@@ -358,9 +430,7 @@ struct CameraCapture: UIViewControllerRepresentable {
         func imagePickerController(_ picker: UIImagePickerController,
                                    didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
             picker.dismiss(animated: true)
-            if let image = info[.originalImage] as? UIImage {
-                onCapture(image)
-            }
+            if let image = info[.originalImage] as? UIImage { onCapture(image) }
         }
 
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {

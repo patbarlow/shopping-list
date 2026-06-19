@@ -34,6 +34,8 @@ struct EditableIngredient: Identifiable {
     var userEditedQty: Bool = false // when true, scaling won't touch currentQuantity
     var category: String
     var aisleOrder: Int
+    var isIncluded: Bool = true
+    var existingListQty: String?    // non-nil when already on the shopping list
 
     init(from response: ParsedIngredientResponse) {
         self.name             = response.name
