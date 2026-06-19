@@ -337,7 +337,8 @@ struct ShoppingListView: View {
                                                 .padding(.leading, 52)
                                                 .opacity(0.15)
                                         }
-                                        let progress = min(1.0, max(0, -(swipeOffsets[item.id] ?? 0) / 100))
+                                        let offset = swipeOffsets[item.id] ?? 0
+                                        let progress = min(1.0, max(0, -offset / 100))
                                         ZStack(alignment: .trailing) {
                                             unifiedItemRow(for: item)
                                                 .padding(.horizontal, 14)
@@ -347,11 +348,12 @@ struct ShoppingListView: View {
                                                     group.category.color.opacity(0.10 * (1 - progress))
                                                     Color.red.opacity(progress)
                                                 }
+                                                .offset(x: offset)
                                             Text("Delete")
                                                 .font(.footnote.weight(.semibold))
                                                 .foregroundStyle(.white)
                                                 .padding(.trailing, 28)
-                                                .opacity(max(0, (progress - 0.2) / 0.5))
+                                                .opacity(max(0, (progress - 0.15) / 0.4))
                                                 .allowsHitTesting(false)
                                         }
                                         .frame(maxWidth: .infinity)
@@ -693,11 +695,11 @@ struct ShoppingListView: View {
                         swipePassedThreshold.remove(k)
                     }
                 }
-                // Rubber-band resistance past the delete threshold
+                // Rubber-band past the max drag point
                 swipeOffsets[item.id] = dx < -100 ? -100 + (dx + 100) * 0.2 : dx
 
-                // Haptic feedback when crossing the threshold in either direction
-                let nowPast = (swipeOffsets[item.id] ?? 0) < -70
+                // Haptic when crossing 50% of max drag (delete threshold)
+                let nowPast = (swipeOffsets[item.id] ?? 0) < -50
                 let wasPast = swipePassedThreshold.contains(item.id)
                 if nowPast != wasPast {
                     UIImpactFeedbackGenerator(style: .medium).impactOccurred()
@@ -707,11 +709,10 @@ struct ShoppingListView: View {
             }
             .onEnded { _ in
                 if swipePassedThreshold.contains(item.id) {
-                    // Already past threshold — hold fully red briefly then delete
                     swipePassedThreshold.remove(item.id)
-                    swipeOffsets[item.id] = -100  // keep progress == 1 (fully red)
+                    withAnimation(.easeIn(duration: 0.18)) { swipeOffsets[item.id] = -400 }
                     Task {
-                        try? await Task.sleep(nanoseconds: 120_000_000)
+                        try? await Task.sleep(nanoseconds: 180_000_000)
                         await store.deleteItem(item)
                         swipeOffsets.removeValue(forKey: item.id)
                     }
