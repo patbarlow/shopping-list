@@ -258,21 +258,21 @@ struct ShoppingListView: View {
             .contentShape(Rectangle())
             .onTapGesture { if !isAdding { startAdding() } }
             .simultaneousGesture(
-                DragGesture(minimumDistance: 15, coordinateSpace: .local)
+                DragGesture(minimumDistance: 8, coordinateSpace: .local)
                     .onEnded { value in
                         let dy = value.translation.height
                         let dx = value.translation.width
                         guard abs(dy) > abs(dx) * 0.8 else { return }
-                        if dy > 50 && focusedField != nil {
+                        if dy > 25 && focusedField != nil {
                             focusedField = nil
-                        } else if dy < -40 && isAdding && focusedField == nil {
+                        } else if dy < -20 && isAdding && focusedField == nil {
                             focusedField = .newName
-                        } else if dy < -40 && !isAdding {
+                        } else if dy < -20 && !isAdding {
                             startAdding()
                         }
                     }
             )
-            .animation(.easeOut(duration: 0.2), value: isAdding)
+            .animation(.spring(response: 0.25, dampingFraction: 0.82), value: isAdding)
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: suggestions)
         .animation(.spring(duration: 0.35), value: store.recentlyCompleted.isEmpty)
