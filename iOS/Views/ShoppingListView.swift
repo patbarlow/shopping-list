@@ -74,7 +74,8 @@ struct ShoppingListView: View {
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     addItemAccessory
                 }
-                .navigationTitle("Shopping")
+                .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
                 .toolbar { toolbarContent }
                 .sheet(isPresented: $showSettings) {
                     SettingsView(household: household).environment(services)
@@ -299,11 +300,12 @@ struct ShoppingListView: View {
                                     else { collapsedSections.insert(catKey) }
                                 }
                             } label: {
-                                HStack(spacing: 6) {
+                                HStack(spacing: 10) {
                                     Text(group.category.emoji)
-                                        .font(.subheadline)
+                                        .font(.body)
+                                        .frame(width: 24, alignment: .center)
                                     Text(catKey)
-                                        .font(.subheadline.weight(.semibold))
+                                        .font(.callout.weight(.semibold))
                                         .foregroundStyle(group.category.color)
                                     Spacer()
                                     Image(systemName: "chevron.down")
