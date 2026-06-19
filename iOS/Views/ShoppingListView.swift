@@ -10,6 +10,8 @@ struct ShoppingListView: View {
     let household: Household
     @Environment(AppServices.self) private var services
     @State private var showSettings = false
+    @State private var showRecipeImport = false
+    @State private var showReceiptScanner = false
 
     // ── Inline add ─────────────────────────────────────────────────────────────
     @State private var isAdding  = false
@@ -76,6 +78,12 @@ struct ShoppingListView: View {
                 .toolbar { toolbarContent }
                 .sheet(isPresented: $showSettings) {
                     SettingsView(household: household).environment(services)
+                }
+                .sheet(isPresented: $showRecipeImport) {
+                    RecipeImportView(householdId: household.id).environment(services)
+                }
+                .sheet(isPresented: $showReceiptScanner) {
+                    ReceiptScannerView(householdId: household.id).environment(services)
                 }
         }
         .task {
@@ -459,7 +467,16 @@ struct ShoppingListView: View {
             Button { showSettings = true } label: { Image(systemName: "gear") }
         }
         ToolbarItem(placement: .navigationBarTrailing) {
-            EmptyView()
+            Menu {
+                Button { showRecipeImport = true } label: {
+                    Label("Import Recipe (URL)", systemImage: "link")
+                }
+                Button { showReceiptScanner = true } label: {
+                    Label("Scan Receipt", systemImage: "receipt")
+                }
+            } label: {
+                Image(systemName: "plus.circle")
+            }
         }
     }
 

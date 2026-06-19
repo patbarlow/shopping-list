@@ -183,6 +183,56 @@ import Observation
         }
     }
 
+    func addBulkItems(_ ingredients: [EditableIngredient]) async throws {
+        guard let householdId else { return }
+        let userId = api.currentUser?.id ?? ""
+
+        // Optimistic insert with parsed categories so they land in the right aisle
+        var placeholders: [ShoppingItem] = []
+        for ing in ingredients {
+            let trimmed = ing.name.trimmingCharacters(in: .whitespaces)
+            guard !trimmed.isEmpty else { continue }
+            let id = UUID().uuidString.lowercased()
+            var placeholder = ShoppingItem(
+                id: id, name: trimmed,
+                quantity: ing.currentQuantity,
+                notes: nil,
+                householdId: householdId,
+                addedBy: userId
+            )
+            placeholder.category   = ItemCategory(rawValue: ing.category) ?? .other
+            placeholder.aisleOrder = ing.aisleOrder
+            placeholders.append(placeholder)
+            items.append(placeholder)
+            recordInHistory(trimmed)
+        }
+
+        let apiItems: [[String: Any]] = placeholders.map { p in
+            var dict: [String: Any] = [
+                "id": p.id, "name": p.name,
+                "category": p.category.rawValue,
+                "aisle_order": p.aisleOrder
+            ]
+            if let q = p.quantity, !q.isEmpty { dict["quantity"] = q }
+            return dict
+        }
+
+        do {
+            let serverItems = try await api.createBulkItems(householdId: householdId, items: apiItems)
+            // Replace placeholders with server responses
+            for serverItem in serverItems {
+                if let idx = items.firstIndex(where: { $0.id == serverItem.id }) {
+                    items[idx] = serverItem
+                }
+            }
+        } catch {
+            // Roll back optimistic items
+            let ids = Set(placeholders.map(\.id))
+            items.removeAll { ids.contains($0.id) }
+            throw error
+        }
+    }
+
     // MARK: - Complete / Undo (3-second window)
 
     func pendingToggle(_ item: ShoppingItem) {

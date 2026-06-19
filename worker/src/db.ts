@@ -52,6 +52,34 @@ export interface PurchaseHistory {
   quantity: string | null;
   purchased_by: string;
   purchased_at: string;
+  price_paid: number | null;
+  currency: string | null;
+}
+
+export interface Recipe {
+  id: string;
+  household_id: string;
+  name: string;
+  source_url: string | null;
+  default_servings: number | null;
+  created_at: string;
+}
+
+export interface RecipeIngredient {
+  id: string;
+  recipe_id: string;
+  product_id: string | null;
+  name: string;
+  quantity: string | null;
+  created_at: string;
+}
+
+export interface Receipt {
+  id: string;
+  household_id: string;
+  scanned_at: string;
+  store_name: string | null;
+  total_amount: number | null;
 }
 
 export interface PublicUser {

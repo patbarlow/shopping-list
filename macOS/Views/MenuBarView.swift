@@ -232,6 +232,7 @@ private struct MacListView: View {
     // ── UI ────────────────────────────────────────────────────────────────────
     @State private var collapsedSections: Set<String> = []
     @State private var showSettings = false
+    @State private var showRecipeImport = false
     @AppStorage("mac_always_on_top") private var alwaysOnTop = true
 
     private var store: ShoppingListStore { services.shopping }
@@ -265,6 +266,10 @@ private struct MacListView: View {
             MacSettingsView(household: household)
                 .environment(services)
         }
+        .sheet(isPresented: $showRecipeImport) {
+            RecipeImportView(householdId: household.id)
+                .environment(services)
+        }
         .task { await store.load(householdId: household.id) }
         .onChange(of: focusedField) { old, new in handleFocusChange(old: old, new: new) }
         .animation(.default, value: store.groupedItems.map {
@@ -279,6 +284,10 @@ private struct MacListView: View {
             Menu {
                 Button { showSettings = true } label: {
                     Label("Settings", systemImage: "gear")
+                }
+                Divider()
+                Button { showRecipeImport = true } label: {
+                    Label("Import Recipe…", systemImage: "link")
                 }
                 Divider()
                 Toggle(isOn: $alwaysOnTop) {

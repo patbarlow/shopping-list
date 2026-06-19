@@ -19,7 +19,9 @@
 		3006F1C130CE6774B3CFB412 /* RealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 145A5C2183790DA7F940227E /* RealtimeService.swift */; };
 		3AA4D32E312E59213C4781A0 /* QuickAddControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = C166231E665E790EFEF9D05B /* QuickAddControl.swift */; };
 		47A3F43B5FD429CE0CF1456F /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 6C1CAE8B933E135A39979325 /* Sparkle */; };
+		520AF918E25E7B649C3566A6 /* ReceiptScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 39FABF8D97D43198D5D7268E /* ReceiptScannerView.swift */; };
 		5541F33E0D7E05FF861C63CC /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A479A9C18E0C1534C48FC1B /* AppServices.swift */; };
+		558084DEC650298885F15510 /* Recipe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 456F8A521A34185F2B6A48C0 /* Recipe.swift */; };
 		55E0FEE49D7F939D7E43BEA0 /* SentryHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97B1734E7407EC373454F34A /* SentryHelpers.swift */; };
 		583C7A3955E416FED458D5E6 /* AuthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F61A9645A5D8A828A41FF627 /* AuthStore.swift */; };
 		5B08B6EA1A58325E5B82E5D3 /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A479A9C18E0C1534C48FC1B /* AppServices.swift */; };
@@ -34,8 +36,11 @@
 		9B2F9DB9E5CD05189A3135DB /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E78B88A5FF8FB6EA5401FF1 /* SpeechService.swift */; };
 		9D6EB5D8BB64F807F475B666 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DD716EEC8E998041577ECEC /* SettingsView.swift */; };
 		9EB1EF4FBDB51E3AE699592C /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7462B86AD882C4C18C4DF1DF /* APIService.swift */; };
+		AB2CD70EA97EC21C2F0B067B /* RecipeImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7BF7B72A2747AE5BECF26BE /* RecipeImportView.swift */; };
 		B8214D6ACE92B72011B67251 /* ShoppingListWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BAFD47481FF6668160B32E1 /* ShoppingListWidgetBundle.swift */; };
+		BA74FE29E2F689FDDD8E0DEF /* RecipeImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B7BF7B72A2747AE5BECF26BE /* RecipeImportView.swift */; };
 		BB854FA51974F86190EEB55E /* SentryHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97B1734E7407EC373454F34A /* SentryHelpers.swift */; };
+		BBEF78DE06D366FD3738B397 /* Recipe.swift in Sources */ = {isa = PBXBuildFile; fileRef = 456F8A521A34185F2B6A48C0 /* Recipe.swift */; };
 		BC032B773815D22A3A604589 /* ShoppingListStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AF17166DF5B1CFFFE31976C /* ShoppingListStore.swift */; };
 		C2066F40B513F05484129B77 /* Config.plist in Resources */ = {isa = PBXBuildFile; fileRef = 51AC4475E61BFC0BEDF456BE /* Config.plist */; };
 		C353F7364DD8CD159053DFD2 /* ShoppingListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 073DB8A85B43FA938555C6E5 /* ShoppingListView.swift */; };
@@ -85,8 +90,10 @@
 		2AF17166DF5B1CFFFE31976C /* ShoppingListStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingListStore.swift; sourceTree = "<group>"; };
 		2EC68D8CDFA6582CFFEE3468 /* QuickAddIntent.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickAddIntent.swift; sourceTree = "<group>"; };
 		35810A47D0E0633BD5C86836 /* ShoppingShortcuts.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingShortcuts.swift; sourceTree = "<group>"; };
+		39FABF8D97D43198D5D7268E /* ReceiptScannerView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ReceiptScannerView.swift; sourceTree = "<group>"; };
 		3B962363C7685F91FC1BB30B /* Shopping List.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Shopping List.entitlements"; sourceTree = "<group>"; };
 		40912EDFFF62E3AE19133B58 /* ShoppingListMacApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingListMacApp.swift; sourceTree = "<group>"; };
+		456F8A521A34185F2B6A48C0 /* Recipe.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = Recipe.swift; sourceTree = "<group>"; };
 		472F1E2215F1364F1486B646 /* AddItemIntents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddItemIntents.swift; sourceTree = "<group>"; };
 		51AC4475E61BFC0BEDF456BE /* Config.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Config.plist; sourceTree = "<group>"; };
 		5DD716EEC8E998041577ECEC /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
@@ -102,6 +109,7 @@
 		9E78B88A5FF8FB6EA5401FF1 /* SpeechService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechService.swift; sourceTree = "<group>"; };
 		A1FF7F0A82CA6C88EA34F90C /* Shopping List macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Shopping List macOS.entitlements"; sourceTree = "<group>"; };
 		AA8B96E24E24BE3D331C9B22 /* ShoppingListApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingListApp.swift; sourceTree = "<group>"; };
+		B7BF7B72A2747AE5BECF26BE /* RecipeImportView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = RecipeImportView.swift; sourceTree = "<group>"; };
 		B9A16E63C949B3C693249DA3 /* Shopping List.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "Shopping List.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		C166231E665E790EFEF9D05B /* QuickAddControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickAddControl.swift; sourceTree = "<group>"; };
 		D3ACF85E31135F58E5CD7DAD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -236,6 +244,8 @@
 				93583231B106C19E6541BDB4 /* LoginView.swift */,
 				5DD716EEC8E998041577ECEC /* SettingsView.swift */,
 				073DB8A85B43FA938555C6E5 /* ShoppingListView.swift */,
+				B7BF7B72A2747AE5BECF26BE /* RecipeImportView.swift */,
+				39FABF8D97D43198D5D7268E /* ReceiptScannerView.swift */,
 			);
 			path = Views;
 			sourceTree = "<group>";
@@ -254,6 +264,7 @@
 			children = (
 				EBEC057EB44C2C3C2778B9C3 /* Household.swift */,
 				1B06687513055194F342B4B7 /* ShoppingItem.swift */,
+				456F8A521A34185F2B6A48C0 /* Recipe.swift */,
 			);
 			path = Models;
 			sourceTree = "<group>";
@@ -326,8 +337,6 @@
 			dependencies = (
 			);
 			name = "Shopping List Widget";
-			packageProductDependencies = (
-			);
 			productName = "Shopping List Widget";
 			productReference = 6976EA50DEFA1E3CE9B1BFFD /* Shopping List Widget.appex */;
 			productType = "com.apple.product-type.app-extension";
@@ -447,6 +456,9 @@
 				C353F7364DD8CD159053DFD2 /* ShoppingListView.swift in Sources */,
 				1B39CC9B68D8B19A0AEBD25A /* ShoppingShortcuts.swift in Sources */,
 				9B2F9DB9E5CD05189A3135DB /* SpeechService.swift in Sources */,
+				BBEF78DE06D366FD3738B397 /* Recipe.swift in Sources */,
+				BA74FE29E2F689FDDD8E0DEF /* RecipeImportView.swift in Sources */,
+				520AF918E25E7B649C3566A6 /* ReceiptScannerView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -465,6 +477,8 @@
 				D6B230430BCA6A21F9320D47 /* ShoppingItem.swift in Sources */,
 				78F81B3A671F48402FAC60F6 /* ShoppingListMacApp.swift in Sources */,
 				BC032B773815D22A3A604589 /* ShoppingListStore.swift in Sources */,
+				558084DEC650298885F15510 /* Recipe.swift in Sources */,
+				AB2CD70EA97EC21C2F0B067B /* RecipeImportView.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};

@@ -6,6 +6,9 @@ import meRoutes from "./routes/me";
 import itemsRoutes from "./routes/items";
 import householdsRoutes from "./routes/households";
 import realtimeRoutes from "./routes/realtime";
+import recipesRoutes from "./routes/recipes";
+import receiptsRoutes from "./routes/receipts";
+import insightsRoutes from "./routes/insights";
 
 export { HouseholdRoom } from "./room";
 
@@ -19,6 +22,9 @@ app.route("/v1/me", meRoutes);
 app.route("/v1/items", itemsRoutes);
 app.route("/v1/households", householdsRoutes);
 app.route("/v1/households", realtimeRoutes);
+app.route("/v1/recipes", recipesRoutes);
+app.route("/v1/receipts", receiptsRoutes);
+app.route("/v1/insights", insightsRoutes);
 
 app.onError((err, c) => {
   console.error("Unhandled error:", err);

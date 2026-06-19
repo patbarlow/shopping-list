@@ -96,6 +96,45 @@ final class APIService {
         try await delete("/v1/items/\(id)")
     }
 
+    func createBulkItems(householdId: String, items: [[String: Any]]) async throws -> [ShoppingItem] {
+        let body: [String: Any] = ["household_id": householdId, "items": items]
+        let response: BulkItemsResponse = try await post("/v1/items/bulk", body: body)
+        return response.items
+    }
+
+    // MARK: - Recipes
+
+    func parseRecipeFromURL(householdId: String, url: String) async throws -> ParsedRecipeResponse {
+        let body: [String: Any] = ["household_id": householdId, "url": url]
+        return try await post("/v1/recipes/parse-url", body: body)
+    }
+
+    func parseRecipeFromImage(householdId: String, imageBase64: String, mediaType: String = "image/jpeg") async throws -> ParsedRecipeResponse {
+        let body: [String: Any] = ["household_id": householdId, "image_base64": imageBase64, "media_type": mediaType]
+        return try await post("/v1/recipes/parse-image", body: body)
+    }
+
+    func saveRecipe(householdId: String, name: String, sourceUrl: String?, defaultServings: Int?, ingredients: [[String: Any]]) async throws {
+        var body: [String: Any] = ["household_id": householdId, "name": name, "ingredients": ingredients]
+        if let url = sourceUrl     { body["source_url"]       = url }
+        if let s   = defaultServings { body["default_servings"] = s }
+        let _: AnyDecodable = try await post("/v1/recipes/save", body: body)
+    }
+
+    // MARK: - Receipts
+
+    func scanReceipt(householdId: String, imageBase64: String, mediaType: String = "image/jpeg") async throws -> ReceiptScanResponse {
+        let body: [String: Any] = ["household_id": householdId, "image_base64": imageBase64, "media_type": mediaType]
+        return try await post("/v1/receipts/scan", body: body)
+    }
+
+    func confirmReceipt(householdId: String, storeName: String?, totalAmount: Double?, matches: [[String: Any]]) async throws {
+        var body: [String: Any] = ["household_id": householdId, "matches": matches]
+        if let s = storeName    { body["store_name"]    = s }
+        if let t = totalAmount  { body["total_amount"]  = t }
+        let _: AnyDecodable = try await post("/v1/receipts/confirm", body: body)
+    }
+
     // MARK: - Households
 
     func createHousehold(name: String) async throws -> Household {
@@ -210,6 +249,10 @@ private struct AuthResponse: Decodable {
 }
 
 private struct ItemsResponse: Decodable {
+    let items: [ShoppingItem]
+}
+
+private struct BulkItemsResponse: Decodable {
     let items: [ShoppingItem]
 }
 

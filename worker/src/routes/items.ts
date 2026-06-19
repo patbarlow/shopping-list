@@ -2,73 +2,11 @@ import { Hono } from "hono";
 import type { Env } from "../env";
 import { requireAuth, type AuthVariables } from "../middleware/auth";
 import { nowISO, type ShoppingItem, type Product } from "../db";
+import { categorise, findMatchingProduct } from "../ai";
 
 const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
 app.use("*", requireAuth);
-
-const CATEGORIES: Record<string, number> = {
-  "Fruit & Veg": 1,
-  "Meat & Seafood": 2,
-  "Deli": 3,
-  "Bakery": 4,
-  "Dairy & Eggs": 5,
-  "Frozen": 6,
-  "Pantry": 7,
-  "Breakfast": 8,
-  "Snacks & Confectionery": 9,
-  "Drinks": 10,
-  "Condiments & Sauces": 11,
-  "Baking": 12,
-  "International": 13,
-  "Health & Beauty": 14,
-  "Cleaning & Laundry": 15,
-  "Household": 16,
-  "Pet": 17,
-  "Baby": 18,
-  "Other": 19,
-};
-
-async function categorise(env: Env, itemName: string): Promise<{ category: string; aisleOrder: number }> {
-  if (!env.ANTHROPIC_API_KEY) return { category: "Other", aisleOrder: 19 };
-
-  const categoryNames = Object.keys(CATEGORIES).filter((c) => c !== "Other").join(", ");
-  try {
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
-      method: "POST",
-      headers: {
-        "content-type": "application/json",
-        "x-api-key": env.ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
-      body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 20,
-        messages: [
-          {
-            role: "user",
-            content:
-              `Categorise this grocery item into exactly one Woolworths supermarket aisle.\n` +
-              `Item: "${itemName}"\n\n` +
-              `Reply with ONLY the category name, nothing else. Choose from:\n` +
-              `${categoryNames}, Other`,
-          },
-        ],
-      }),
-      signal: AbortSignal.timeout(15_000),
-    });
-
-    if (!res.ok) return { category: "Other", aisleOrder: 19 };
-
-    const json = await res.json<{ content?: { text?: string }[] }>();
-    const text = (json.content?.[0]?.text ?? "").trim();
-    const aisleOrder = CATEGORIES[text];
-    if (!aisleOrder) return { category: "Other", aisleOrder: 19 };
-    return { category: text, aisleOrder };
-  } catch {
-    return { category: "Other", aisleOrder: 19 };
-  }
-}
 
 // SQLite stores booleans as 0/1 integers; convert to JSON boolean for Swift
 function toResponse(item: ShoppingItem): object {
@@ -101,20 +39,39 @@ async function assertMember(env: Env, householdId: string, userId: string): Prom
   return row !== null;
 }
 
-// Look up an existing product by name (case-insensitive) or create a new one.
-// Only calls the AI categoriser on first creation.
-async function upsertProduct(
-  env: Env,
-  householdId: string,
-  name: string,
-): Promise<Product> {
-  const existing = await env.DB
+/**
+ * Look up or create a canonical product for this household.
+ * 1. Exact case-insensitive match → reuse immediately.
+ * 2. Fuzzy LIKE candidates → ask Claude if any is the same product.
+ * 3. No match → categorise + insert.
+ */
+export async function upsertProduct(env: Env, householdId: string, name: string): Promise<Product> {
+  // 1. Exact match (NOCASE collation handles case differences)
+  const exact = await env.DB
     .prepare("SELECT * FROM products WHERE household_id = ? AND name = ?")
     .bind(householdId, name)
     .first<Product>();
+  if (exact) return exact;
 
-  if (existing) return existing;
+  // 2. Fuzzy candidates: names that contain or are contained by the new name
+  const { results: candidates } = await env.DB
+    .prepare(
+      `SELECT * FROM products
+       WHERE household_id = ?
+         AND (LOWER(name) LIKE '%' || LOWER(?) || '%' OR LOWER(?) LIKE '%' || LOWER(name) || '%')
+       LIMIT 10`,
+    )
+    .bind(householdId, name, name)
+    .all<Product>();
 
+  if (candidates.length > 0) {
+    const match = await findMatchingProduct(env, name, candidates.map((c) => c.name));
+    if (match) {
+      return candidates.find((c) => c.name.toLowerCase() === match.toLowerCase())!;
+    }
+  }
+
+  // 3. New product — categorise and insert
   const { category, aisleOrder } = await categorise(env, name);
   const now = nowISO();
   const id = crypto.randomUUID();
@@ -128,7 +85,6 @@ async function upsertProduct(
     .bind(id, householdId, name, category, aisleOrder, now, now)
     .run();
 
-  // Re-fetch in case another request beat us to the insert
   const created = await env.DB
     .prepare("SELECT * FROM products WHERE household_id = ? AND name = ?")
     .bind(householdId, name)
@@ -319,6 +275,104 @@ app.delete("/:id", async (c) => {
   void broadcastToHousehold(c.env, existing.household_id, "delete", existing);
 
   return c.body(null, 204);
+});
+
+// POST /v1/items/bulk — create multiple items in one request (used by recipe import)
+app.post("/bulk", async (c) => {
+  const user = c.var.user;
+  const body = await c.req
+    .json<{
+      household_id?: string;
+      items?: { id?: string; name?: string; quantity?: string; notes?: string; category?: string; aisle_order?: number }[];
+    }>()
+    .catch(() => ({} as Record<string, never>));
+
+  const householdId = body.household_id;
+  if (!householdId || !Array.isArray(body.items) || body.items.length === 0) {
+    return c.json({ error: "missing_fields" }, 400);
+  }
+
+  if (!(await assertMember(c.env, householdId, user.id))) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+
+  // Upsert products and build items in parallel
+  const now = nowISO();
+  const resolvedItems: (ShoppingItem | null)[] = await Promise.all(
+    body.items.map(async (input) => {
+      const name = input.name?.trim();
+      if (!name) return null;
+
+      // If category is provided by the caller (from recipe parse), skip upsertProduct's
+      // categorise call by inserting a product directly if it doesn't exist yet.
+      let product: Product;
+      if (input.category && input.aisle_order) {
+        const exact = await c.env.DB
+          .prepare("SELECT * FROM products WHERE household_id = ? AND name = ?")
+          .bind(householdId, name)
+          .first<Product>();
+        if (exact) {
+          product = exact;
+        } else {
+          const pid = crypto.randomUUID();
+          await c.env.DB
+            .prepare(
+              `INSERT INTO products (id, household_id, name, category, aisle_order, created_at, updated_at)
+               VALUES (?, ?, ?, ?, ?, ?, ?)
+               ON CONFLICT(household_id, name) DO NOTHING`,
+            )
+            .bind(pid, householdId, name, input.category, input.aisle_order, now, now)
+            .run();
+          product = (await c.env.DB
+            .prepare("SELECT * FROM products WHERE household_id = ? AND name = ?")
+            .bind(householdId, name)
+            .first<Product>())!;
+        }
+      } else {
+        product = await upsertProduct(c.env, householdId, name);
+      }
+
+      const id = input.id ?? crypto.randomUUID();
+      return {
+        id,
+        household_id: householdId,
+        product_id: product.id,
+        name: product.name,
+        quantity: input.quantity ?? null,
+        notes: input.notes ?? null,
+        category: product.category,
+        aisle_order: product.aisle_order,
+        checked: 0,
+        added_by: user.id,
+        created_at: now,
+        updated_at: now,
+      } satisfies ShoppingItem;
+    }),
+  );
+
+  const validItems = resolvedItems.filter((i): i is ShoppingItem => i !== null);
+  if (validItems.length === 0) return c.json({ error: "no_valid_items" }, 400);
+
+  await c.env.DB.batch(
+    validItems.map((item) =>
+      c.env.DB.prepare(
+        `INSERT INTO shopping_items
+           (id, household_id, product_id, name, quantity, notes, category, aisle_order, checked, added_by, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+         ON CONFLICT(id) DO NOTHING`,
+      ).bind(
+        item.id, item.household_id, item.product_id, item.name,
+        item.quantity, item.notes, item.category, item.aisle_order,
+        item.added_by, item.created_at, item.updated_at,
+      ),
+    ),
+  );
+
+  for (const item of validItems) {
+    void broadcastToHousehold(c.env, householdId, "create", item);
+  }
+
+  return c.json({ items: validItems.map(toResponse) }, 201);
 });
 
 export default app;
