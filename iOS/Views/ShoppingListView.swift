@@ -38,6 +38,9 @@ struct ShoppingListView: View {
     // ── Input commit guard (prevents focus-loss cancel during enter-to-add) ───
     @State private var isCommitting = false
 
+    // ── Swipe-to-delete tracking ───────────────────────────────────────────────
+    @State private var swipeOffsets: [String: CGFloat] = [:]
+
     private var store: ShoppingListStore { services.shopping }
 
     // Multi-item paste preview — shown when paste produces >1 item
@@ -303,7 +306,7 @@ struct ShoppingListView: View {
                                 HStack(spacing: 10) {
                                     Text(group.category.emoji)
                                         .font(.title3)
-                                        .frame(width: 24, alignment: .center)
+                                        .frame(width: 28, alignment: .center)
                                     Text(catKey)
                                         .font(.body.weight(.semibold))
                                         .foregroundStyle(group.category.color)
@@ -330,18 +333,37 @@ struct ShoppingListView: View {
                                     VStack(spacing: 0) {
                                         if index > 0 {
                                             Divider()
-                                                .padding(.leading, 46)
+                                                .padding(.leading, 52)
                                                 .opacity(0.15)
                                         }
-                                        unifiedItemRow(for: item)
-                                            .padding(.horizontal, 14)
-                                            .padding(.vertical, 5)
-                                    }
-                                    .contextMenu {
-                                        Button(role: .destructive) {
-                                            Task { await store.deleteItem(item) }
-                                        } label: {
-                                            Label("Delete", systemImage: "trash")
+                                        let offset = swipeOffsets[item.id] ?? 0
+                                        let progress = min(1.0, max(0, -offset / 80))
+                                        ZStack(alignment: .trailing) {
+                                            Color.red
+                                                .overlay(alignment: .trailing) {
+                                                    Label("Delete", systemImage: "trash")
+                                                        .font(.footnote.weight(.semibold))
+                                                        .foregroundStyle(.white)
+                                                        .padding(.trailing, 16)
+                                                        .opacity(progress > 0.3 ? 1 : 0)
+                                                }
+                                            unifiedItemRow(for: item)
+                                                .padding(.horizontal, 14)
+                                                .padding(.vertical, 5)
+                                                .background {
+                                                    Color(.systemBackground)
+                                                    group.category.color.opacity(0.10)
+                                                }
+                                                .offset(x: offset)
+                                        }
+                                        .frame(maxWidth: .infinity)
+                                        .gesture(swipeDeleteGesture(for: item))
+                                        .contextMenu {
+                                            Button(role: .destructive) {
+                                                Task { await store.deleteItem(item) }
+                                            } label: {
+                                                Label("Delete", systemImage: "trash")
+                                            }
                                         }
                                     }
                                 }
@@ -381,15 +403,15 @@ struct ShoppingListView: View {
                     } label: {
                         Image(systemName: isVisuallyComplete ? "checkmark.circle.fill" : "circle")
                             .foregroundStyle(isVisuallyComplete ? .green : Color(.systemGray3))
-                            .font(.body)
-                            .frame(width: 24, height: 24)
+                            .font(.title3)
+                            .frame(width: 28, height: 28)
                     }
                     .buttonStyle(.plain)
                 } else {
                     Image(systemName: isVisuallyComplete ? "checkmark.circle.fill" : "circle")
                         .foregroundStyle(isVisuallyComplete ? .green : Color(.systemGray3))
-                        .font(.body)
-                        .frame(width: 24, height: 24)
+                        .font(.title3)
+                        .frame(width: 28, height: 28)
                         .contentShape(Circle())
                         .onTapGesture { triggerComplete(item) }
                 }
@@ -413,7 +435,7 @@ struct ShoppingListView: View {
             }
             if isEditing {
                 HStack(spacing: 10) {
-                    Color.clear.frame(width: 24)
+                    Color.clear.frame(width: 28)
                     TextField("Qty", text: $editQty)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -422,7 +444,7 @@ struct ShoppingListView: View {
                         .onSubmit { focusedField = .editNotes }
                 }
                 HStack(spacing: 10) {
-                    Color.clear.frame(width: 24)
+                    Color.clear.frame(width: 28)
                     TextField("Note", text: $editNotes, axis: .vertical)
                         .font(.caption)
                         .foregroundStyle(.secondary)
@@ -659,6 +681,33 @@ struct ShoppingListView: View {
         let qty  = String(trimmed[qr]).trimmingCharacters(in: .whitespaces)
         let name = String(trimmed[nr]).trimmingCharacters(in: .whitespaces)
         return (name: name.prefix(1).uppercased() + name.dropFirst(), qty: qty)
+    }
+
+    private func swipeDeleteGesture(for item: ShoppingItem) -> some Gesture {
+        DragGesture(minimumDistance: 15)
+            .onChanged { v in
+                let dx = v.translation.width
+                guard dx < 0, abs(dx) > abs(v.translation.height) * 0.7 else { return }
+                guard editingItemID != item.id else { return }
+                for k in swipeOffsets.keys where k != item.id {
+                    withAnimation(.spring(response: 0.3)) { swipeOffsets.removeValue(forKey: k) }
+                }
+                swipeOffsets[item.id] = dx < -80 ? -80 + (dx + 80) * 0.25 : dx
+            }
+            .onEnded { _ in
+                if (swipeOffsets[item.id] ?? 0) < -70 {
+                    withAnimation(.easeOut(duration: 0.2)) { swipeOffsets[item.id] = -500 }
+                    Task {
+                        try? await Task.sleep(nanoseconds: 200_000_000)
+                        await store.deleteItem(item)
+                        swipeOffsets.removeValue(forKey: item.id)
+                    }
+                } else {
+                    withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
+                        swipeOffsets.removeValue(forKey: item.id)
+                    }
+                }
+            }
     }
 }
 
