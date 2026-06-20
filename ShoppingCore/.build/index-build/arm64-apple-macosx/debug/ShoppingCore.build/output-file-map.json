@@ -1,0 +1,12 @@
+{
+  "": {
+    "swift-dependencies": "/Users/pat/Projects/Shopping List/ShoppingCore/.build/index-build/arm64-apple-macosx/debug/ShoppingCore.build/primary.swiftdeps"
+  },
+  "/Users/pat/Projects/Shopping List/ShoppingCore/ShoppingCore.swift": {
+    "dependencies": "/Users/pat/Projects/Shopping List/ShoppingCore/.build/index-build/arm64-apple-macosx/debug/ShoppingCore.build/ShoppingCore.d",
+    "object": "/Users/pat/Projects/Shopping List/ShoppingCore/.build/index-build/arm64-apple-macosx/debug/ShoppingCore.build/ShoppingCore.swift.o",
+    "swiftmodule": "/Users/pat/Projects/Shopping List/ShoppingCore/.build/index-build/arm64-apple-macosx/debug/ShoppingCore.build/ShoppingCore~partial.swiftmodule",
+    "swift-dependencies": "/Users/pat/Projects/Shopping List/ShoppingCore/.build/index-build/arm64-apple-macosx/debug/ShoppingCore.build/ShoppingCore.swiftdeps",
+    "diagnostics": "/Users/pat/Projects/Shopping List/ShoppingCore/.build/index-build/arm64-apple-macosx/debug/ShoppingCore.build/ShoppingCore.dia"
+  }
+}

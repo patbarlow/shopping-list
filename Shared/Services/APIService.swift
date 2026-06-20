@@ -1,5 +1,4 @@
 import Foundation
-import ShoppingCore
 
 @MainActor
 final class APIService {
@@ -120,6 +119,11 @@ final class APIService {
         if let url = sourceUrl     { body["source_url"]       = url }
         if let s   = defaultServings { body["default_servings"] = s }
         let _: AnyDecodable = try await post("/v1/recipes/save", body: body)
+    }
+
+    func fetchSavedRecipes(householdId: String) async throws -> [SavedRecipe] {
+        let response: SavedRecipesResponse = try await get("/v1/recipes", query: ["household_id": householdId])
+        return response.recipes
     }
 
     // MARK: - Receipts

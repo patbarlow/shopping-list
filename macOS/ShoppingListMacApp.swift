@@ -1,7 +1,6 @@
 import SwiftUI
 import Sentry
 import Sparkle
-import ShoppingCore
 
 @main
 struct ShoppingListMacApp: App {

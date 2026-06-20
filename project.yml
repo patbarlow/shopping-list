@@ -31,6 +31,8 @@ targets:
     sources:
       - path: Shared
       - path: iOS
+        excludes:
+          - IntentsExtension/**
     resources:
       - path: iOS/Assets.xcassets
       - path: Shared/Config.plist
@@ -43,7 +45,7 @@ targets:
     info:
       path: iOS/Info.plist
       properties:
-        CFBundleDisplayName: Shopping List
+        CFBundleDisplayName: Trolley
         UILaunchScreen:
           UIColorName: systemBackground
         UISupportedInterfaceOrientations:
@@ -56,6 +58,7 @@ targets:
           - UIInterfaceOrientationLandscapeRight
         NSMicrophoneUsageDescription: "Used for voice input when adding items to your shopping list."
         NSSpeechRecognitionUsageDescription: "Used to convert your voice into shopping list items."
+        NSSiriUsageDescription: "Used to add items to your shopping list hands-free."
         CFBundleURLTypes:
           - CFBundleURLName: com.patbarlow.shoppinglist
             CFBundleURLSchemes:
@@ -92,7 +95,9 @@ targets:
     entitlements:
       path: iOS/Shopping List.entitlements
       properties:
-        com.apple.security.application-groups: []
+        com.apple.developer.siri: true
+        com.apple.security.application-groups:
+          - group.com.patbarlow.shoppinglist
 
   "Shopping List Widget":
     type: app-extension
@@ -104,7 +109,7 @@ targets:
     info:
       path: Widget/Info.plist
       properties:
-        CFBundleDisplayName: Shopping List Widget
+        CFBundleDisplayName: Trolley Widget
         NSExtension:
           NSExtensionPointIdentifier: com.apple.widgetkit-extension
     settings:

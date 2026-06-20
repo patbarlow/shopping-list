@@ -369,9 +369,22 @@ struct RecipeImportView: View {
         recipeName      = result.recipeName
         defaultServings = result.defaultServings ?? 4
         currentServings = defaultServings
-        // isIncluded and existingItemId/existingListQty are set by EditableIngredient.init(from:)
-        // using server-resolved product matching — no client-side string matching needed.
-        ingredients = result.ingredients.map { EditableIngredient(from: $0) }
+
+        var merged: [EditableIngredient] = []
+        var indexByKey: [String: Int] = [:]
+        for ing in result.ingredients.map({ EditableIngredient(from: $0) }) {
+            let key = ing.name.lowercased()
+            if let idx = indexByKey[key] {
+                // Same ingredient appears twice in this recipe — merge quantities
+                let combined = EditableIngredient.mergeQuantities(merged[idx].currentQuantity, ing.currentQuantity)
+                merged[idx].currentQuantity = combined
+                merged[idx].originalQuantity = combined
+            } else {
+                indexByKey[key] = merged.count
+                merged.append(ing)
+            }
+        }
+        ingredients = merged
         phase = .preview
     }
 

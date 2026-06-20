@@ -1,5 +1,24 @@
 import Foundation
 
+struct SavedRecipe: Decodable, Identifiable {
+    let id: String
+    let name: String
+    let sourceUrl: String?
+    let defaultServings: Int?
+    let createdAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case id, name
+        case sourceUrl       = "source_url"
+        case defaultServings = "default_servings"
+        case createdAt       = "created_at"
+    }
+}
+
+struct SavedRecipesResponse: Decodable {
+    let recipes: [SavedRecipe]
+}
+
 // Response from /v1/recipes/parse-url or /v1/recipes/parse-image
 struct ParsedRecipeResponse: Decodable {
     let recipeName: String

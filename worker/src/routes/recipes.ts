@@ -175,4 +175,25 @@ app.post("/save", async (c) => {
   return c.json({ recipe_id: recipeId }, 201);
 });
 
+// GET /v1/recipes?household_id=
+app.get("/", async (c) => {
+  const user = c.var.user;
+  const householdId = c.req.query("household_id");
+  if (!householdId) return c.json({ error: "household_id required" }, 400);
+  if (!(await assertMember(c.env, householdId, user.id))) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+  const { results } = await c.env.DB
+    .prepare(
+      `SELECT id, name, source_url, default_servings, created_at
+       FROM recipes
+       WHERE household_id = ?
+       ORDER BY created_at DESC
+       LIMIT 50`,
+    )
+    .bind(householdId)
+    .all();
+  return c.json({ recipes: results });
+});
+
 export default app;

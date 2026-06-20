@@ -1,63 +1,46 @@
 import SwiftUI
-import PhotosUI
 
 struct SidebarView: View {
     let household: Household
     let historyDays: [HistoryDay]
     @Binding var selectedDate: String?
     @Binding var isOpen: Bool
-    @Binding var showRecipeImport: Bool
     @Binding var showSettings: Bool
-    
-    @State private var selectedTab: SidebarTab = .myList
-
-    enum SidebarTab {
-        case myList, recipe
-    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            // Header with Glass Settings Button
-            HStack(alignment: .center) {
-                Text("Shopping List")
-                    .font(.title2.bold())
-                    .foregroundStyle(.primary)
-                
-                Spacer()
-                
-                Button {
-                    showSettings = true
-                } label: {
-                    Image(systemName: "gearshape.fill")
-                        .font(.system(size: 18, weight: .semibold))
-                        .foregroundStyle(.primary)
-                        .frame(width: 44, height: 44)
-                        .background(.ultraThinMaterial, in: Circle())
-                        .overlay(Circle().stroke(.white.opacity(0.1), lineWidth: 0.5))
-                }
-                .buttonStyle(.plain)
-            }
-            .padding(.horizontal, 20)
-            .padding(.top, 20)
-            
-            // Tab Switcher
-            HStack(spacing: 0) {
-                tabButton(title: "My List", icon: "cart", tab: .myList)
-                tabButton(title: "Add Recipe", icon: "link", tab: .recipe)
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 24)
+            // Header — title only, no gear (settings is a bottom row)
+            Text("Shopping List")
+                .font(.title2.bold())
+                .foregroundStyle(.primary)
+                .padding(.horizontal, 20)
+                .padding(.top, 60)
+                .padding(.bottom, 20)
 
-            // History List
+            // Nav rows
+            VStack(alignment: .leading, spacing: 2) {
+                navRow(icon: "cart.fill", label: "My List", isActive: selectedDate == nil) {
+                    withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.85)) {
+                        selectedDate = nil
+                        isOpen = false
+                    }
+                }
+
+                navRow(icon: "chart.bar.fill", label: "Insights", isActive: false, isDisabled: true) {}
+            }
+            .padding(.horizontal, 12)
+
+            // Purchase history
             if !historyDays.isEmpty {
                 Text("PURCHASE HISTORY")
                     .font(.caption2.weight(.bold))
                     .foregroundStyle(.secondary)
                     .padding(.horizontal, 24)
-                    .padding(.bottom, 12)
+                    .padding(.top, 28)
+                    .padding(.bottom, 8)
 
                 ScrollView {
-                    VStack(spacing: 4) {
+                    VStack(spacing: 2) {
                         ForEach(historyDays) { day in
                             historyRow(day: day)
                         }
@@ -67,46 +50,66 @@ struct SidebarView: View {
             } else {
                 Spacer()
             }
+
+            Divider()
+                .padding(.horizontal, 16)
+                .padding(.top, 8)
+
+            // Settings at the very bottom
+            navRow(icon: "gearshape", label: "Settings", isActive: false) {
+                showSettings = true
+            }
+            .padding(.horizontal, 12)
+            .padding(.bottom, 12)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .background(Color(.systemGroupedBackground))
     }
 
     @ViewBuilder
-    private func tabButton(title: String, icon: String, tab: SidebarTab) -> some View {
-        let isSelected = selectedTab == tab
-        Button {
-            withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
-                selectedTab = tab
-                if tab == .myList {
-                    selectedDate = nil
-                    isOpen = false
-                } else if tab == .recipe {
-                    showRecipeImport = true
-                    isOpen = false
+    private func navRow(
+        icon: String,
+        label: String,
+        isActive: Bool,
+        isDisabled: Bool = false,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            HStack(spacing: 12) {
+                Image(systemName: icon)
+                    .font(.body)
+                    .frame(width: 24)
+                Text(label)
+                    .font(.body.weight(.medium))
+                if isDisabled {
+                    Text("Coming soon!")
+                        .font(.caption2.weight(.semibold))
+                        .foregroundStyle(.secondary)
+                        .padding(.horizontal, 7)
+                        .padding(.vertical, 3)
+                        .background(Color(.systemGray5), in: Capsule())
                 }
+                Spacer()
             }
-        } label: {
-            VStack(spacing: 8) {
-                Image(systemName: isSelected ? "\(icon).fill" : icon)
-                    .font(.system(size: 20))
-                Text(title)
-                    .font(.caption2.weight(.medium))
-            }
-            .frame(maxWidth: .infinity)
-            .padding(.vertical, 12)
-            .background(isSelected ? Color.accentColor : Color.clear)
-            .foregroundStyle(isSelected ? .white : .secondary)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .padding(.horizontal, 12)
+            .padding(.vertical, 11)
+            .background(
+                isActive ? Color.accentColor.opacity(0.12) : Color.clear,
+                in: RoundedRectangle(cornerRadius: 10, style: .continuous)
+            )
+            .foregroundStyle(isActive ? Color.accentColor : .primary)
+            .opacity(isDisabled ? 0.35 : 1)
+            .contentShape(Rectangle())
         }
         .buttonStyle(.plain)
+        .disabled(isDisabled)
     }
 
     @ViewBuilder
     private func historyRow(day: HistoryDay) -> some View {
         let isSelected = selectedDate == day.date
         Button {
-            withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
+            withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.85)) {
                 selectedDate = day.date
                 isOpen = false
             }
@@ -128,8 +131,10 @@ struct SidebarView: View {
             }
             .padding(.horizontal, 16)
             .padding(.vertical, 10)
-            .background(isSelected ? Color.accentColor.opacity(0.1) : Color.clear)
-            .clipShape(RoundedRectangle(cornerRadius: 12))
+            .background(
+                isSelected ? Color.accentColor.opacity(0.1) : Color.clear,
+                in: RoundedRectangle(cornerRadius: 12, style: .continuous)
+            )
             .foregroundStyle(isSelected ? Color.accentColor : .primary)
         }
         .buttonStyle(.plain)

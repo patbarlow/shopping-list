@@ -1,67 +1,89 @@
 import AppIntents
 import Foundation
-import ShoppingCore
-
-// MARK: - Add one or more items via Siri / Shortcuts / Action Button
 
 struct AddToShoppingListIntent: AppIntent {
-    static var title: LocalizedStringResource = "Add Items to Shopping List"
-    static var description = IntentDescription("Add one or more items to your shopping list. Separate multiple items with commas or \"and\", e.g. \"milk, eggs and flour\".")
+    static var title: LocalizedStringResource = "Add Items to Trolley"
+    static var description = IntentDescription("Add one or more items to your Trolley shopping list.")
 
-    @Parameter(
-        title: "Items",
-        description: "One or more items, e.g. \"milk, eggs and flour\""
-    )
-    var items: String
+    // Must be String. A custom type (like the app's ShoppingItem model) is only allowed
+    // here if it conforms to AppEntity/AppEnum — which ShoppingItem doesn't, and shouldn't.
+    // The intent only needs the spoken text, which parseItems splits into multiple items.
+    @Parameter(title: "Item", description: "What to add — say multiple items with 'and' or commas")
+    var item: String
+
+    static var parameterSummary: some ParameterSummary {
+        Summary("Add \(\.$item) to Trolley")
+    }
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        let parsed = Self.parseItems(items)
+        let parsed = Self.parseItems(item)
         guard !parsed.isEmpty else {
-            return .result(dialog: "I didn't catch any items. Try saying something like \"milk, eggs and flour\".")
+            return .result(dialog: "I didn't catch any items to add.")
         }
 
-        guard let token       = UserDefaults.sharedGroup.string(forKey: "sl_token"),
-              let householdId = UserDefaults.sharedGroup.string(forKey: "sl_household_id") else {
-            return .result(dialog: "Please open Shopping List and sign in first.")
+        let defaults = UserDefaults(suiteName: "group.com.patbarlow.shoppinglist")
+        guard let token       = defaults?.string(forKey: "sl_token"),
+              let householdId = defaults?.string(forKey: "sl_household_id") else {
+            return .result(dialog: "Please open Trolley and sign in first.")
         }
-        let baseURL = UserDefaults.sharedGroup.string(forKey: "sl_base_url")
-                      ?? APIService.defaultBaseURL
+        let baseURL = defaults?.string(forKey: "sl_base_url")
+                      ?? "https://shopping-list-api.pat-barlow.workers.dev"
 
-        var successes = [Bool](repeating: false, count: parsed.count)
-        await withTaskGroup(of: (Int, Bool).self) { group in
-            for (i, name) in parsed.enumerated() {
+        // Fetch current list to detect duplicates
+        var existingNames: Set<String> = []
+        if let url = URL(string: "\(baseURL)/v1/items?household_id=\(householdId)") {
+            var req = URLRequest(url: url)
+            req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+            if let (data, _) = try? await URLSession.shared.data(for: req),
+               let resp = try? JSONDecoder().decode(CurrentListResponse.self, from: data) {
+                for i in resp.items where !(i.checked ?? false) {
+                    existingNames.insert(i.name.lowercased())
+                }
+            }
+        }
+
+        var alreadyThere: [String] = []
+        var added: [String] = []
+
+        await withTaskGroup(of: (String, Bool).self) { group in
+            for name in parsed {
+                if existingNames.contains(name.lowercased()) {
+                    alreadyThere.append(name)
+                    continue
+                }
                 group.addTask {
-                    guard let url = URL(string: "\(baseURL)/v1/items") else { return (i, false) }
-
+                    guard let url = URL(string: "\(baseURL)/v1/items") else { return (name, false) }
                     var req = URLRequest(url: url)
                     req.httpMethod = "POST"
                     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
-                    req.setValue("Bearer \(token)",  forHTTPHeaderField: "Authorization")
+                    req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
                     req.httpBody = try? JSONSerialization.data(withJSONObject: [
-                        "household_id": householdId,
-                        "name":         name
+                        "household_id": householdId, "name": name
                     ])
-
-                    guard let (_, resp) = try? await URLSession.shared.data(for: req),
-                          let http = resp as? HTTPURLResponse,
+                    guard let (_, r) = try? await URLSession.shared.data(for: req),
+                          let http = r as? HTTPURLResponse,
                           (200...299).contains(http.statusCode)
-                    else { return (i, false) }
-
-                    return (i, true)
+                    else { return (name, false) }
+                    return (name, true)
                 }
             }
-            for await (i, ok) in group { successes[i] = ok }
+            for await (name, ok) in group where ok { added.append(name) }
         }
 
-        let added = zip(parsed, successes).compactMap { name, ok in ok ? name : nil }
-        guard !added.isEmpty else {
-            return .result(dialog: "Something went wrong — couldn't add any items right now.")
+        if !added.isEmpty && !alreadyThere.isEmpty {
+            let already = alreadyThere.count == 1
+                ? "\(alreadyThere[0]) was already there"
+                : "\(Self.formatList(alreadyThere)) were already there"
+            return .result(dialog: "Added \(Self.formatList(added)) to Trolley. \(already).")
+        } else if added.isEmpty && !alreadyThere.isEmpty {
+            let verb = alreadyThere.count == 1 ? "is" : "are"
+            return .result(dialog: "\(Self.formatList(alreadyThere)) \(verb) already on your list.")
+        } else if !added.isEmpty {
+            return .result(dialog: "Added \(Self.formatList(added)) to Trolley.")
+        } else {
+            return .result(dialog: "Something went wrong — couldn't add those items right now.")
         }
-
-        return .result(dialog: "Added \(Self.formatList(added)) to your shopping list.")
     }
-
-    // MARK: - Parsing
 
     static func parseItems(_ text: String) -> [String] {
         text
@@ -72,15 +94,18 @@ struct AddToShoppingListIntent: AppIntent {
             .filter { !$0.isEmpty }
     }
 
-    // MARK: - Formatting
-
     static func formatList(_ names: [String]) -> String {
         switch names.count {
         case 0: return ""
         case 1: return names[0]
         case 2: return "\(names[0]) and \(names[1])"
-        default:
-            return names.dropLast().joined(separator: ", ") + " and " + names[names.count - 1]
+        default: return names.dropLast().joined(separator: ", ") + " and " + names[names.count - 1]
         }
     }
 }
+
+private struct CurrentListResponse: Decodable {
+    struct Item: Decodable { let name: String; let checked: Bool? }
+    let items: [Item]
+}
+

@@ -10,7 +10,7 @@ struct ShoppingListView: View {
     let household: Household
     @Environment(AppServices.self) private var services
     @State private var showSettings = false
-    @State private var showRecipeImport = false
+    @State private var showRecipeHub = false
     @State private var showReceiptScanner = false
     @State private var selectedHistoryDate: String? = nil
     @State private var historyDays: [HistoryDay] = []
@@ -40,6 +40,9 @@ struct ShoppingListView: View {
     // ── Input commit guard (prevents focus-loss cancel during enter-to-add) ───
     @State private var isCommitting = false
 
+    // ── Duplicate-item toast ───────────────────────────────────────────────────
+    @State private var duplicateToastName: String? = nil
+
     // ── Swipe-to-delete tracking ───────────────────────────────────────────────
     @State private var swipeOffsets: [String: CGFloat] = [:]
     @State private var swipePassedThreshold: Set<String> = []
@@ -53,6 +56,14 @@ struct ShoppingListView: View {
     private var currentOffset: CGFloat {
         let base = isSidebarOpen ? sidebarWidth : 0
         return min(max(base + dragOffset, 0), sidebarWidth)
+    }
+
+    private var progress: CGFloat { currentOffset / sidebarWidth }
+    private var deviceCornerRadius: CGFloat {
+        let screen = UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .first?.screen
+        return (screen?.value(forKey: "_displayCornerRadius") as? CGFloat) ?? 44
     }
 
     private var store: ShoppingListStore { services.shopping }
@@ -77,20 +88,22 @@ struct ShoppingListView: View {
 
     var body: some View {
         ZStack(alignment: .leading) {
-            // 1. Stationary Sidebar (Underneath)
+            // Background fill — sidebar color bleeds into content card corner radius gap
+            Color(.systemGroupedBackground)
+                .ignoresSafeArea()
+
+            // 1. Stationary sidebar — dims to black when closed, clears as it opens
             SidebarView(
                 household: household,
                 historyDays: historyDays,
                 selectedDate: $selectedHistoryDate,
                 isOpen: $isSidebarOpen,
-                showRecipeImport: $showRecipeImport,
                 showSettings: $showSettings
             )
             .frame(width: sidebarWidth)
-            .opacity(currentOffset > 0 ? 1 : 0)
-            .scaleEffect(0.95 + (0.05 * (currentOffset / sidebarWidth)))
+            .overlay(Color.black.opacity(0.4 * (1 - progress)))
 
-            // 2. Main Content Card
+            // 2. Main content card — slides right to reveal sidebar
             NavigationStack {
                 Group {
                     if let date = selectedHistoryDate {
@@ -121,54 +134,44 @@ struct ShoppingListView: View {
                 .sheet(isPresented: $showSettings) {
                     SettingsView(household: household).environment(services)
                 }
-                .sheet(isPresented: $showRecipeImport) {
-                    RecipeImportView(householdId: household.id).environment(services)
+                .sheet(isPresented: $showRecipeHub) {
+                    RecipeHubView(householdId: household.id).environment(services)
                 }
                 .sheet(isPresented: $showReceiptScanner) {
                     ReceiptScannerView(householdId: household.id).environment(services)
                 }
             }
             .background(Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: (currentOffset > 0) ? 32 : 0))
-            .shadow(color: .black.opacity(currentOffset > 0 ? 0.15 : 0), radius: 20)
+            .clipShape(RoundedRectangle(cornerRadius: progress > 0 ? deviceCornerRadius : 0, style: .continuous))
+            .shadow(color: .black.opacity(0.25 * progress), radius: 16, x: -4, y: 0)
             .offset(x: currentOffset)
-            .disabled(isSidebarOpen)
-            .overlay(alignment: .leading) {
-                if currentOffset > 0 {
-                    // Only cover the visible content strip to allow menu interaction
-                    Color.black.opacity(0.4 * (currentOffset / sidebarWidth))
-                        .frame(width: UIScreen.main.bounds.width - currentOffset)
-                        .offset(x: currentOffset)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.85)) {
-                                isSidebarOpen = false
-                                dragOffset = 0
-                            }
-                        }
-                }
+            .allowsHitTesting(!isSidebarOpen)
+
+            // 3. Thin edge strip — opens sidebar via drag from the left edge
+            if !isSidebarOpen {
+                Color.clear
+                    .frame(width: 20)
+                    .frame(maxHeight: .infinity)
+                    .contentShape(Rectangle())
+                    .gesture(openDragGesture)
             }
-            .gesture(
-                DragGesture()
-                    .onChanged { value in
-                        // Only start from edge when closed; always allow when open
-                        if isSidebarOpen || value.startLocation.x < 50 {
-                            dragOffset = value.translation.width
-                        }
-                    }
-                    .onEnded { value in
-                        let predictedEnd = currentOffset 
-                            + value.predictedEndTranslation.width 
-                            - value.translation.width
-                        
-                        withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.85)) {
-                            isSidebarOpen = predictedEnd > sidebarWidth / 2
-                            dragOffset = 0
-                        }
-                    }
-            )
+
+            // 4. Tap/drag overlay over the visible content strip — closes sidebar when open
+            if isSidebarOpen {
+                HStack(spacing: 0) {
+                    Color.clear
+                        .frame(width: sidebarWidth)
+                        .allowsHitTesting(false)
+                    Color.clear
+                        .frame(maxWidth: .infinity)
+                        .contentShape(Rectangle())
+                        .onTapGesture { close() }
+                        .gesture(closeDragGesture)
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         }
-        .ignoresSafeArea(.container, edges: isSidebarOpen ? .all : [])
+        .ignoresSafeArea()
         .task {
             await store.load(householdId: household.id)
             historyDays = (try? await services.api.fetchHistoryDays(householdId: household.id)) ?? []
@@ -198,13 +201,26 @@ struct ShoppingListView: View {
         .onContinueUserActivity("com.patbarlow.shoppinglist.quickAdd") { _ in
             startAdding()
         }
-        .animation(.interactiveSpring(response: 0.35, dampingFraction: 0.85), value: isSidebarOpen)
     }
 
     // MARK: - Bottom Accessory
 
     private var addItemAccessory: some View {
         VStack(alignment: .trailing, spacing: 6) {
+            // Duplicate-item toast
+            if let dupe = duplicateToastName {
+                Button { duplicateToastName = nil } label: {
+                    Label("\(dupe) is already on your list", systemImage: "exclamationmark.circle")
+                        .font(.subheadline.weight(.medium))
+                        .padding(.horizontal, 16)
+                        .padding(.vertical, 18)
+                }
+                .buttonStyle(.plain)
+                .glassEffect(in: Capsule())
+                .padding(.trailing, 12)
+                .transition(.move(edge: .bottom).combined(with: .opacity))
+            }
+
             // Undo toast — taller, with live countdown
             if !store.recentlyCompleted.isEmpty {
                 Button { store.undoLastComplete() } label: {
@@ -571,25 +587,25 @@ struct ShoppingListView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigationBarLeading) {
-            if selectedHistoryDate != nil {
-                Button {
-                    withAnimation { selectedHistoryDate = nil }
-                } label: {
-                    HStack(spacing: 4) {
-                        Image(systemName: "chevron.left")
-                            .font(.footnote.weight(.semibold))
-                        Text("List")
-                            .font(.subheadline)
-                    }
+            Button {
+                if !isSidebarOpen { sidebarHaptic() }
+                withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.85)) {
+                    isSidebarOpen = true
+                    dragOffset = 0
                 }
-            } else {
-                Button {
-                    withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                        isSidebarOpen = true
-                        dragOffset = 0
-                    }
-                } label: {
-                    Image(systemName: "line.3.horizontal")
+            } label: {
+                Image(systemName: "line.3.horizontal")
+            }
+        }
+        if selectedHistoryDate == nil {
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button { showReceiptScanner = true } label: {
+                    Image(systemName: "receipt")
+                }
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                Button { showRecipeHub = true } label: {
+                    Image(systemName: "fork.knife")
                 }
             }
         }
@@ -635,7 +651,7 @@ struct ShoppingListView: View {
     // MARK: - Actions
 
     private func startAdding() {
-        if let id = editingItemID, let item = store.items.first(where: { $0.id == id }) {
+        if let id = editingItemID, store.items.contains(where: { $0.id == id }) {
             commitCurrentEdit()
         }
         guard !isAdding else {
@@ -654,6 +670,16 @@ struct ShoppingListView: View {
         let trimmed = addText.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else {
             if !refocus { cancelAdd() }
+            return
+        }
+
+        // Duplicate check — if already on the list (unchecked), show toast and skip
+        let lower = trimmed.lowercased()
+        if store.items.contains(where: { $0.name.lowercased() == lower && !$0.checked }) {
+            showDuplicateToast(for: trimmed)
+            isCommitting = true
+            addText = ""; addQty = ""; addNotes = ""
+            Task { @MainActor in focusedField = .newName; isCommitting = false }
             return
         }
 
@@ -738,7 +764,7 @@ struct ShoppingListView: View {
 
     private func triggerComplete(_ item: ShoppingItem) {
         withAnimation(.easeInOut(duration: 0.2)) {
-            pendingCompleteIDs.insert(item.id)
+            _ = pendingCompleteIDs.insert(item.id)
         }
         // Wait for a beat so the user sees the 'fill' before it moves
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
@@ -777,6 +803,56 @@ struct ShoppingListView: View {
                 }
                 swipePassedThreshold.remove(item.id)
             }
+    }
+
+    // MARK: - Sidebar gesture helpers
+
+    private var openDragGesture: some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { value in dragOffset = max(0, value.translation.width) }
+            .onEnded { value in settle(value) }
+    }
+
+    private var closeDragGesture: some Gesture {
+        DragGesture(minimumDistance: 8)
+            .onChanged { value in dragOffset = min(0, value.translation.width) }
+            .onEnded { value in settle(value) }
+    }
+
+    private func settle(_ value: DragGesture.Value) {
+        let projected = currentOffset + (value.predictedEndTranslation.width - value.translation.width)
+        let willOpen = projected > sidebarWidth / 2
+        if willOpen != isSidebarOpen { sidebarHaptic() }
+        withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.85)) {
+            isSidebarOpen = willOpen
+            dragOffset = 0
+        }
+    }
+
+    private func close() {
+        sidebarHaptic()
+        withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.85)) {
+            isSidebarOpen = false
+            dragOffset = 0
+        }
+    }
+
+    private func sidebarHaptic() {
+        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
+    }
+
+    private func showDuplicateToast(for name: String) {
+        withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+            duplicateToastName = name
+        }
+        Task {
+            try? await Task.sleep(for: .seconds(2))
+            if duplicateToastName == name {
+                withAnimation(.spring(response: 0.3, dampingFraction: 0.8)) {
+                    duplicateToastName = nil
+                }
+            }
+        }
     }
 
     // MARK: - Helpers
