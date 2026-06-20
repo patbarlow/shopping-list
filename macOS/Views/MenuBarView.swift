@@ -267,10 +267,12 @@ private struct MacListView: View {
             MacSettingsView(household: household)
                 .environment(services)
         }
+        #if os(iOS)
         .sheet(isPresented: $showRecipeImport) {
             RecipeImportView(householdId: household.id)
                 .environment(services)
         }
+#endif
         .sheet(isPresented: $showHistory) {
             MacHistoryView(householdId: household.id)
                 .environment(services)

@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <Scheme
-   LastUpgradeVersion = "1630"
+   LastUpgradeVersion = "2600"
    version = "1.7">
    <BuildAction
       parallelizeBuildables = "YES"
@@ -18,20 +18,6 @@
                BlueprintIdentifier = "56F4EBBC2A132D7A4679FB64"
                BuildableName = "Shopping List.app"
                BlueprintName = "Shopping List"
-               ReferencedContainer = "container:Shopping List.xcodeproj">
-            </BuildableReference>
-         </BuildActionEntry>
-         <BuildActionEntry
-            buildForTesting = "YES"
-            buildForRunning = "YES"
-            buildForProfiling = "YES"
-            buildForArchiving = "YES"
-            buildForAnalyzing = "YES">
-            <BuildableReference
-               BuildableIdentifier = "primary"
-               BlueprintIdentifier = "E8E28DC1B345AE816480FA78"
-               BuildableName = "Shopping List Widget.appex"
-               BlueprintName = "Shopping List Widget"
                ReferencedContainer = "container:Shopping List.xcodeproj">
             </BuildableReference>
          </BuildActionEntry>

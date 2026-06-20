@@ -10,10 +10,10 @@ extension Notification.Name {
 // Because openAppWhenRun = true, perform() runs inside the foregrounded app,
 // where NotificationCenter delivers the message to the open WindowGroup.
 struct QuickAddIntent: AppIntent {
-    static var title: LocalizedStringResource = "Add to Shopping List"
-    static var description                    = IntentDescription("Open the quick-add sheet.")
-    static var openAppWhenRun: Bool           = true
-    static var isDiscoverable: Bool           = true
+    nonisolated(unsafe) static var title: LocalizedStringResource = "Add to Shopping List"
+    nonisolated(unsafe) static var description                    = IntentDescription("Open the quick-add sheet.")
+    nonisolated(unsafe) static var openAppWhenRun: Bool           = true
+    nonisolated(unsafe) static var isDiscoverable: Bool           = true
 
     @MainActor
     func perform() async throws -> some IntentResult & ProvidesDialog {

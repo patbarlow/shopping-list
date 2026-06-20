@@ -1,11 +1,12 @@
 import SwiftUI
+#if os(iOS)
 import PhotosUI
-
+#endif
 private enum IngFocusField: Hashable {
     case name(UUID), qty(UUID)
 }
 
-struct RecipeImportView: View {
+public struct RecipeImportView: View {
     let householdId: String
     @Environment(AppServices.self) private var services
     @Environment(\.dismiss) private var dismiss

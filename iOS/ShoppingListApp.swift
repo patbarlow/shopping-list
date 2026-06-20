@@ -1,6 +1,5 @@
 import SwiftUI
 import Sentry
-import Intents
 import UniformTypeIdentifiers
 
 
@@ -8,8 +7,7 @@ import UniformTypeIdentifiers
 struct ShoppingListApp: App {
     init() {
         ShoppingCore.migrateIfNeeded()
-        INPreferences.requestSiriAuthorization { _ in }
-        SentrySDK.start { options in
+SentrySDK.start { options in
             options.dsn = "https://4fbbe6fdbd49ab9139757d8b8a1de53f@o4511482336772096.ingest.us.sentry.io/4511482454933504"
 
             // Adds IP for users.

@@ -10,26 +10,25 @@
 		00E840CAF6B064828DF9FBAB /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7462B86AD882C4C18C4DF1DF /* APIService.swift */; };
 		010469D2A36391D5757546FC /* History.swift in Sources */ = {isa = PBXBuildFile; fileRef = 663DBFAB12E403F8ABFC8AA5 /* History.swift */; };
 		06920F9DB22EBD8F0CECC210 /* Config.plist in Resources */ = {isa = PBXBuildFile; fileRef = 51AC4475E61BFC0BEDF456BE /* Config.plist */; };
-		0D76D7BAB78AE25A26BCA8A2 /* QuickAddIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EC68D8CDFA6582CFFEE3468 /* QuickAddIntent.swift */; };
 		16C06EF5EEAC5E86E2651BD4 /* ShoppingListStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AF17166DF5B1CFFFE31976C /* ShoppingListStore.swift */; };
 		1AF982FB6A6A18F6D34A77BA /* ShoppingItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B06687513055194F342B4B7 /* ShoppingItem.swift */; };
 		1B39CC9B68D8B19A0AEBD25A /* ShoppingShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35810A47D0E0633BD5C86836 /* ShoppingShortcuts.swift */; };
-		26DBCEC266FF59E970E1408A /* Shopping List Widget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = 6976EA50DEFA1E3CE9B1BFFD /* Shopping List Widget.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		297C12E0C0BEE7509B62C2C5 /* ShoppingListApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA8B96E24E24BE3D331C9B22 /* ShoppingListApp.swift */; };
 		2C36EC36416D61A580C4999F /* AuthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F61A9645A5D8A828A41FF627 /* AuthStore.swift */; };
+		2CB334C874C3D08D8D49DBD8 /* RecipeImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 062C0A12F70785A98F6A0CA8 /* RecipeImportView.swift */; };
 		2D3515C3F0FDFBCE06187D00 /* ShoppingCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F35CA9A2CAC50DD6E1FD1145 /* ShoppingCore.swift */; };
 		3006F1C130CE6774B3CFB412 /* RealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 145A5C2183790DA7F940227E /* RealtimeService.swift */; };
-		3AA4D32E312E59213C4781A0 /* QuickAddControl.swift in Sources */ = {isa = PBXBuildFile; fileRef = C166231E665E790EFEF9D05B /* QuickAddControl.swift */; };
 		40C0B4FEFA74C52440E526B5 /* ShoppingCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F35CA9A2CAC50DD6E1FD1145 /* ShoppingCore.swift */; };
 		47A3F43B5FD429CE0CF1456F /* Sparkle in Frameworks */ = {isa = PBXBuildFile; productRef = 6C1CAE8B933E135A39979325 /* Sparkle */; };
 		508AAF7412DA47DF84273CED /* SidebarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 43C5ABB4A84FB371C7CA98A6 /* SidebarView.swift */; };
 		5541F33E0D7E05FF861C63CC /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A479A9C18E0C1534C48FC1B /* AppServices.swift */; };
 		55E0FEE49D7F939D7E43BEA0 /* SentryHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97B1734E7407EC373454F34A /* SentryHelpers.swift */; };
+		56F3C828706BD15721AA471B /* ShoppingItemEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C64433691FD9E88F95570581 /* ShoppingItemEntity.swift */; };
 		583C7A3955E416FED458D5E6 /* AuthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F61A9645A5D8A828A41FF627 /* AuthStore.swift */; };
 		5B08B6EA1A58325E5B82E5D3 /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A479A9C18E0C1534C48FC1B /* AppServices.swift */; };
 		6844FE9AEEF9464DDFEF2AD2 /* AddItemIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 472F1E2215F1364F1486B646 /* AddItemIntents.swift */; };
 		6C5B8151613D48A138177D19 /* History.swift in Sources */ = {isa = PBXBuildFile; fileRef = 663DBFAB12E403F8ABFC8AA5 /* History.swift */; };
-		70C59CFD461083C2503AD680 /* RecipeImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3B4E39729D1BEF44F6CE517 /* RecipeImportView.swift */; };
+		6C9869BDEFCCFDCF7EB77920 /* ShoppingItemEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C64433691FD9E88F95570581 /* ShoppingItemEntity.swift */; };
 		759F0E6FD4D2AB94FEFF3244 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 199A94407A8F361452039A05 /* Assets.xcassets */; };
 		78F81B3A671F48402FAC60F6 /* ShoppingListMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40912EDFFF62E3AE19133B58 /* ShoppingListMacApp.swift */; };
 		84F91FFA458ACB2F5CD27AA0 /* QuickAddIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EC68D8CDFA6582CFFEE3468 /* QuickAddIntent.swift */; };
@@ -41,8 +40,8 @@
 		9B2F9DB9E5CD05189A3135DB /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9E78B88A5FF8FB6EA5401FF1 /* SpeechService.swift */; };
 		9D6EB5D8BB64F807F475B666 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DD716EEC8E998041577ECEC /* SettingsView.swift */; };
 		9EB1EF4FBDB51E3AE699592C /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7462B86AD882C4C18C4DF1DF /* APIService.swift */; };
+		A1DF69D966DC26AD8E323C0E /* RecipeImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 062C0A12F70785A98F6A0CA8 /* RecipeImportView.swift */; };
 		A691F172E240170C6737917F /* Recipe.swift in Sources */ = {isa = PBXBuildFile; fileRef = D23ADCBB565D2A872DBAB12E /* Recipe.swift */; };
-		B8214D6ACE92B72011B67251 /* ShoppingListWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9BAFD47481FF6668160B32E1 /* ShoppingListWidgetBundle.swift */; };
 		BB854FA51974F86190EEB55E /* SentryHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97B1734E7407EC373454F34A /* SentryHelpers.swift */; };
 		BC032B773815D22A3A604589 /* ShoppingListStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AF17166DF5B1CFFFE31976C /* ShoppingListStore.swift */; };
 		BCBD961F5DE1628DBF9343C1 /* Recipe.swift in Sources */ = {isa = PBXBuildFile; fileRef = D23ADCBB565D2A872DBAB12E /* Recipe.swift */; };
@@ -61,32 +60,9 @@
 		F9842BDA56D48EBDEF84E491 /* RealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 145A5C2183790DA7F940227E /* RealtimeService.swift */; };
 /* End PBXBuildFile section */
 
-/* Begin PBXContainerItemProxy section */
-		10C94549CC45F9F229427B57 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 219416B8DB44731BBF8D4DE7 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = E8E28DC1B345AE816480FA78;
-			remoteInfo = "Shopping List Widget";
-		};
-/* End PBXContainerItemProxy section */
-
-/* Begin PBXCopyFilesBuildPhase section */
-		5B83614A83EE897BCB4A7A39 /* Embed Foundation Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				26DBCEC266FF59E970E1408A /* Shopping List Widget.appex in Embed Foundation Extensions */,
-			);
-			name = "Embed Foundation Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
-
 /* Begin PBXFileReference section */
 		00D4833C3DEA4099449458E8 /* Shopping List macOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Shopping List macOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
+		062C0A12F70785A98F6A0CA8 /* RecipeImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeImportView.swift; sourceTree = "<group>"; };
 		073DB8A85B43FA938555C6E5 /* ShoppingListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingListView.swift; sourceTree = "<group>"; };
 		13FCB4E52C2CC8ED4718D346 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		145A5C2183790DA7F940227E /* RealtimeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeService.swift; sourceTree = "<group>"; };
@@ -104,7 +80,6 @@
 		51AC4475E61BFC0BEDF456BE /* Config.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Config.plist; sourceTree = "<group>"; };
 		5DD716EEC8E998041577ECEC /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
 		663DBFAB12E403F8ABFC8AA5 /* History.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = History.swift; sourceTree = "<group>"; };
-		6976EA50DEFA1E3CE9B1BFFD /* Shopping List Widget.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = "Shopping List Widget.appex"; sourceTree = BUILT_PRODUCTS_DIR; };
 		7462B86AD882C4C18C4DF1DF /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
 		7A479A9C18E0C1534C48FC1B /* AppServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppServices.swift; sourceTree = "<group>"; };
 		85497421D6E5CB97F590B0D9 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -112,18 +87,15 @@
 		8FFBEEBE4BE9C0570F7393EF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		93583231B106C19E6541BDB4 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		97B1734E7407EC373454F34A /* SentryHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SentryHelpers.swift; sourceTree = "<group>"; };
-		9BAFD47481FF6668160B32E1 /* ShoppingListWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingListWidgetBundle.swift; sourceTree = "<group>"; };
 		9E78B88A5FF8FB6EA5401FF1 /* SpeechService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpeechService.swift; sourceTree = "<group>"; };
 		A1A666E10637E9465B6733A2 /* RecipeHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeHubView.swift; sourceTree = "<group>"; };
 		A1FF7F0A82CA6C88EA34F90C /* Shopping List macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Shopping List macOS.entitlements"; sourceTree = "<group>"; };
 		AA8B96E24E24BE3D331C9B22 /* ShoppingListApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingListApp.swift; sourceTree = "<group>"; };
 		B9A16E63C949B3C693249DA3 /* Shopping List.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "Shopping List.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		BE7C88D1E1D959B22BB226D5 /* ReceiptScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptScannerView.swift; sourceTree = "<group>"; };
-		C166231E665E790EFEF9D05B /* QuickAddControl.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QuickAddControl.swift; sourceTree = "<group>"; };
+		C64433691FD9E88F95570581 /* ShoppingItemEntity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingItemEntity.swift; sourceTree = "<group>"; };
 		D23ADCBB565D2A872DBAB12E /* Recipe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Recipe.swift; sourceTree = "<group>"; };
-		D3ACF85E31135F58E5CD7DAD /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		DF8B3203E96D1AB11A946F05 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
-		E3B4E39729D1BEF44F6CE517 /* RecipeImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeImportView.swift; sourceTree = "<group>"; };
 		EBEC057EB44C2C3C2778B9C3 /* Household.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Household.swift; sourceTree = "<group>"; };
 		F35CA9A2CAC50DD6E1FD1145 /* ShoppingCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingCore.swift; sourceTree = "<group>"; };
 		F61A9645A5D8A828A41FF627 /* AuthStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthStore.swift; sourceTree = "<group>"; };
@@ -159,16 +131,6 @@
 			path = Views;
 			sourceTree = "<group>";
 		};
-		373D6DCA11F9C07ABA85817C /* Widget */ = {
-			isa = PBXGroup;
-			children = (
-				D3ACF85E31135F58E5CD7DAD /* Info.plist */,
-				C166231E665E790EFEF9D05B /* QuickAddControl.swift */,
-				9BAFD47481FF6668160B32E1 /* ShoppingListWidgetBundle.swift */,
-			);
-			path = Widget;
-			sourceTree = "<group>";
-		};
 		42EEE699334145FB740226CF /* Shared */ = {
 			isa = PBXGroup;
 			children = (
@@ -176,6 +138,7 @@
 				E3B3F7E9B32189A4A09FD749 /* Models */,
 				F1F1DB856DE2EA0144DB7687 /* Services */,
 				E37AD65C0230BB4C83F2DFC0 /* Stores */,
+				4F7ED4121D47EB3A664C0DF9 /* Views */,
 				7A479A9C18E0C1534C48FC1B /* AppServices.swift */,
 				51AC4475E61BFC0BEDF456BE /* Config.plist */,
 				F35CA9A2CAC50DD6E1FD1145 /* ShoppingCore.swift */,
@@ -197,11 +160,18 @@
 			path = iOS;
 			sourceTree = "<group>";
 		};
+		4F7ED4121D47EB3A664C0DF9 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				062C0A12F70785A98F6A0CA8 /* RecipeImportView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
 		7158AF20EF0D139F49F9F719 /* Products */ = {
 			isa = PBXGroup;
 			children = (
 				00D4833C3DEA4099449458E8 /* Shopping List macOS.app */,
-				6976EA50DEFA1E3CE9B1BFFD /* Shopping List Widget.appex */,
 				B9A16E63C949B3C693249DA3 /* Shopping List.app */,
 			);
 			name = Products;
@@ -213,7 +183,6 @@
 				47D3483D655508C29ABF3DF3 /* iOS */,
 				976F82F2DC17EF6C7D98C7E1 /* macOS */,
 				42EEE699334145FB740226CF /* Shared */,
-				373D6DCA11F9C07ABA85817C /* Widget */,
 				7158AF20EF0D139F49F9F719 /* Products */,
 			);
 			sourceTree = "<group>";
@@ -243,6 +212,7 @@
 			isa = PBXGroup;
 			children = (
 				2EC68D8CDFA6582CFFEE3468 /* QuickAddIntent.swift */,
+				C64433691FD9E88F95570581 /* ShoppingItemEntity.swift */,
 			);
 			path = AppIntents;
 			sourceTree = "<group>";
@@ -257,7 +227,6 @@
 				93583231B106C19E6541BDB4 /* LoginView.swift */,
 				BE7C88D1E1D959B22BB226D5 /* ReceiptScannerView.swift */,
 				A1A666E10637E9465B6733A2 /* RecipeHubView.swift */,
-				E3B4E39729D1BEF44F6CE517 /* RecipeImportView.swift */,
 				5DD716EEC8E998041577ECEC /* SettingsView.swift */,
 				073DB8A85B43FA938555C6E5 /* ShoppingListView.swift */,
 				43C5ABB4A84FB371C7CA98A6 /* SidebarView.swift */,
@@ -305,13 +274,11 @@
 				CD938E80E177DE182D458A9C /* Sources */,
 				18AE4294F6933708D0A3B5EC /* Resources */,
 				858728473C71332B79D6F202 /* Frameworks */,
-				5B83614A83EE897BCB4A7A39 /* Embed Foundation Extensions */,
 				D38E60C6F3A0B83841A5A855 /* Upload Debug Symbols to Sentry */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				7151460614F8B85B643E3763 /* PBXTargetDependency */,
 			);
 			name = "Shopping List";
 			packageProductDependencies = (
@@ -342,23 +309,6 @@
 			productReference = 00D4833C3DEA4099449458E8 /* Shopping List macOS.app */;
 			productType = "com.apple.product-type.application";
 		};
-		E8E28DC1B345AE816480FA78 /* Shopping List Widget */ = {
-			isa = PBXNativeTarget;
-			buildConfigurationList = 43115C80404A71E5B8BA8710 /* Build configuration list for PBXNativeTarget "Shopping List Widget" */;
-			buildPhases = (
-				F6291ABE189620974169F41E /* Sources */,
-			);
-			buildRules = (
-			);
-			dependencies = (
-			);
-			name = "Shopping List Widget";
-			packageProductDependencies = (
-			);
-			productName = "Shopping List Widget";
-			productReference = 6976EA50DEFA1E3CE9B1BFFD /* Shopping List Widget.appex */;
-			productType = "com.apple.product-type.app-extension";
-		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -366,17 +316,13 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 1630;
+				LastUpgradeCheck = 2600;
 				TargetAttributes = {
 					56F4EBBC2A132D7A4679FB64 = {
 						DevelopmentTeam = T544U3WVL6;
 						ProvisioningStyle = Automatic;
 					};
 					686FC9607845D061A9A05228 = {
-						DevelopmentTeam = T544U3WVL6;
-						ProvisioningStyle = Automatic;
-					};
-					E8E28DC1B345AE816480FA78 = {
 						DevelopmentTeam = T544U3WVL6;
 						ProvisioningStyle = Automatic;
 					};
@@ -401,7 +347,6 @@
 			projectRoot = "";
 			targets = (
 				56F4EBBC2A132D7A4679FB64 /* Shopping List */,
-				E8E28DC1B345AE816480FA78 /* Shopping List Widget */,
 				686FC9607845D061A9A05228 /* Shopping List macOS */,
 			);
 		};
@@ -471,11 +416,12 @@
 				C9BB9CA8700E2772ACE687BF /* ReceiptScannerView.swift in Sources */,
 				A691F172E240170C6737917F /* Recipe.swift in Sources */,
 				92C77C8200BFCAEBBCD05158 /* RecipeHubView.swift in Sources */,
-				70C59CFD461083C2503AD680 /* RecipeImportView.swift in Sources */,
+				2CB334C874C3D08D8D49DBD8 /* RecipeImportView.swift in Sources */,
 				55E0FEE49D7F939D7E43BEA0 /* SentryHelpers.swift in Sources */,
 				9D6EB5D8BB64F807F475B666 /* SettingsView.swift in Sources */,
 				40C0B4FEFA74C52440E526B5 /* ShoppingCore.swift in Sources */,
 				1AF982FB6A6A18F6D34A77BA /* ShoppingItem.swift in Sources */,
+				6C9869BDEFCCFDCF7EB77920 /* ShoppingItemEntity.swift in Sources */,
 				297C12E0C0BEE7509B62C2C5 /* ShoppingListApp.swift in Sources */,
 				16C06EF5EEAC5E86E2651BD4 /* ShoppingListStore.swift in Sources */,
 				C353F7364DD8CD159053DFD2 /* ShoppingListView.swift in Sources */,
@@ -498,55 +444,19 @@
 				84F91FFA458ACB2F5CD27AA0 /* QuickAddIntent.swift in Sources */,
 				3006F1C130CE6774B3CFB412 /* RealtimeService.swift in Sources */,
 				BCBD961F5DE1628DBF9343C1 /* Recipe.swift in Sources */,
+				A1DF69D966DC26AD8E323C0E /* RecipeImportView.swift in Sources */,
 				BB854FA51974F86190EEB55E /* SentryHelpers.swift in Sources */,
 				2D3515C3F0FDFBCE06187D00 /* ShoppingCore.swift in Sources */,
 				D6B230430BCA6A21F9320D47 /* ShoppingItem.swift in Sources */,
+				56F3C828706BD15721AA471B /* ShoppingItemEntity.swift in Sources */,
 				78F81B3A671F48402FAC60F6 /* ShoppingListMacApp.swift in Sources */,
 				BC032B773815D22A3A604589 /* ShoppingListStore.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
-		F6291ABE189620974169F41E /* Sources */ = {
-			isa = PBXSourcesBuildPhase;
-			buildActionMask = 2147483647;
-			files = (
-				3AA4D32E312E59213C4781A0 /* QuickAddControl.swift in Sources */,
-				0D76D7BAB78AE25A26BCA8A2 /* QuickAddIntent.swift in Sources */,
-				B8214D6ACE92B72011B67251 /* ShoppingListWidgetBundle.swift in Sources */,
-			);
-			runOnlyForDeploymentPostprocessing = 0;
-		};
 /* End PBXSourcesBuildPhase section */
 
-/* Begin PBXTargetDependency section */
-		7151460614F8B85B643E3763 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = E8E28DC1B345AE816480FA78 /* Shopping List Widget */;
-			targetProxy = 10C94549CC45F9F229427B57 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
-
 /* Begin XCBuildConfiguration section */
-		04E419A55C6B87578D7B9E9D /* Debug */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Widget/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.patbarlow.shoppinglist.widget;
-				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
-			};
-			name = Debug;
-		};
 		2655ED467CB696A1A84F250D /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -607,7 +517,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
-				SWIFT_VERSION = 5.9;
+				SWIFT_VERSION = 6.0;
 			};
 			name = Debug;
 		};
@@ -618,7 +528,7 @@
 				CODE_SIGN_ENTITLEMENTS = "macOS/Shopping List macOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = macOS/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -626,7 +536,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.patbarlow.shoppinglist.mac;
 				SDKROOT = macosx;
 			};
@@ -639,7 +549,7 @@
 				CODE_SIGN_ENTITLEMENTS = "iOS/Shopping List.entitlements";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -649,7 +559,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.patbarlow.shoppinglist;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -709,27 +619,7 @@
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
-				SWIFT_VERSION = 5.9;
-			};
-			name = Release;
-		};
-		A8824634EC351A0F208B4B46 /* Release */ = {
-			isa = XCBuildConfiguration;
-			buildSettings = {
-				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
-				GENERATE_INFOPLIST_FILE = YES;
-				INFOPLIST_FILE = Widget/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 18.0;
-				LD_RUNPATH_SEARCH_PATHS = (
-					"$(inherited)",
-					"@executable_path/Frameworks",
-					"@executable_path/../../Frameworks",
-				);
-				MARKETING_VERSION = 1.0;
-				PRODUCT_BUNDLE_IDENTIFIER = com.patbarlow.shoppinglist.widget;
-				SDKROOT = iphoneos;
-				TARGETED_DEVICE_FAMILY = "1,2";
+				SWIFT_VERSION = 6.0;
 			};
 			name = Release;
 		};
@@ -740,7 +630,7 @@
 				CODE_SIGN_ENTITLEMENTS = "iOS/Shopping List.entitlements";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -750,7 +640,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.patbarlow.shoppinglist;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -764,7 +654,7 @@
 				CODE_SIGN_ENTITLEMENTS = "macOS/Shopping List macOS.entitlements";
 				CODE_SIGN_STYLE = Automatic;
 				COMBINE_HIDPI_IMAGES = YES;
-				CURRENT_PROJECT_VERSION = 1;
+				CURRENT_PROJECT_VERSION = 2;
 				GENERATE_INFOPLIST_FILE = YES;
 				INFOPLIST_FILE = macOS/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -772,7 +662,7 @@
 					"@executable_path/../Frameworks",
 				);
 				MACOSX_DEPLOYMENT_TARGET = 14.0;
-				MARKETING_VERSION = 1.0;
+				MARKETING_VERSION = 1.5.0;
 				PRODUCT_BUNDLE_IDENTIFIER = com.patbarlow.shoppinglist.mac;
 				SDKROOT = macosx;
 			};
@@ -786,15 +676,6 @@
 			buildConfigurations = (
 				2655ED467CB696A1A84F250D /* Debug */,
 				52D5C16811C7A722FC84BB2A /* Release */,
-			);
-			defaultConfigurationIsVisible = 0;
-			defaultConfigurationName = Debug;
-		};
-		43115C80404A71E5B8BA8710 /* Build configuration list for PBXNativeTarget "Shopping List Widget" */ = {
-			isa = XCConfigurationList;
-			buildConfigurations = (
-				04E419A55C6B87578D7B9E9D /* Debug */,
-				A8824634EC351A0F208B4B46 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

@@ -1,22 +1,19 @@
 import AppIntents
 import Foundation
 
-struct AddToShoppingListIntent: AppIntent {
-    static var title: LocalizedStringResource = "Add Items to Trolley"
-    static var description = IntentDescription("Add one or more items to your Trolley shopping list.")
+struct TrolleyAddIntent: AppIntent {
+    nonisolated(unsafe) static var title: LocalizedStringResource = "Add Items to Trolley"
+    nonisolated(unsafe) static var description = IntentDescription("Add one or more items to your Trolley shopping list.")
 
-    // Must be String. A custom type (like the app's ShoppingItem model) is only allowed
-    // here if it conforms to AppEntity/AppEnum — which ShoppingItem doesn't, and shouldn't.
-    // The intent only needs the spoken text, which parseItems splits into multiple items.
     @Parameter(title: "Item", description: "What to add — say multiple items with 'and' or commas")
-    var item: String
+    var item: ShoppingItemEntity
 
     static var parameterSummary: some ParameterSummary {
         Summary("Add \(\.$item) to Trolley")
     }
 
     func perform() async throws -> some IntentResult & ProvidesDialog {
-        let parsed = Self.parseItems(item)
+        let parsed = Self.parseItems(item.id)
         guard !parsed.isEmpty else {
             return .result(dialog: "I didn't catch any items to add.")
         }
@@ -29,7 +26,6 @@ struct AddToShoppingListIntent: AppIntent {
         let baseURL = defaults?.string(forKey: "sl_base_url")
                       ?? "https://shopping-list-api.pat-barlow.workers.dev"
 
-        // Fetch current list to detect duplicates
         var existingNames: Set<String> = []
         if let url = URL(string: "\(baseURL)/v1/items?household_id=\(householdId)") {
             var req = URLRequest(url: url)
@@ -90,7 +86,7 @@ struct AddToShoppingListIntent: AppIntent {
             .replacingOccurrences(of: " and ", with: ",", options: .caseInsensitive)
             .replacingOccurrences(of: " & ", with: ",")
             .components(separatedBy: ",")
-            .map    { $0.trimmingCharacters(in: .whitespaces) }
+            .map { $0.trimmingCharacters(in: .whitespaces) }
             .filter { !$0.isEmpty }
     }
 
@@ -108,4 +104,3 @@ private struct CurrentListResponse: Decodable {
     struct Item: Decodable { let name: String; let checked: Bool? }
     let items: [Item]
 }
-
