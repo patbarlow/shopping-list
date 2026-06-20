@@ -1,5 +1,6 @@
 import AppIntents
 import Foundation
+import ShoppingCore
 
 // MARK: - Add one or more items via Siri / Shortcuts / Action Button
 
@@ -19,11 +20,11 @@ struct AddToShoppingListIntent: AppIntent {
             return .result(dialog: "I didn't catch any items. Try saying something like \"milk, eggs and flour\".")
         }
 
-        guard let token       = UserDefaults.standard.string(forKey: "sl_token"),
-              let householdId = UserDefaults.standard.string(forKey: "sl_household_id") else {
+        guard let token       = UserDefaults.sharedGroup.string(forKey: "sl_token"),
+              let householdId = UserDefaults.sharedGroup.string(forKey: "sl_household_id") else {
             return .result(dialog: "Please open Shopping List and sign in first.")
         }
-        let baseURL = UserDefaults.standard.string(forKey: "sl_base_url")
+        let baseURL = UserDefaults.sharedGroup.string(forKey: "sl_base_url")
                       ?? APIService.defaultBaseURL
 
         var successes = [Bool](repeating: false, count: parsed.count)

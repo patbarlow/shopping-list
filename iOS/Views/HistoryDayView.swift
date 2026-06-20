@@ -1,4 +1,5 @@
 import SwiftUI
+import PhotosUI
 
 struct HistoryDayView: View {
     let householdId: String
@@ -9,6 +10,12 @@ struct HistoryDayView: View {
     @State private var items: [HistoryItem] = []
     @State private var isLoading = true
     @State private var errorMessage: String? = nil
+    @State private var showReceiptScanner = false
+    
+    // For Menu upload
+    @State private var selectedPhoto: PhotosPickerItem? = nil
+    @State private var showCamera = false
+    @State private var showFilePicker = false
 
     private var displayDate: String {
         let f = DateFormatter()
@@ -27,34 +34,43 @@ struct HistoryDayView: View {
     }
 
     var body: some View {
-        ScrollView {
-            LazyVStack(alignment: .leading, spacing: 10) {
-                if isLoading {
-                    ProgressView()
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 60)
-                } else if let err = errorMessage {
-                    Text(err)
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 60)
-                } else if items.isEmpty {
-                    Text("No items recorded for this day.")
-                        .foregroundStyle(.secondary)
-                        .frame(maxWidth: .infinity)
-                        .padding(.vertical, 60)
-                } else {
-                    ForEach(groupedItems, id: \.category) { group in
-                        categoryCard(group: group)
+        ZStack(alignment: .bottom) {
+            ScrollView {
+                LazyVStack(alignment: .leading, spacing: 10) {
+                    if isLoading {
+                        ProgressView()
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 60)
+                    } else if let err = errorMessage {
+                        Text(err)
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 60)
+                    } else if items.isEmpty {
+                        Text("No items recorded for this day.")
+                            .foregroundStyle(.secondary)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 60)
+                    } else {
+                        ForEach(groupedItems, id: \.category) { group in
+                            categoryCard(group: group)
+                        }
                     }
+                    Color.clear.frame(height: 100)
                 }
-                Color.clear.frame(height: 16)
+                .padding(.horizontal, 12)
+                .padding(.top, 8)
             }
-            .padding(.horizontal, 12)
-            .padding(.top, 8)
+            
+            // Upload Receipt Button (Replaces Add Item)
+            uploadButton
+                .padding(.bottom, 20)
         }
         .navigationTitle(displayDate)
         .navigationBarTitleDisplayMode(.inline)
+        .sheet(isPresented: $showReceiptScanner) {
+            ReceiptScannerView(householdId: householdId).environment(services)
+        }
         .task {
             do {
                 items = try await services.api.fetchHistoryDay(householdId: householdId, date: date)
@@ -62,6 +78,51 @@ struct HistoryDayView: View {
                 errorMessage = "Couldn't load items"
             }
             isLoading = false
+        }
+    }
+
+    private var uploadButton: some View {
+        Menu {
+            Button {
+                showCamera = true
+            } label: {
+                Label("Camera", systemImage: "camera")
+            }
+            
+            Button {
+                // Trigger photo picker
+            } label: {
+                PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                    Label("Photo Library", systemImage: "photo.on.rectangle")
+                }
+            }
+            
+            Button {
+                showFilePicker = true
+            } label: {
+                Label("Files (PDF)", systemImage: "doc.text")
+            }
+        } label: {
+            HStack(spacing: 12) {
+                Image(systemName: "doc.text.viewfinder")
+                    .font(.body.weight(.semibold))
+                Text("Upload Receipt")
+                    .font(.body.weight(.semibold))
+            }
+            .foregroundStyle(.white)
+            .padding(.horizontal, 24)
+            .padding(.vertical, 16)
+            .background(Color.accentColor, in: Capsule())
+            .shadow(color: .black.opacity(0.15), radius: 10, y: 5)
+        }
+        .onChange(of: selectedPhoto) { _, item in
+            if item != nil { showReceiptScanner = true }
+        }
+        .onChange(of: showCamera) { _, val in
+            if val { showReceiptScanner = true }
+        }
+        .onChange(of: showFilePicker) { _, val in
+            if val { showReceiptScanner = true }
         }
     }
 

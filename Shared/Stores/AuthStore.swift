@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import ShoppingCore
 
 @MainActor
 @Observable final class AuthStore {
@@ -22,7 +23,7 @@ import Observation
         self.api = api
         currentUser = api.currentUser
         isLoggedIn  = api.authToken != nil
-        household   = UserDefaults.standard.data(forKey: "sl_household")
+        household   = UserDefaults.sharedGroup.data(forKey: "sl_household")
             .flatMap { try? JSONDecoder().decode(Household.self, from: $0) }
     }
 
@@ -72,7 +73,7 @@ import Observation
         household = nil
         isLoggedIn = false
         step = .enterEmail
-        UserDefaults.standard.removeObject(forKey: "sl_household")
+        UserDefaults.sharedGroup.removeObject(forKey: "sl_household")
     }
 
     // MARK: - Household
@@ -115,6 +116,6 @@ import Observation
     }
 
     private func persistHousehold(_ h: Household) {
-        UserDefaults.standard.set(try? JSONEncoder().encode(h), forKey: "sl_household")
+        UserDefaults.sharedGroup.set(try? JSONEncoder().encode(h), forKey: "sl_household")
     }
 }

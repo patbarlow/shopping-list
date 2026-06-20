@@ -20,15 +20,22 @@ struct ReceiptScannerView: View {
     @State private var editableMatches: [EditableReceiptMatch] = []
     @State private var unmatchedItems: [ReceiptLineItemResponse] = []
     @State private var errorMessage: String? = nil
-    @State private var selectedPhoto: PhotosPickerItem? = nil
-    @State private var showCamera = false
-    @State private var showFilePicker = false
+    
+    // Shared state with caller or initial trigger
+    @State var selectedPhoto: PhotosPickerItem? = nil
+    @State var showCamera = false
+    @State var showFilePicker = false
 
     var body: some View {
         NavigationStack {
             Group {
                 switch phase {
-                case .capture:         captureView
+                case .capture:
+                    Color.clear.onAppear {
+                        if selectedPhoto == nil && !showCamera && !showFilePicker && services.pendingReceiptPDF == nil {
+                            dismiss() 
+                        }
+                    }
                 case .scanning:        loadingView("Reading receipt…")
                 case .review:          reviewView
                 case .confirming:      loadingView("Saving prices…")
@@ -72,10 +79,11 @@ struct ReceiptScannerView: View {
             }
         }
         .task {
-            // Auto-scan a PDF shared from another app (e.g. Woolworths Rewards)
             if let pdf = services.pendingReceiptPDF {
                 services.pendingReceiptPDF = nil
                 await handlePDF(pdf)
+            } else if let photo = selectedPhoto {
+                await handlePhotoSelection(photo)
             }
         }
     }
@@ -87,52 +95,6 @@ struct ReceiptScannerView: View {
         case .review:     return scanResult?.storeName ?? "Match Items"
         case .confirming: return "Saving…"
         case .done:       return "Done"
-        }
-    }
-
-    // MARK: - Capture
-
-    private var captureView: some View {
-        List {
-            Section {
-                VStack(alignment: .leading, spacing: 8) {
-                    Text("Photograph your receipt, or share a PDF receipt directly to this app from Woolworths Rewards.")
-                        .foregroundStyle(.secondary)
-                        .font(.footnote)
-                }
-                .padding(.vertical, 4)
-            }
-
-            Section {
-                Button {
-                    showCamera = true
-                } label: {
-                    Label("Take Photo", systemImage: "camera")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.borderedProminent)
-
-                PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                    Label("Choose from Library", systemImage: "photo.on.rectangle")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-
-                Button {
-                    showFilePicker = true
-                } label: {
-                    Label("Choose PDF File", systemImage: "doc.fill")
-                        .frame(maxWidth: .infinity)
-                }
-                .buttonStyle(.bordered)
-            }
-
-            if let error = errorMessage {
-                Section {
-                    Label(error, systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.red)
-                }
-            }
         }
     }
 
@@ -245,8 +207,6 @@ struct ReceiptScannerView: View {
         phase = .scanning
         errorMessage = nil
         do {
-            // Render PDF pages to a single JPEG image for Claude Vision.
-            // Most receipts are single-page, but we stitch multi-page ones vertically.
             guard let image = renderPDFToImage(pdfData) else {
                 phase = .capture; errorMessage = "Couldn't read that PDF."; return
             }
@@ -275,8 +235,6 @@ struct ReceiptScannerView: View {
             let bounds = page.bounds(for: .mediaBox)
             let pageSize = CGSize(width: bounds.width * scale, height: bounds.height * scale)
 
-            // UIGraphicsBeginImageContextWithOptions gives us a UIKit context (origin top-left).
-            // PDF draw expects origin bottom-left, so we apply a flip transform.
             UIGraphicsBeginImageContextWithOptions(pageSize, true, 1.0)
             defer { UIGraphicsEndImageContext() }
             guard let ctx = UIGraphicsGetCurrentContext() else { continue }
@@ -295,7 +253,6 @@ struct ReceiptScannerView: View {
         guard !images.isEmpty else { return nil }
         if images.count == 1 { return images[0] }
 
-        // Stitch pages vertically
         let totalHeight = images.reduce(0) { $0 + $1.size.height }
         let width = images.map(\.size.width).max() ?? 0
         UIGraphicsBeginImageContextWithOptions(CGSize(width: width, height: totalHeight), true, 1.0)

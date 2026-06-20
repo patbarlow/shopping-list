@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import ShoppingCore
 
 @MainActor
 @Observable final class ShoppingListStore {
@@ -38,7 +39,7 @@ import Observation
 
     var allKnownNames: [String] {
         let fromItems = items.map(\.name)
-        let fromHistory = (UserDefaults.standard.array(forKey: "item_name_history") as? [String]) ?? []
+        let fromHistory = (UserDefaults.sharedGroup.array(forKey: "item_name_history") as? [String]) ?? []
         var seen = Set<String>()
         var result: [String] = []
         for name in fromItems + fromHistory {
@@ -327,10 +328,10 @@ import Observation
     // MARK: - History
 
     private func recordInHistory(_ name: String) {
-        var history = (UserDefaults.standard.array(forKey: "item_name_history") as? [String]) ?? []
+        var history = (UserDefaults.sharedGroup.array(forKey: "item_name_history") as? [String]) ?? []
         history.removeAll { $0.lowercased() == name.lowercased() }
         history.insert(name, at: 0)
         if history.count > 100 { history = Array(history.prefix(100)) }
-        UserDefaults.standard.set(history, forKey: "item_name_history")
+        UserDefaults.sharedGroup.set(history, forKey: "item_name_history")
     }
 }

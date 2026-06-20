@@ -12,7 +12,6 @@ struct ShoppingListView: View {
     @State private var showSettings = false
     @State private var showRecipeImport = false
     @State private var showReceiptScanner = false
-    @State private var isSidebarOpen = false
     @State private var selectedHistoryDate: String? = nil
     @State private var historyDays: [HistoryDay] = []
 
@@ -45,6 +44,17 @@ struct ShoppingListView: View {
     @State private var swipeOffsets: [String: CGFloat] = [:]
     @State private var swipePassedThreshold: Set<String> = []
 
+    // ── Sidebar Interaction ───────────────────────────────────────────────────
+    @State private var isSidebarOpen = false
+    @State private var dragOffset: CGFloat = 0
+    private let sidebarWidth: CGFloat = 280
+
+    // Single source of truth for "how far open"
+    private var currentOffset: CGFloat {
+        let base = isSidebarOpen ? sidebarWidth : 0
+        return min(max(base + dragOffset, 0), sidebarWidth)
+    }
+
     private var store: ShoppingListStore { services.shopping }
 
     // Multi-item paste preview — shown when paste produces >1 item
@@ -67,6 +77,20 @@ struct ShoppingListView: View {
 
     var body: some View {
         ZStack(alignment: .leading) {
+            // 1. Stationary Sidebar (Underneath)
+            SidebarView(
+                household: household,
+                historyDays: historyDays,
+                selectedDate: $selectedHistoryDate,
+                isOpen: $isSidebarOpen,
+                showRecipeImport: $showRecipeImport,
+                showSettings: $showSettings
+            )
+            .frame(width: sidebarWidth)
+            .opacity(currentOffset > 0 ? 1 : 0)
+            .scaleEffect(0.95 + (0.05 * (currentOffset / sidebarWidth)))
+
+            // 2. Main Content Card
             NavigationStack {
                 Group {
                     if let date = selectedHistoryDate {
@@ -104,61 +128,77 @@ struct ShoppingListView: View {
                     ReceiptScannerView(householdId: household.id).environment(services)
                 }
             }
-            .task {
-                await store.load(householdId: household.id)
-                historyDays = (try? await services.api.fetchHistoryDays(householdId: household.id)) ?? []
+            .background(Color(.systemBackground))
+            .clipShape(RoundedRectangle(cornerRadius: (currentOffset > 0) ? 32 : 0))
+            .shadow(color: .black.opacity(currentOffset > 0 ? 0.15 : 0), radius: 20)
+            .offset(x: currentOffset)
+            .disabled(isSidebarOpen)
+            .overlay(alignment: .leading) {
+                if currentOffset > 0 {
+                    // Only cover the visible content strip to allow menu interaction
+                    Color.black.opacity(0.4 * (currentOffset / sidebarWidth))
+                        .frame(width: UIScreen.main.bounds.width - currentOffset)
+                        .offset(x: currentOffset)
+                        .contentShape(Rectangle())
+                        .onTapGesture {
+                            withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.85)) {
+                                isSidebarOpen = false
+                                dragOffset = 0
+                            }
+                        }
+                }
             }
-            .onChange(of: focusedField) { old, new in handleFocusChange(old: old, new: new) }
-            .onChange(of: addText) { old, new in
-                // iOS TextField strips newlines on paste — detect multiline pastes via clipboard
-                guard isAdding,
-                      new.count - old.count > 2,
-                      let clip = UIPasteboard.general.string,
-                      clip.contains("\n") else { return }
-                let items = Self.parseMultipleItems(clip)
-                guard items.count > 1 else { return }
-                addText = ""; addQty = ""; addNotes = ""
-                isAdding = false; focusedField = nil
-                for name in items { Task { await store.addItem(name: name) } }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .shoppingListQuickAdd)) { _ in
-                startAdding()
-            }
-            .onOpenURL { url in
-                if url.host == "quick-add" { startAdding() }
-            }
-            .onChange(of: services.pendingReceiptPDF) { _, pdf in
-                if pdf != nil { showReceiptScanner = true }
-            }
-            .onContinueUserActivity("com.patbarlow.shoppinglist.quickAdd") { _ in
-                startAdding()
-            }
-
-            // Sidebar scrim
-            if isSidebarOpen {
-                Color.black.opacity(0.4)
-                    .ignoresSafeArea()
-                    .onTapGesture {
-                        withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
-                            isSidebarOpen = false
+            .gesture(
+                DragGesture()
+                    .onChanged { value in
+                        // Only start from edge when closed; always allow when open
+                        if isSidebarOpen || value.startLocation.x < 50 {
+                            dragOffset = value.translation.width
                         }
                     }
-                    .transition(.opacity)
-            }
-
-            // Sidebar panel
-            SidebarView(
-                household: household,
-                historyDays: historyDays,
-                selectedDate: $selectedHistoryDate,
-                isOpen: $isSidebarOpen,
-                showRecipeImport: $showRecipeImport,
-                showSettings: $showSettings
+                    .onEnded { value in
+                        let predictedEnd = currentOffset 
+                            + value.predictedEndTranslation.width 
+                            - value.translation.width
+                        
+                        withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.85)) {
+                            isSidebarOpen = predictedEnd > sidebarWidth / 2
+                            dragOffset = 0
+                        }
+                    }
             )
-            .frame(width: 300)
-            .offset(x: isSidebarOpen ? 0 : -300)
         }
-        .animation(.spring(response: 0.35, dampingFraction: 0.85), value: isSidebarOpen)
+        .ignoresSafeArea(.container, edges: isSidebarOpen ? .all : [])
+        .task {
+            await store.load(householdId: household.id)
+            historyDays = (try? await services.api.fetchHistoryDays(householdId: household.id)) ?? []
+        }
+        .onChange(of: focusedField) { old, new in handleFocusChange(old: old, new: new) }
+        .onChange(of: addText) { old, new in
+            // iOS TextField strips newlines on paste — detect multiline pastes via clipboard
+            guard isAdding,
+                  new.count - old.count > 2,
+                  let clip = UIPasteboard.general.string,
+                  clip.contains("\n") else { return }
+            let items = Self.parseMultipleItems(clip)
+            guard items.count > 1 else { return }
+            addText = ""; addQty = ""; addNotes = ""
+            isAdding = false; focusedField = nil
+            for name in items { Task { await store.addItem(name: name) } }
+        }
+        .onReceive(NotificationCenter.default.publisher(for: .shoppingListQuickAdd)) { _ in
+            startAdding()
+        }
+        .onOpenURL { url in
+            if url.host == "quick-add" { startAdding() }
+        }
+        .onChange(of: services.pendingReceiptPDF) { _, pdf in
+            if pdf != nil { showReceiptScanner = true }
+        }
+        .onContinueUserActivity("com.patbarlow.shoppinglist.quickAdd") { _ in
+            startAdding()
+        }
+        .animation(.interactiveSpring(response: 0.35, dampingFraction: 0.85), value: isSidebarOpen)
     }
 
     // MARK: - Bottom Accessory
@@ -259,15 +299,6 @@ struct ShoppingListView: View {
                         Text("Add item…")
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
-                        Button {
-                            showReceiptScanner = true
-                        } label: {
-                            Image(systemName: "doc.text.viewfinder")
-                                .font(.body)
-                                .foregroundStyle(.secondary)
-                        }
-                        .buttonStyle(.plain)
-                        .padding(.trailing, 4)
                     }
                 }
                 .padding(.horizontal, 16)
@@ -538,7 +569,6 @@ struct ShoppingListView: View {
     // MARK: - Toolbar
 
     @ToolbarContentBuilder
-    @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigationBarLeading) {
             if selectedHistoryDate != nil {
@@ -556,16 +586,10 @@ struct ShoppingListView: View {
                 Button {
                     withAnimation(.spring(response: 0.35, dampingFraction: 0.85)) {
                         isSidebarOpen = true
+                        dragOffset = 0
                     }
                 } label: {
                     Image(systemName: "line.3.horizontal")
-                }
-            }
-        }
-        if selectedHistoryDate == nil {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button { showRecipeImport = true } label: {
-                    Image(systemName: "link")
                 }
             }
         }
@@ -603,86 +627,83 @@ struct ShoppingListView: View {
     private func isAddField(_ f: FocusField?) -> Bool {
         f == .newName || f == .newQty || f == .newNotes
     }
+
     private func isEditField(_ f: FocusField?) -> Bool {
         f == .editName || f == .editQty || f == .editNotes
     }
 
-    // MARK: - Add actions
+    // MARK: - Actions
 
     private func startAdding() {
-        commitCurrentEdit()
-        if isAdding { focusedField = .newName; return }
+        if let id = editingItemID, let item = store.items.first(where: { $0.id == id }) {
+            commitCurrentEdit()
+        }
+        guard !isAdding else {
+            focusedField = .newName
+            return
+        }
         addText = ""; addQty = ""; addNotes = ""
         isAdding = true
-        Task { @MainActor in focusedField = .newName }
+        // Small delay for keyboard animation sync
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
+            focusedField = .newName
+        }
     }
 
     private func commitAdd(refocus: Bool = true) {
         let trimmed = addText.trimmingCharacters(in: .whitespaces)
-        guard !trimmed.isEmpty else { cancelAdd(); return }
-        let items = Self.parseMultipleItems(trimmed)
-        addText = ""; addQty = ""; addNotes = ""
-        if items.count > 1 {
-            for name in items {
-                Task { await store.addItem(name: name) }
-            }
-        } else {
-            let (parsedName, parsedQty) = parseQtyName(trimmed)
-            let finalQty   = !addQty.trimmingCharacters(in: .whitespaces).isEmpty
-                                ? addQty.trimmingCharacters(in: .whitespaces)
-                                : parsedQty
-            let finalNotes = addNotes.trimmingCharacters(in: .whitespaces)
-            Task {
-                await store.addItem(
-                    name:     parsedName,
-                    quantity: finalQty.flatMap  { $0.isEmpty ? nil : $0 },
-                    notes:    finalNotes.isEmpty ? nil : finalNotes
-                )
-            }
+        guard !trimmed.isEmpty else {
+            if !refocus { cancelAdd() }
+            return
         }
+
+        isCommitting = true
+        let qty = addQty.trimmingCharacters(in: .whitespaces)
+        let note = addNotes.trimmingCharacters(in: .whitespaces)
+
+        addText = ""; addQty = ""; addNotes = ""
+
         if refocus {
-            isCommitting = true
-            focusLossTask?.cancel()
-            // handleFocusChange restores focus synchronously when isCommitting is true.
-            // Clear the flag after a brief window to let focus settle.
+            // Keep focus on name field for rapid entry
             Task { @MainActor in
-                try? await Task.sleep(nanoseconds: 200_000_000)
+                focusedField = .newName
                 isCommitting = false
             }
         } else {
             isAdding = false
+            focusedField = nil
+            isCommitting = false
+        }
+
+        Task {
+            await store.addItem(
+                name: trimmed,
+                quantity: qty.isEmpty ? nil : qty,
+                notes: note.isEmpty ? nil : note
+            )
         }
     }
 
     private func cancelAdd() {
-        focusLossTask?.cancel()
         addText = ""; addQty = ""; addNotes = ""
         isAdding = false
         focusedField = nil
     }
 
-    private func triggerComplete(_ item: ShoppingItem) {
-        guard !item.checked else { store.pendingToggle(item); return }
-        withAnimation(.easeIn(duration: 0.12)) { pendingCompleteIDs.insert(item.id) }
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
-            pendingCompleteIDs.remove(item.id)
-            store.pendingToggle(item)
-        }
-    }
-
-    // MARK: - Edit actions
-
     private func beginEditing(_ item: ShoppingItem) {
-        focusLossTask?.cancel()
-        let addTrimmed = addText.trimmingCharacters(in: .whitespaces)
         if isAdding {
-            if addTrimmed.isEmpty { cancelAdd() } else { commitAdd(refocus: false) }
+            let trimmed = addText.trimmingCharacters(in: .whitespaces)
+            if trimmed.isEmpty { cancelAdd() } else { commitAdd(refocus: false) }
         }
-        commitCurrentEdit()
+        if let currentID = editingItemID, currentID != item.id {
+            commitCurrentEdit()
+        }
+
         editingItemID = item.id
-        editName  = item.name
-        editQty   = item.quantity ?? ""
-        editNotes = item.notes    ?? ""
+        editName = item.name
+        editQty = item.quantity ?? ""
+        editNotes = item.notes ?? ""
+
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
             focusedField = .editName
         }
@@ -691,150 +712,78 @@ struct ShoppingListView: View {
     private func commitCurrentEdit() {
         guard let id = editingItemID,
               let item = store.items.first(where: { $0.id == id })
-        else { editingItemID = nil; return }
-        focusLossTask?.cancel()
-        let trimName  = editName.trimmingCharacters(in: .whitespaces)
-        let trimQty   = editQty.trimmingCharacters(in: .whitespaces)
-        let trimNotes = editNotes.trimmingCharacters(in: .whitespaces)
+        else {
+            editingItemID = nil
+            return
+        }
+
+        let name = editName.trimmingCharacters(in: .whitespaces)
+        let qty = editQty.trimmingCharacters(in: .whitespaces)
+        let note = editNotes.trimmingCharacters(in: .whitespaces)
+
         editingItemID = nil
-        guard !trimName.isEmpty else { return }
+        focusedField = nil
+
+        guard !name.isEmpty else { return }
+
         Task {
             await store.updateItem(
                 item,
-                name:     trimName,
-                quantity: trimQty.isEmpty   ? nil : trimQty,
-                notes:    trimNotes.isEmpty ? nil : trimNotes
+                name: name,
+                quantity: qty.isEmpty ? nil : qty,
+                notes: note.isEmpty ? nil : note
             )
         }
     }
 
-    // MARK: - Parsing helpers
-
-    /// Splits pasted text on newlines (preferred) or commas into individual item names.
-    /// Strips leading bullet characters and numbered-list prefixes from each line.
-    static func parseMultipleItems(_ raw: String) -> [String] {
-        let newlineItems = raw.components(separatedBy: .newlines)
-            .map { stripBulletPrefix($0) }
-            .filter { !$0.isEmpty }
-        if newlineItems.count > 1 { return newlineItems }
-        return raw
-            .replacingOccurrences(of: " and ", with: ",", options: .caseInsensitive)
-            .replacingOccurrences(of: " & ", with: ",")
-            .components(separatedBy: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-    }
-
-    private static func stripBulletPrefix(_ raw: String) -> String {
-        let t = raw.trimmingCharacters(in: .whitespaces)
-        let bullets = ["• ", "•", "- ", "* ", "– ", "— ", "◦ ", "▪ ", "▸ ", "► "]
-        for b in bullets where t.hasPrefix(b) {
-            return String(t.dropFirst(b.count)).trimmingCharacters(in: .whitespaces)
+    private func triggerComplete(_ item: ShoppingItem) {
+        withAnimation(.easeInOut(duration: 0.2)) {
+            pendingCompleteIDs.insert(item.id)
         }
-        // Numbered list: "1. " or "1) "
-        if let range = t.range(of: #"^\d+[.)]\s+"#, options: .regularExpression) {
-            return String(t[range.upperBound...]).trimmingCharacters(in: .whitespaces)
+        // Wait for a beat so the user sees the 'fill' before it moves
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.3) {
+            store.pendingToggle(item)
+            pendingCompleteIDs.remove(item.id)
         }
-        return t
-    }
-
-    /// "250ml olive oil" → (name: "Olive Oil", qty: "250ml")
-    private func parseQtyName(_ input: String) -> (name: String, qty: String?) {
-        let trimmed = input.trimmingCharacters(in: .whitespaces)
-        let pattern = #"^(\d+(?:[.,]\d+)?\s*(?:ml|g|kg|l|L|oz|lb|lbs|cups?|tbsp|tsp|x|packs?|bags?|tins?|bottles?|cans?|jars?|bunches?|heads?|loaves?|slices?|pieces?|dozen|half|litres?|liters?))\s+(.+)$"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
-              let match = regex.firstMatch(in: trimmed, range: NSRange(trimmed.startIndex..., in: trimmed)),
-              match.numberOfRanges == 3,
-              let qr = Range(match.range(at: 1), in: trimmed),
-              let nr = Range(match.range(at: 2), in: trimmed)
-        else { return (name: trimmed, qty: nil) }
-        let qty  = String(trimmed[qr]).trimmingCharacters(in: .whitespaces)
-        let name = String(trimmed[nr]).trimmingCharacters(in: .whitespaces)
-        return (name: name.prefix(1).uppercased() + name.dropFirst(), qty: qty)
     }
 
     private func swipeDeleteGesture(for item: ShoppingItem) -> some Gesture {
-        DragGesture(minimumDistance: 15)
-            .onChanged { v in
-                let dx = v.translation.width
-                guard dx < 0, abs(dx) > abs(v.translation.height) * 0.7 else { return }
-                guard editingItemID != item.id else { return }
-                for k in swipeOffsets.keys where k != item.id {
-                    withAnimation(.spring(response: 0.3)) {
-                        swipeOffsets.removeValue(forKey: k)
-                        swipePassedThreshold.remove(k)
+        DragGesture(minimumDistance: 20)
+            .onChanged { value in
+                let translation = value.translation.width
+                if translation < 0 {
+                    swipeOffsets[item.id] = translation
+                    if translation < -100 {
+                        swipePassedThreshold.insert(item.id)
+                    } else {
+                        swipePassedThreshold.remove(item.id)
                     }
                 }
-                // Rubber-band past 200pt; full red reached at 100pt (50% of range)
-                swipeOffsets[item.id] = dx < -200 ? -200 + (dx + 200) * 0.2 : dx
-
-                // Haptic when crossing the delete threshold at 100pt
-                let nowPast = (swipeOffsets[item.id] ?? 0) < -100
-                let wasPast = swipePassedThreshold.contains(item.id)
-                if nowPast != wasPast {
-                    UIImpactFeedbackGenerator(style: .medium).impactOccurred()
-                    if nowPast { swipePassedThreshold.insert(item.id) }
-                    else { swipePassedThreshold.remove(item.id) }
-                }
             }
-            .onEnded { _ in
-                if swipePassedThreshold.contains(item.id) {
-                    swipePassedThreshold.remove(item.id)
-                    withAnimation(.easeIn(duration: 0.18)) { swipeOffsets[item.id] = -400 }
+            .onEnded { value in
+                if value.translation.width < -100 {
+                    withAnimation(.spring()) {
+                        swipeOffsets[item.id] = -500
+                    }
                     Task {
-                        try? await Task.sleep(nanoseconds: 180_000_000)
+                        try? await Task.sleep(nanoseconds: 200_000_000)
                         await store.deleteItem(item)
                         swipeOffsets.removeValue(forKey: item.id)
                     }
                 } else {
-                    withAnimation(.spring(response: 0.4, dampingFraction: 0.75)) {
-                        swipeOffsets.removeValue(forKey: item.id)
+                    withAnimation(.spring()) {
+                        swipeOffsets[item.id] = 0
                     }
                 }
+                swipePassedThreshold.remove(item.id)
             }
     }
-}
 
-// MARK: - Item Row (kept for any future external use)
+    // MARK: - Helpers
 
-struct ItemRow: View {
-    let item: ShoppingItem
-    let isVisuallyComplete: Bool
-    let onCircleTap: () -> Void
-    let onRowTap: () -> Void
-
-    var body: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            HStack(alignment: .center, spacing: 10) {
-                Image(systemName: isVisuallyComplete ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isVisuallyComplete ? .green : Color(.systemGray3))
-                    .font(.body)
-                    .frame(width: 24, height: 24)
-                    .contentShape(Circle())
-                    .onTapGesture(perform: onCircleTap)
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(item.name)
-                        .foregroundStyle(isVisuallyComplete ? .secondary : .primary)
-                    if let qty = item.quantity, !qty.isEmpty {
-                        Text(qty)
-                            .font(.subheadline)
-                            .foregroundStyle(.tertiary)
-                    }
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-            }
-            if let notes = item.notes, !notes.isEmpty {
-                HStack(spacing: 10) {
-                    Color.clear.frame(width: 24)
-                    Text(notes)
-                        .font(.caption)
-                        .foregroundStyle(.tertiary)
-                        .lineLimit(2)
-                }
-            }
-        }
-        .contentShape(Rectangle())
-        .onTapGesture(perform: onRowTap)
-        .padding(.vertical, 1)
+    static func parseMultipleItems(_ text: String) -> [String] {
+        text.components(separatedBy: .newlines)
+            .map { $0.trimmingCharacters(in: .whitespaces) }
+            .filter { !$0.isEmpty }
     }
 }

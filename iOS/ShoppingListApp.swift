@@ -1,11 +1,13 @@
 import SwiftUI
 import Sentry
 import UniformTypeIdentifiers
+import ShoppingCore
 
 
 @main
 struct ShoppingListApp: App {
     init() {
+        ShoppingCore.migrateIfNeeded()
         SentrySDK.start { options in
             options.dsn = "https://4fbbe6fdbd49ab9139757d8b8a1de53f@o4511482336772096.ingest.us.sentry.io/4511482454933504"
 

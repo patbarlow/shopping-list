@@ -1,11 +1,12 @@
 import Foundation
+import ShoppingCore
 
 @MainActor
 final class APIService {
     static let defaultBaseURL = "https://shopping-list-api.pat-barlow.workers.dev"
 
     var baseURL: String {
-        UserDefaults.standard.string(forKey: "sl_base_url") ?? Self.defaultBaseURL
+        UserDefaults.sharedGroup.string(forKey: "sl_base_url") ?? Self.defaultBaseURL
     }
 
     private(set) var authToken: String?
@@ -15,8 +16,8 @@ final class APIService {
     private let decoder = JSONDecoder()
 
     init() {
-        authToken   = UserDefaults.standard.string(forKey: "sl_token")
-        currentUser = UserDefaults.standard.data(forKey: "sl_user")
+        authToken   = UserDefaults.sharedGroup.string(forKey: "sl_token")
+        currentUser = UserDefaults.sharedGroup.data(forKey: "sl_user")
             .flatMap { try? decoder.decode(User.self, from: $0) }
     }
 
@@ -44,7 +45,7 @@ final class APIService {
         authToken   = nil
         currentUser = nil
         ["sl_token", "sl_user", "sl_user_id", "sl_household_id"].forEach {
-            UserDefaults.standard.removeObject(forKey: $0)
+            UserDefaults.sharedGroup.removeObject(forKey: $0)
         }
     }
 
@@ -160,7 +161,7 @@ final class APIService {
             "/v1/households",
             body: ["name": name]
         )
-        UserDefaults.standard.set(response.household.id, forKey: "sl_household_id")
+        UserDefaults.sharedGroup.set(response.household.id, forKey: "sl_household_id")
         return response.household
     }
 
@@ -169,7 +170,7 @@ final class APIService {
             "/v1/households/join",
             body: ["invite_code": inviteCode.uppercased()]
         )
-        UserDefaults.standard.set(response.household.id, forKey: "sl_household_id")
+        UserDefaults.sharedGroup.set(response.household.id, forKey: "sl_household_id")
         return response.household
     }
 
@@ -179,7 +180,7 @@ final class APIService {
             query: [:]
         )
         if let h = response.household {
-            UserDefaults.standard.set(h.id, forKey: "sl_household_id")
+            UserDefaults.sharedGroup.set(h.id, forKey: "sl_household_id")
         }
         return response.household
     }
@@ -253,9 +254,9 @@ final class APIService {
     private func persist(token: String, user: User) {
         authToken   = token
         currentUser = user
-        UserDefaults.standard.set(token,             forKey: "sl_token")
-        UserDefaults.standard.set(user.id,           forKey: "sl_user_id")
-        UserDefaults.standard.set(try? JSONEncoder().encode(user), forKey: "sl_user")
+        UserDefaults.sharedGroup.set(token,             forKey: "sl_token")
+        UserDefaults.sharedGroup.set(user.id,           forKey: "sl_user_id")
+        UserDefaults.sharedGroup.set(try? JSONEncoder().encode(user), forKey: "sl_user")
     }
 }
 

@@ -21,7 +21,9 @@ struct RecipeImportView: View {
     @State private var sourceUrl: String? = nil
     @State private var errorMessage: String? = nil
     @State private var selectedPhoto: PhotosPickerItem? = nil
+    #if os(iOS)
     @State private var showCamera = false
+    #endif
     @FocusState private var focusedField: IngFocusField?
 
     private var store: ShoppingListStore { services.shopping }
@@ -39,9 +41,12 @@ struct RecipeImportView: View {
                 }
             }
             .navigationTitle(navTitle)
+            #if os(iOS)
             .navigationBarTitleDisplayMode(.inline)
+            #endif
             .toolbar { toolbarItems }
         }
+        #if os(iOS)
         .onChange(of: selectedPhoto) { _, item in
             guard let item else { return }
             Task { await handlePhotoSelection(item) }
@@ -52,6 +57,7 @@ struct RecipeImportView: View {
                 Task { await handleCapturedImage(image) }
             }
         }
+        #endif
     }
 
     private var navTitle: String {
@@ -76,9 +82,11 @@ struct RecipeImportView: View {
             Section {
                 VStack(alignment: .leading, spacing: 12) {
                     TextField("Paste a recipe URL", text: $urlText)
+                        #if os(iOS)
                         .keyboardType(.URL)
-                        .autocorrectionDisabled()
                         .textInputAutocapitalization(.never)
+                        #endif
+                        .autocorrectionDisabled()
                         .submitLabel(.go)
                         .onSubmit { parseURL() }
 
@@ -92,24 +100,26 @@ struct RecipeImportView: View {
                 .padding(.vertical, 4)
             }
 
-            Section {
-                HStack(spacing: 16) {
-                    PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                        Label("Photo Library", systemImage: "photo.on.rectangle")
-                            .frame(maxWidth: .infinity)
-                    }
-                    .buttonStyle(.bordered)
+                #if os(iOS)
+                Section {
+                    HStack(spacing: 16) {
+                        PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                            Label("Photo Library", systemImage: "photo.on.rectangle")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
 
-                    Button { showCamera = true } label: {
-                        Label("Camera", systemImage: "camera")
-                            .frame(maxWidth: .infinity)
+                        Button { showCamera = true } label: {
+                            Label("Camera", systemImage: "camera")
+                                .frame(maxWidth: .infinity)
+                        }
+                        .buttonStyle(.bordered)
                     }
-                    .buttonStyle(.bordered)
+                    .padding(.vertical, 4)
+                } header: {
+                    Text("Or scan a recipe")
                 }
-                .padding(.vertical, 4)
-            } header: {
-                Text("Or scan a recipe")
-            }
+                #endif
 
             if let error = errorMessage {
                 Section {
@@ -319,6 +329,7 @@ struct RecipeImportView: View {
         }
     }
 
+    #if os(iOS)
     private func handlePhotoSelection(_ item: PhotosPickerItem) async {
         phase = .loading("Reading recipe…")
         errorMessage = nil
@@ -352,6 +363,7 @@ struct RecipeImportView: View {
             errorMessage = "Couldn't read the recipe from that photo."
         }
     }
+    #endif
 
     private func applyParsedRecipe(_ result: ParsedRecipeResponse) {
         recipeName      = result.recipeName
@@ -401,8 +413,7 @@ struct RecipeImportView: View {
     }
 }
 
-// MARK: - Camera capture
-
+#if os(iOS)
 struct CameraCapture: UIViewControllerRepresentable {
     let onCapture: (UIImage) -> Void
 
@@ -444,3 +455,4 @@ extension UIImage {
         return resized.jpegData(compressionQuality: quality)
     }
 }
+#endif
