@@ -485,7 +485,7 @@ struct ProductPickerSheet: View {
                     Button {
                         onSelect(.create(name: searchText.trimmingCharacters(in: .whitespaces)))
                     } label: {
-                        Label("Add "\(searchText.trimmingCharacters(in: .whitespaces))"", systemImage: "plus.circle")
+                        Label("Add \"\(searchText.trimmingCharacters(in: .whitespaces))\"", systemImage: "plus.circle")
                             .foregroundStyle(.blue)
                     }
                 }
