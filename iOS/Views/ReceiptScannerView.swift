@@ -12,16 +12,21 @@ struct ReceiptScannerView: View {
         case scanning
         case review
         case confirming
-        case done(String)   // success message
+        case done(String)
     }
 
     @State private var phase: Phase = .capture
     @State private var scanResult: ReceiptScanResponse? = nil
     @State private var editableMatches: [EditableReceiptMatch] = []
-    @State private var unmatchedItems: [ReceiptLineItemResponse] = []
+    @State private var editableUnmatched: [EditableUnmatchedItem] = []
     @State private var errorMessage: String? = nil
-    
-    // Shared state with caller or initial trigger
+
+    // Product picker sheet state
+    @State private var showProductPicker = false
+    @State private var pickingForMatchId: String? = nil
+    @State private var pickingForUnmatchedId: String? = nil
+    @State private var productPickerQuery: String = ""
+
     @State var selectedPhoto: PhotosPickerItem? = nil
     @State var showCamera = false
     @State var showFilePicker = false
@@ -33,12 +38,12 @@ struct ReceiptScannerView: View {
                 case .capture:
                     Color.clear.onAppear {
                         if selectedPhoto == nil && !showCamera && !showFilePicker && services.pendingReceiptPDF == nil {
-                            dismiss() 
+                            dismiss()
                         }
                     }
                 case .scanning:        loadingView("Reading receipt…")
                 case .review:          reviewView
-                case .confirming:      loadingView("Saving prices…")
+                case .confirming:      loadingView("Saving…")
                 case .done(let msg):   doneView(msg)
                 }
             }
@@ -50,8 +55,7 @@ struct ReceiptScannerView: View {
                 }
                 if case .review = phase {
                     ToolbarItem(placement: .confirmationAction) {
-                        Button("Save") { confirmReceipt() }
-                            .bold()
+                        Button("Save") { confirmReceipt() }.bold()
                     }
                 }
             }
@@ -76,6 +80,12 @@ struct ReceiptScannerView: View {
             defer { url.stopAccessingSecurityScopedResource() }
             if let data = try? Data(contentsOf: url) {
                 Task { await handlePDF(data) }
+            }
+        }
+        .sheet(isPresented: $showProductPicker) {
+            ProductPickerSheet(householdId: householdId, initialQuery: productPickerQuery) { result in
+                applyPickerResult(result)
+                showProductPicker = false
             }
         }
         .task {
@@ -131,28 +141,19 @@ struct ReceiptScannerView: View {
                 } header: {
                     Text("Matched items")
                 } footer: {
-                    Text("Toggle off items you don't want to save prices for.")
+                    Text("Tap a product name to correct the match.")
                 }
             }
 
-            if !unmatchedItems.isEmpty {
+            if !editableUnmatched.isEmpty {
                 Section {
-                    ForEach(unmatchedItems) { item in
-                        HStack {
-                            Text(item.description)
-                                .foregroundStyle(.secondary)
-                            Spacer()
-                            if let price = item.totalPrice ?? item.unitPrice {
-                                Text(String(format: "$%.2f", price))
-                                    .foregroundStyle(.secondary)
-                                    .font(.footnote)
-                            }
-                        }
+                    ForEach($editableUnmatched) { $item in
+                        unmatchedRow(item: $item)
                     }
                 } header: {
-                    Text("Unmatched items")
+                    Text("Not on your list")
                 } footer: {
-                    Text("These receipt items couldn't be matched to recent purchases.")
+                    Text("Tap an item to track it.")
                 }
             }
         }
@@ -161,12 +162,32 @@ struct ReceiptScannerView: View {
     @ViewBuilder
     private func matchRow(match: Binding<EditableReceiptMatch>) -> some View {
         HStack(spacing: 12) {
-            Toggle("", isOn: match.isIncluded)
-                .labelsHidden()
+            Toggle("", isOn: match.isIncluded).labelsHidden()
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(match.wrappedValue.productName)
-                    .bold()
+                Button {
+                    pickingForMatchId = match.wrappedValue.id
+                    pickingForUnmatchedId = nil
+                    productPickerQuery = match.wrappedValue.receiptDescription
+                    showProductPicker = true
+                } label: {
+                    HStack(spacing: 4) {
+                        Text(match.wrappedValue.displayProductName)
+                            .bold()
+                            .foregroundStyle(.primary)
+                        if match.wrappedValue.correctedProductId != nil {
+                            Image(systemName: "pencil.circle.fill")
+                                .font(.caption)
+                                .foregroundStyle(.orange)
+                        } else {
+                            Image(systemName: "chevron.right")
+                                .font(.caption2)
+                                .foregroundStyle(.tertiary)
+                        }
+                    }
+                }
+                .buttonStyle(.plain)
+
                 Text(match.wrappedValue.receiptDescription)
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -175,8 +196,7 @@ struct ReceiptScannerView: View {
             Spacer()
 
             HStack(spacing: 2) {
-                Text("$")
-                    .foregroundStyle(.secondary)
+                Text("$").foregroundStyle(.secondary)
                 TextField("0.00", text: match.priceText)
                     .keyboardType(.decimalPad)
                     .multilineTextAlignment(.trailing)
@@ -186,6 +206,41 @@ struct ReceiptScannerView: View {
         .opacity(match.wrappedValue.isIncluded ? 1 : 0.4)
     }
 
+    @ViewBuilder
+    private func unmatchedRow(item: Binding<EditableUnmatchedItem>) -> some View {
+        Button {
+            pickingForUnmatchedId = item.wrappedValue.id
+            pickingForMatchId = nil
+            productPickerQuery = item.wrappedValue.description
+            showProductPicker = true
+        } label: {
+            HStack {
+                VStack(alignment: .leading, spacing: 2) {
+                    if let name = item.wrappedValue.resolution.resolvedName {
+                        Text(name).bold().foregroundStyle(.primary)
+                        Text(item.wrappedValue.description)
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    } else {
+                        Text(item.wrappedValue.description).foregroundStyle(.secondary)
+                    }
+                }
+                Spacer()
+                if let price = item.wrappedValue.totalPrice {
+                    Text(String(format: "$%.2f", price))
+                        .foregroundStyle(item.wrappedValue.resolution.isIgnore ? .secondary : .primary)
+                        .font(.footnote)
+                }
+                if !item.wrappedValue.resolution.isIgnore {
+                    Image(systemName: "checkmark.circle.fill")
+                        .foregroundStyle(.green)
+                        .font(.caption)
+                }
+            }
+        }
+        .buttonStyle(.plain)
+    }
+
     // MARK: - Done
 
     private func doneView(_ message: String) -> some View {
@@ -193,15 +248,39 @@ struct ReceiptScannerView: View {
             Image(systemName: "checkmark.circle.fill")
                 .font(.system(size: 56))
                 .foregroundStyle(.green)
-            Text(message)
-                .foregroundStyle(.secondary)
-            Button("Done") { dismiss() }
-                .buttonStyle(.borderedProminent)
+            Text(message).foregroundStyle(.secondary)
+            Button("Done") { dismiss() }.buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Actions
+    // MARK: - Picker result
+
+    private func applyPickerResult(_ result: ProductPickerResult) {
+        if let matchId = pickingForMatchId,
+           let idx = editableMatches.firstIndex(where: { $0.id == matchId }) {
+            switch result {
+            case .existing(let id, let name):
+                editableMatches[idx].correctedProductId = id
+                editableMatches[idx].correctedProductName = name
+            case .create(let name):
+                editableMatches[idx].correctedProductId = "__new__"
+                editableMatches[idx].correctedProductName = name
+            }
+        } else if let unmatchedId = pickingForUnmatchedId,
+                  let idx = editableUnmatched.firstIndex(where: { $0.id == unmatchedId }) {
+            switch result {
+            case .existing(let id, let name):
+                editableUnmatched[idx].resolution = .assignExisting(productId: id, name: name)
+            case .create(let name):
+                editableUnmatched[idx].resolution = .createNew(name: name)
+            }
+        }
+        pickingForMatchId = nil
+        pickingForUnmatchedId = nil
+    }
+
+    // MARK: - Image handling
 
     private func handlePDF(_ pdfData: Data) async {
         phase = .scanning
@@ -269,13 +348,8 @@ struct ReceiptScannerView: View {
             guard let data = try await item.loadTransferable(type: Data.self),
                   let image = UIImage(data: data),
                   let compressed = image.compressedForUpload()
-            else {
-                phase = .capture
-                errorMessage = "Couldn't load that photo."
-                return
-            }
-            let base64 = compressed.base64EncodedString()
-            let result = try await services.api.scanReceipt(householdId: householdId, imageBase64: base64)
+            else { phase = .capture; errorMessage = "Couldn't load that photo."; return }
+            let result = try await services.api.scanReceipt(householdId: householdId, imageBase64: compressed.base64EncodedString())
             applyResult(result)
         } catch {
             phase = .capture
@@ -290,8 +364,7 @@ struct ReceiptScannerView: View {
             guard let compressed = image.compressedForUpload() else {
                 phase = .capture; errorMessage = "Image error."; return
             }
-            let base64 = compressed.base64EncodedString()
-            let result = try await services.api.scanReceipt(householdId: householdId, imageBase64: base64)
+            let result = try await services.api.scanReceipt(householdId: householdId, imageBase64: compressed.base64EncodedString())
             applyResult(result)
         } catch {
             phase = .capture
@@ -300,22 +373,59 @@ struct ReceiptScannerView: View {
     }
 
     private func applyResult(_ result: ReceiptScanResponse) {
-        scanResult     = result
+        scanResult = result
         editableMatches = result.matches.map { EditableReceiptMatch(from: $0) }
-        unmatchedItems  = result.unmatched
-        phase           = .review
+        editableUnmatched = result.unmatched.enumerated().map { i, item in
+            EditableUnmatchedItem(
+                id: "\(i)-\(item.description)",
+                description: item.description,
+                totalPrice: item.totalPrice ?? item.unitPrice
+            )
+        }
+        phase = .review
     }
+
+    // MARK: - Confirm
 
     private func confirmReceipt() {
         guard case .review = phase, let result = scanResult else { return }
         phase = .confirming
 
         let confirmedMatches: [[String: Any]] = editableMatches
-            .filter { $0.isIncluded }
+            .filter { $0.isIncluded && $0.correctedProductId == nil }
             .compactMap { match in
                 guard let price = Double(match.priceText.replacingOccurrences(of: ",", with: ".")) else { return nil }
-                return ["purchase_history_id": match.purchaseHistoryId, "price_paid": price]
+                return [
+                    "purchase_history_id": match.purchaseHistoryId,
+                    "price_paid": price,
+                    "receipt_description": match.receiptDescription,
+                    "product_id": match.productId,
+                ]
             }
+
+        let corrections: [[String: Any]] = editableMatches
+            .filter { $0.isIncluded && $0.correctedProductId != nil }
+            .compactMap { match in
+                guard let price = Double(match.priceText.replacingOccurrences(of: ",", with: ".")),
+                      let correctedId = match.correctedProductId,
+                      let correctedName = match.correctedProductName else { return nil }
+                if correctedId == "__new__" {
+                    return ["receipt_description": match.receiptDescription, "new_product_name": correctedName, "price_paid": price]
+                } else {
+                    return ["receipt_description": match.receiptDescription, "product_id": correctedId, "price_paid": price]
+                }
+            }
+
+        let unplanned: [[String: Any]] = editableUnmatched.compactMap { item in
+            let price = item.totalPrice ?? 0
+            switch item.resolution {
+            case .ignore: return nil
+            case .assignExisting(let id, _):
+                return ["receipt_description": item.description, "product_id": id, "price_paid": price]
+            case .createNew(let name):
+                return ["receipt_description": item.description, "new_product_name": name, "price_paid": price]
+            }
+        }
 
         Task {
             do {
@@ -323,13 +433,83 @@ struct ReceiptScannerView: View {
                     householdId: householdId,
                     storeName: result.storeName,
                     totalAmount: result.totalAmount,
-                    matches: confirmedMatches
+                    receiptDate: result.receiptDate,
+                    matches: confirmedMatches,
+                    corrections: corrections,
+                    unplanned: unplanned
                 )
-                let savedCount = confirmedMatches.count
-                phase = .done("Saved prices for \(savedCount) item\(savedCount == 1 ? "" : "s").")
+                let savedCount = confirmedMatches.count + corrections.count + unplanned.count
+                phase = .done("Tracked \(savedCount) item\(savedCount == 1 ? "" : "s").")
             } catch {
                 phase = .review
                 errorMessage = error.localizedDescription
+            }
+        }
+    }
+}
+
+// MARK: - Product Picker Sheet
+
+struct ProductPickerSheet: View {
+    let householdId: String
+    let initialQuery: String
+    let onSelect: (ProductPickerResult) -> Void
+
+    @Environment(AppServices.self) private var services
+    @Environment(\.dismiss) private var dismiss
+    @State private var searchText: String = ""
+    @State private var results: [ProductSearchResult] = []
+    @State private var isLoading = false
+    @State private var searchTask: Task<Void, Never>? = nil
+
+    var body: some View {
+        NavigationStack {
+            List {
+                if isLoading {
+                    HStack { Spacer(); ProgressView(); Spacer() }
+                }
+                ForEach(results) { product in
+                    Button {
+                        onSelect(.existing(id: product.id, name: product.name))
+                    } label: {
+                        VStack(alignment: .leading, spacing: 2) {
+                            Text(product.name)
+                            Text(product.category)
+                                .font(.caption)
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    .buttonStyle(.plain)
+                }
+                if !searchText.trimmingCharacters(in: .whitespaces).isEmpty {
+                    Button {
+                        onSelect(.create(name: searchText.trimmingCharacters(in: .whitespaces)))
+                    } label: {
+                        Label("Add "\(searchText.trimmingCharacters(in: .whitespaces))"", systemImage: "plus.circle")
+                            .foregroundStyle(.blue)
+                    }
+                }
+            }
+            .searchable(text: $searchText, prompt: "Search products")
+            .navigationTitle("Choose Product")
+            .navigationBarTitleDisplayMode(.inline)
+            .toolbar {
+                ToolbarItem(placement: .cancellationAction) {
+                    Button("Cancel") { dismiss() }
+                }
+            }
+        }
+        .onAppear { searchText = initialQuery }
+        .onChange(of: searchText) { _, query in
+            searchTask?.cancel()
+            searchTask = Task {
+                try? await Task.sleep(for: .milliseconds(200))
+                guard !Task.isCancelled else { return }
+                isLoading = true
+                let found = (try? await services.api.searchProducts(householdId: householdId, query: query)) ?? []
+                guard !Task.isCancelled else { isLoading = false; return }
+                results = found
+                isLoading = false
             }
         }
     }

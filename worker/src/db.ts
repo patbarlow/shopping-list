@@ -54,6 +54,7 @@ export interface PurchaseHistory {
   purchased_at: string;
   price_paid: number | null;
   currency: string | null;
+  source: string | null;
 }
 
 export interface Recipe {
@@ -78,8 +79,35 @@ export interface Receipt {
   id: string;
   household_id: string;
   scanned_at: string;
+  receipt_date: string | null;
   store_name: string | null;
   total_amount: number | null;
+  currency: string | null;
+}
+
+export interface ProductAlias {
+  id: string;
+  household_id: string;
+  raw_description: string;
+  product_id: string;
+  match_count: number;
+  last_seen_at: string;
+  created_at: string;
+}
+
+export interface ReceiptLineItem {
+  id: string;
+  receipt_id: string;
+  household_id: string;
+  raw_description: string;
+  quantity: number | null;
+  unit_price: number | null;
+  total_price: number | null;
+  product_id: string | null;
+  match_source: string | null;
+  confirmed: number;
+  purchase_history_id: string | null;
+  created_at: string;
 }
 
 export interface PublicUser {

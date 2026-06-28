@@ -194,15 +194,17 @@ struct ReceiptScanResponse: Decodable {
 }
 
 struct ReceiptMatchResponse: Decodable, Identifiable {
-    var id: String { purchaseHistoryId }
+    var id: String { receiptItem.description }
     let receiptItem: ReceiptLineItemResponse
     let purchaseHistoryId: String
+    let productId: String
     let productName: String
 
     enum CodingKeys: String, CodingKey {
-        case receiptItem      = "receipt_item"
+        case receiptItem       = "receipt_item"
         case purchaseHistoryId = "purchase_history_id"
-        case productName      = "product_name"
+        case productId         = "product_id"
+        case productName       = "product_name"
     }
 }
 
@@ -222,19 +224,68 @@ struct ReceiptLineItemResponse: Decodable, Identifiable {
 
 // Mutable working copy for the receipt review screen
 struct EditableReceiptMatch: Identifiable {
-    let id: String
+    var id: String { receiptDescription }
     let receiptDescription: String
     let productName: String
+    let productId: String
     let purchaseHistoryId: String
     var priceText: String
     var isIncluded: Bool = true
+    var correctedProductId: String?
+    var correctedProductName: String?
+
+    var displayProductName: String { correctedProductName ?? productName }
 
     init(from response: ReceiptMatchResponse) {
-        self.id                 = response.purchaseHistoryId
         self.receiptDescription = response.receiptItem.description
         self.productName        = response.productName
+        self.productId          = response.productId
         self.purchaseHistoryId  = response.purchaseHistoryId
         let price = response.receiptItem.totalPrice ?? response.receiptItem.unitPrice
         self.priceText          = price.map { String(format: "%.2f", $0) } ?? ""
     }
+}
+
+// Unmatched item that the user can optionally assign to a product
+enum UnmatchedResolution {
+    case ignore
+    case assignExisting(productId: String, name: String)
+    case createNew(name: String)
+
+    var isIgnore: Bool {
+        if case .ignore = self { return true }
+        return false
+    }
+
+    var resolvedName: String? {
+        switch self {
+        case .ignore: return nil
+        case .assignExisting(_, let name): return name
+        case .createNew(let name): return name
+        }
+    }
+}
+
+struct EditableUnmatchedItem: Identifiable {
+    let id: String
+    let description: String
+    let totalPrice: Double?
+    var resolution: UnmatchedResolution = .ignore
+}
+
+// Product search result for the picker sheet
+struct ProductSearchResult: Decodable, Identifiable {
+    let id: String
+    let name: String
+    let category: String
+}
+
+struct ProductSearchResponse: Decodable {
+    let products: [ProductSearchResult]
+}
+
+// Result of a product picker selection
+enum ProductPickerResult {
+    case existing(id: String, name: String)
+    case create(name: String)
 }
