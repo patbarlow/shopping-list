@@ -35,12 +35,7 @@ struct ReceiptScannerView: View {
         NavigationStack {
             Group {
                 switch phase {
-                case .capture:
-                    Color.clear.onAppear {
-                        if selectedPhoto == nil && !showCamera && !showFilePicker && services.pendingReceiptPDF == nil {
-                            dismiss()
-                        }
-                    }
+                case .capture:         captureView
                 case .scanning:        loadingView("Reading receipt…")
                 case .review:          reviewView
                 case .confirming:      loadingView("Saving…")
@@ -92,8 +87,6 @@ struct ReceiptScannerView: View {
             if let pdf = services.pendingReceiptPDF {
                 services.pendingReceiptPDF = nil
                 await handlePDF(pdf)
-            } else if let photo = selectedPhoto {
-                await handlePhotoSelection(photo)
             }
         }
     }
@@ -105,6 +98,43 @@ struct ReceiptScannerView: View {
         case .review:     return scanResult?.storeName ?? "Match Items"
         case .confirming: return "Saving…"
         case .done:       return "Done"
+        }
+    }
+
+    // MARK: - Capture (source selection)
+
+    private var captureView: some View {
+        List {
+            Section {
+                Button {
+                    showCamera = true
+                } label: {
+                    Label("Camera", systemImage: "camera")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+
+                PhotosPicker(selection: $selectedPhoto, matching: .images) {
+                    Label("Photo Library", systemImage: "photo.on.rectangle")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+                .buttonStyle(.borderless)
+
+                Button {
+                    showFilePicker = true
+                } label: {
+                    Label("Files (PDF)", systemImage: "doc.text")
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                }
+            } header: {
+                Text("Choose a source")
+            }
+
+            if let error = errorMessage {
+                Section {
+                    Label(error, systemImage: "exclamationmark.triangle")
+                        .foregroundStyle(.red)
+                }
+            }
         }
     }
 
