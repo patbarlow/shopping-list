@@ -31,7 +31,7 @@ public struct RecipeImportView: View {
     private var includedCount: Int { ingredients.filter(\.isIncluded).count }
     private var servingsFactor: Double { Double(currentServings) / Double(max(defaultServings, 1)) }
 
-    var body: some View {
+    public var body: some View {
         NavigationStack {
             Group {
                 switch phase {
