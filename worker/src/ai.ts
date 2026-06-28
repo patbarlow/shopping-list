@@ -427,9 +427,9 @@ export async function matchReceiptItems(
       {
         role: "user",
         content:
-          `Match each receipt item to the most likely product from the recently purchased list.\n` +
+          `Match each receipt item to the most likely product. The product list is ordered by how recently each was purchased — prefer earlier entries when there is ambiguity.\n` +
           `Receipt items:\n${receiptList}\n\n` +
-          `Recently purchased products:\n${productList}\n\n` +
+          `Products (most recent first):\n${productList}\n\n` +
           `Reply with ONLY a JSON object where each key is a receipt item description and the value is\n` +
           `the exact matching product name, or null if there is no clear match.\n` +
           `Example: {"Full Cream Milk 2L": "milk", "Woolworths Greek Yoghurt": "greek yoghurt"}`,
