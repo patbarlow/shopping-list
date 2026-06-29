@@ -182,95 +182,70 @@ struct ReceiptScanResponse: Decodable {
     let storeName: String?
     let totalAmount: Double?
     let receiptDate: String?
-    let matches: [ReceiptMatchResponse]
-    let unmatched: [ReceiptLineItemResponse]
+    let items: [ReceiptScanItem]
 
     enum CodingKeys: String, CodingKey {
-        case storeName    = "store_name"
-        case totalAmount  = "total_amount"
-        case receiptDate  = "receipt_date"
-        case matches, unmatched
+        case storeName   = "store_name"
+        case totalAmount = "total_amount"
+        case receiptDate = "receipt_date"
+        case items
     }
 }
 
-struct ReceiptMatchResponse: Decodable, Identifiable {
-    var id: String { receiptItem.description }
-    let receiptItem: ReceiptLineItemResponse
-    let purchaseHistoryId: String
-    let productId: String
-    let productName: String
-
-    enum CodingKeys: String, CodingKey {
-        case receiptItem       = "receipt_item"
-        case purchaseHistoryId = "purchase_history_id"
-        case productId         = "product_id"
-        case productName       = "product_name"
-    }
-}
-
-struct ReceiptLineItemResponse: Decodable, Identifiable {
+// One scanned line with its proposed action: link to an existing product, or create a new one.
+struct ReceiptScanItem: Decodable, Identifiable {
     var id: String { description }
     let description: String
     let quantity: Double?
     let unitPrice: Double?
     let totalPrice: Double?
+    let productId: String?        // non-nil → matched an existing product
+    let productName: String       // existing name, or a clean simple name for the new product
+    let isNew: Bool
+    let purchaseHistoryId: String? // non-nil → backfill this already-listed purchase
 
     enum CodingKeys: String, CodingKey {
         case description, quantity
-        case unitPrice  = "unit_price"
-        case totalPrice = "total_price"
+        case unitPrice          = "unit_price"
+        case totalPrice         = "total_price"
+        case productId          = "product_id"
+        case productName        = "product_name"
+        case isNew              = "is_new"
+        case purchaseHistoryId  = "purchase_history_id"
     }
 }
 
-// Mutable working copy for the receipt review screen
-struct EditableReceiptMatch: Identifiable {
-    var id: String { receiptDescription }
-    let receiptDescription: String
-    let productName: String
-    let productId: String
-    let purchaseHistoryId: String
-    var priceText: String
-    var isIncluded: Bool = true
-    var correctedProductId: String?
-    var correctedProductName: String?
-
-    var displayProductName: String { correctedProductName ?? productName }
-
-    init(from response: ReceiptMatchResponse) {
-        self.receiptDescription = response.receiptItem.description
-        self.productName        = response.productName
-        self.productId          = response.productId
-        self.purchaseHistoryId  = response.purchaseHistoryId
-        let price = response.receiptItem.totalPrice ?? response.receiptItem.unitPrice
-        self.priceText          = price.map { String(format: "%.2f", $0) } ?? ""
-    }
-}
-
-// Unmatched item that the user can optionally assign to a product
-enum UnmatchedResolution {
-    case ignore
-    case assignExisting(productId: String, name: String)
-    case createNew(name: String)
-
-    var isIgnore: Bool {
-        if case .ignore = self { return true }
-        return false
-    }
-
-    var resolvedName: String? {
-        switch self {
-        case .ignore: return nil
-        case .assignExisting(_, let name): return name
-        case .createNew(let name): return name
-        }
-    }
-}
-
-struct EditableUnmatchedItem: Identifiable {
+// Mutable working copy for the receipt review screen — one row per scanned line.
+struct EditableReceiptItem: Identifiable {
     let id: String
     let description: String
-    let totalPrice: Double?
-    var resolution: UnmatchedResolution = .ignore
+    let quantity: Double?
+    var priceText: String
+    var isIncluded: Bool = true
+
+    // Current resolution. productId == nil means "create a new product named productName".
+    var productId: String?
+    var productName: String
+    var isNew: Bool
+    var purchaseHistoryId: String?
+
+    init(from item: ReceiptScanItem) {
+        self.id                = item.description
+        self.description       = item.description
+        self.quantity          = item.quantity
+        let price              = item.totalPrice ?? item.unitPrice
+        self.priceText         = price.map { String(format: "%.2f", $0) } ?? ""
+        self.productId         = item.productId
+        self.productName       = item.productName
+        self.isNew             = item.isNew
+        self.purchaseHistoryId = item.purchaseHistoryId
+    }
+
+    var quantityText: String? {
+        guard let q = quantity, q != 1 else { return nil }
+        // Show whole numbers without a decimal, weights with up to 2 places.
+        return q == q.rounded() ? String(Int(q)) : String(format: "%g", q)
+    }
 }
 
 // Product search result for the picker sheet
