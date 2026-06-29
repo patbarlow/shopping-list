@@ -65,11 +65,15 @@ struct HistoryDayView: View {
         .sheet(isPresented: $showReceiptScanner) {
             ReceiptScannerView(householdId: householdId).environment(services)
         }
-        .task {
+        // Keyed on `date` so switching days reloads — a plain .task does not re-run
+        // when only the date value changes and the view instance is reused.
+        .task(id: date) {
+            isLoading = true
+            errorMessage = nil
             do {
                 items = try await services.api.fetchHistoryDay(householdId: householdId, date: date)
             } catch {
-                errorMessage = "Couldn't load items"
+                if !Task.isCancelled { errorMessage = "Couldn't load items" }
             }
             isLoading = false
         }

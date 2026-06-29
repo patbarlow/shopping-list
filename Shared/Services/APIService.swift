@@ -133,6 +133,12 @@ final class APIService {
         return try await post("/v1/receipts/scan", body: body)
     }
 
+    /// Parse a digital receipt from its extracted text layer (PDF). More accurate than image OCR.
+    func scanReceipt(householdId: String, receiptText: String) async throws -> ReceiptScanResponse {
+        let body: [String: Any] = ["household_id": householdId, "receipt_text": receiptText]
+        return try await post("/v1/receipts/scan", body: body)
+    }
+
     func confirmReceipt(
         householdId: String,
         storeName: String?,
@@ -171,6 +177,20 @@ final class APIService {
             query: ["household_id": householdId]
         )
         return response.items
+    }
+
+    // MARK: - Product insights
+
+    func fetchProductInsights(householdId: String) async throws -> [ProductInsight] {
+        let response: ProductInsightsResponse = try await get(
+            "/v1/insights/products",
+            query: ["household_id": householdId]
+        )
+        return response.products
+    }
+
+    func fetchProductInsight(householdId: String, productId: String) async throws -> ProductInsightDetail {
+        try await get("/v1/insights/products/\(productId)", query: ["household_id": householdId])
     }
 
     // MARK: - Households

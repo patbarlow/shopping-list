@@ -6,6 +6,7 @@ struct SidebarView: View {
     @Binding var selectedDate: String?
     @Binding var isOpen: Bool
     @Binding var showSettings: Bool
+    @Binding var showInsights: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -26,7 +27,12 @@ struct SidebarView: View {
                     }
                 }
 
-                navRow(icon: "chart.bar.fill", label: "Insights", isActive: false, isDisabled: true) {}
+                navRow(icon: "chart.bar.fill", label: "Products", isActive: false) {
+                    withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.85)) {
+                        isOpen = false
+                    }
+                    showInsights = true
+                }
             }
             .padding(.horizontal, 12)
 

@@ -34,7 +34,7 @@ struct ReceiptScannerView: View {
             Group {
                 switch phase {
                 case .capture:         captureView
-                case .scanning:        loadingView("Reading receipt…")
+                case .scanning:        ScanningProgressView()
                 case .review:          reviewView
                 case .confirming:      loadingView("Saving…")
                 case .done(let msg):   doneView(msg)
@@ -183,29 +183,40 @@ struct ReceiptScannerView: View {
         HStack(spacing: 12) {
             Toggle("", isOn: item.isIncluded).labelsHidden()
 
-            VStack(alignment: .leading, spacing: 2) {
-                Button {
-                    pickingForItemId = item.wrappedValue.id
-                    productPickerQuery = item.wrappedValue.productName
-                    showProductPicker = true
-                } label: {
-                    HStack(spacing: 4) {
+            VStack(alignment: .leading, spacing: 3) {
+                HStack(spacing: 6) {
+                    if item.wrappedValue.productId == nil {
+                        // New product: name is editable inline.
+                        TextField("Product name", text: item.productName)
+                            .font(.body.bold())
+                            .textInputAutocapitalization(.words)
+                        Text("NEW")
+                            .font(.caption2).bold()
+                            .padding(.horizontal, 5).padding(.vertical, 1)
+                            .background(.green.opacity(0.18), in: Capsule())
+                            .foregroundStyle(.green)
+                    } else {
+                        // Linked to an existing product.
                         Text(item.wrappedValue.productName)
-                            .bold()
+                            .font(.body.bold())
                             .foregroundStyle(.primary)
-                        if item.wrappedValue.productId == nil {
-                            Text("NEW")
-                                .font(.caption2).bold()
-                                .padding(.horizontal, 5).padding(.vertical, 1)
-                                .background(.green.opacity(0.18), in: Capsule())
-                                .foregroundStyle(.green)
-                        }
-                        Image(systemName: "chevron.right")
+                        Image(systemName: "link")
                             .font(.caption2)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.blue)
                     }
+
+                    // Search / relink to a different (or existing) product.
+                    Button {
+                        pickingForItemId = item.wrappedValue.id
+                        productPickerQuery = item.wrappedValue.productName
+                        showProductPicker = true
+                    } label: {
+                        Image(systemName: "magnifyingglass")
+                            .font(.caption)
+                            .foregroundStyle(.secondary)
+                    }
+                    .buttonStyle(.borderless)
                 }
-                .buttonStyle(.plain)
 
                 HStack(spacing: 4) {
                     if let qty = item.wrappedValue.quantityText {
@@ -217,14 +228,14 @@ struct ReceiptScannerView: View {
                 }
             }
 
-            Spacer()
+            Spacer(minLength: 4)
 
             HStack(spacing: 2) {
                 Text("$").foregroundStyle(.secondary)
                 TextField("0.00", text: item.priceText)
                     .keyboardType(.decimalPad)
                     .multilineTextAlignment(.trailing)
-                    .frame(width: 60)
+                    .frame(width: 56)
             }
         }
         .opacity(item.wrappedValue.isIncluded ? 1 : 0.4)
@@ -273,6 +284,13 @@ struct ReceiptScannerView: View {
         phase = .scanning
         errorMessage = nil
         do {
+            // Digital eReceipts carry a real text layer — parse that for accuracy.
+            // Only fall back to rasterising + image OCR when the text is missing or garbled.
+            if let text = extractReceiptText(pdfData) {
+                let result = try await services.api.scanReceipt(householdId: householdId, receiptText: text)
+                applyResult(result)
+                return
+            }
             guard let image = renderPDFToImage(pdfData) else {
                 phase = .capture; errorMessage = "Couldn't read that PDF."; return
             }
@@ -288,6 +306,27 @@ struct ReceiptScannerView: View {
             phase = .capture
             errorMessage = "Couldn't read that receipt."
         }
+    }
+
+    /// Pull the embedded text layer from a PDF, returning it only if it looks like
+    /// genuine receipt text (enough readable characters and at least one price/number).
+    private func extractReceiptText(_ data: Data) -> String? {
+        guard let doc = PDFDocument(data: data) else { return nil }
+        var text = ""
+        for i in 0 ..< doc.pageCount {
+            if let s = doc.page(at: i)?.string { text += s + "\n" }
+        }
+        let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard trimmed.count >= 40, trimmed.rangeOfCharacter(from: .decimalDigits) != nil else { return nil }
+
+        // Guard against CID/garbled extraction: require a high ratio of readable characters.
+        let readableSet = CharacterSet.alphanumerics
+            .union(.punctuationCharacters)
+            .union(.whitespacesAndNewlines)
+            .union(CharacterSet(charactersIn: "$€£¢"))
+        let readable = trimmed.unicodeScalars.filter { readableSet.contains($0) }.count
+        guard Double(readable) / Double(trimmed.unicodeScalars.count) >= 0.85 else { return nil }
+        return trimmed
     }
 
     private func renderPDFToImage(_ data: Data) -> UIImage? {
@@ -401,6 +440,64 @@ struct ReceiptScannerView: View {
             } catch {
                 phase = .review
                 errorMessage = error.localizedDescription
+            }
+        }
+    }
+}
+
+// MARK: - Scanning progress
+
+/// Animated, staged indicator shown while a receipt is being read & matched.
+/// The stages mirror the real pipeline; they advance on a timer since the work
+/// happens in a single server round-trip.
+private struct ScanningProgressView: View {
+    private struct Stage { let icon: String; let label: String }
+    private let stages: [Stage] = [
+        Stage(icon: "doc.text.viewfinder", label: "Reading the receipt…"),
+        Stage(icon: "list.bullet.rectangle", label: "Pulling out the items…"),
+        Stage(icon: "wand.and.stars", label: "Matching to your products…"),
+        Stage(icon: "sparkles", label: "Tidying up the names…"),
+    ]
+    @State private var index = 0
+
+    var body: some View {
+        VStack(spacing: 24) {
+            ZStack {
+                Circle()
+                    .fill(Color.accentColor.opacity(0.12))
+                    .frame(width: 96, height: 96)
+                Image(systemName: stages[index].icon)
+                    .font(.system(size: 38))
+                    .foregroundStyle(Color.accentColor)
+                    .contentTransition(.symbolEffect(.replace))
+                    .symbolEffect(.variableColor.iterative, options: .repeating)
+            }
+
+            Text(stages[index].label)
+                .font(.headline)
+                .foregroundStyle(.primary)
+                .contentTransition(.opacity)
+                .animation(.easeInOut, value: index)
+
+            HStack(spacing: 6) {
+                ForEach(stages.indices, id: \.self) { i in
+                    Capsule()
+                        .fill(i <= index ? Color.accentColor : Color.secondary.opacity(0.25))
+                        .frame(width: i == index ? 18 : 6, height: 6)
+                        .animation(.spring(duration: 0.3), value: index)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .task {
+            // Advance through the stages, easing off near the end so we don't claim
+            // completion before the response actually arrives.
+            while !Task.isCancelled {
+                let delay: Duration = index >= stages.count - 2 ? .milliseconds(1800) : .milliseconds(1100)
+                try? await Task.sleep(for: delay)
+                if Task.isCancelled { return }
+                if index < stages.count - 1 { withAnimation { index += 1 } }
+                else { return }
             }
         }
     }
