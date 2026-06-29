@@ -11,17 +11,21 @@ const ANTHROPIC_HEADERS = (key: string) => ({
 // Generic helpers
 // ---------------------------------------------------------------------------
 
+const HAIKU = "claude-haiku-4-5-20251001";
+const SONNET = "claude-sonnet-4-6"; // receipts: accuracy matters more than cost
+
 async function callClaude(
   env: Env,
   messages: { role: "user" | "assistant"; content: string | object[] }[],
   maxTokens: number,
+  model: string = HAIKU,
 ): Promise<string | null> {
   if (!env.ANTHROPIC_API_KEY) return null;
   try {
     const res = await fetch(ANTHROPIC_URL, {
       method: "POST",
       headers: ANTHROPIC_HEADERS(env.ANTHROPIC_API_KEY),
-      body: JSON.stringify({ model: "claude-haiku-4-5-20251001", max_tokens: maxTokens, messages }),
+      body: JSON.stringify({ model, max_tokens: maxTokens, messages }),
       signal: AbortSignal.timeout(30_000),
     });
     if (!res.ok) return null;
@@ -362,6 +366,51 @@ export interface ParsedReceipt {
   line_items: ReceiptLineItem[];
 }
 
+const RECEIPT_RULES =
+  `Return ONLY valid JSON:\n` +
+  `{"store_name":"...","total_amount":12.34,"receipt_date":"2026-06-20","line_items":[{"description":"...","quantity":1,"unit_price":2.50,"total_price":2.50}]}\n` +
+  `Rules:\n` +
+  `- Transcribe EXACTLY what is on the receipt. Never invent, guess, or "correct" a product, size, brand or price. If a value is unclear, use null — do NOT fill it in from what is typical.\n` +
+  `- "description" is the raw product text exactly as printed, including the size/volume if shown (e.g. "WW FUL CRM MILK 2L" stays 2L, not 3L).\n` +
+  `- "quantity" is the number of units (e.g. 2 for "2 @ $3.00"); use 1 for a single unit; for items sold by weight use the weight number (e.g. 0.65 for "0.65kg").\n` +
+  `- "unit_price" is the per-unit/per-kg price; "total_price" is what was actually charged for that line.\n` +
+  `- receipt_date must be ISO format (YYYY-MM-DD) or null.\n` +
+  `- EXCLUDE non-product rows: subtotal, total, tax/GST, rounding, change, tender/EFTPOS/cash, loyalty/points, savings, and store header/footer text.\n` +
+  `- A discount line that reduces the price of the item above it should be folded into that item's total_price, not listed separately.\n` +
+  `- Include EVERY product line that is actually printed, and ONLY lines that are actually printed.`;
+
+function parseReceiptJson(text: string): ParsedReceipt | null {
+  try {
+    const parsed = JSON.parse(text.replace(/```json\n?|```/g, "").trim()) as ParsedReceipt;
+    if (!parsed || !Array.isArray(parsed.line_items)) return null;
+    return parsed;
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Parse a digital receipt's extracted text layer. Far more accurate than OCR'ing
+ * a rasterised PDF — there is nothing to misread, so the model cannot invent items.
+ */
+export async function parseReceiptFromText(env: Env, receiptText: string): Promise<ParsedReceipt | null> {
+  const reply = await callClaude(
+    env,
+    [
+      {
+        role: "user",
+        content:
+          `This is the exact text extracted from a supermarket receipt. Extract every purchased product.\n` +
+          `${RECEIPT_RULES}\n\n` +
+          `Receipt text:\n${receiptText.slice(0, 12000)}`,
+      },
+    ],
+    3000,
+    SONNET,
+  );
+  return reply ? parseReceiptJson(reply) : null;
+}
+
 export async function parseReceiptFromImage(
   env: Env,
   imageBase64: string,
@@ -373,8 +422,8 @@ export async function parseReceiptFromImage(
       method: "POST",
       headers: ANTHROPIC_HEADERS(env.ANTHROPIC_API_KEY),
       body: JSON.stringify({
-        model: "claude-haiku-4-5-20251001",
-        max_tokens: 2000,
+        model: SONNET,
+        max_tokens: 3000,
         messages: [
           {
             role: "user",
@@ -385,17 +434,7 @@ export async function parseReceiptFromImage(
               },
               {
                 type: "text",
-                text:
-                  `Extract every purchased product from this supermarket receipt. Return ONLY valid JSON:\n` +
-                  `{"store_name":"...","total_amount":12.34,"receipt_date":"2026-06-20","line_items":[{"description":"...","quantity":1,"unit_price":2.50,"total_price":2.50}]}\n` +
-                  `Rules:\n` +
-                  `- "description" is the raw product text exactly as printed (keep the brand/abbreviations).\n` +
-                  `- "quantity" is the number of units (e.g. 2 for "2 @ $3.00"); use 1 if a single unit; for items sold by weight use the weight number (e.g. 0.65 for "0.65kg").\n` +
-                  `- "unit_price" is the per-unit/per-kg price; "total_price" is what was actually charged for that line.\n` +
-                  `- Use null only for a field you genuinely cannot read.\n` +
-                  `- receipt_date must be ISO format (YYYY-MM-DD) or null.\n` +
-                  `- EXCLUDE non-product rows: subtotal, total, tax/GST, rounding, change, tender/EFTPOS/cash, loyalty/points, savings, and store header/footer text.\n` +
-                  `- A discount line that reduces the price of the item above it should be folded into that item's total_price, not listed separately.`,
+                text: `Extract every purchased product from this supermarket receipt image.\n${RECEIPT_RULES}`,
               },
             ],
           },
@@ -406,7 +445,7 @@ export async function parseReceiptFromImage(
     if (!res.ok) return null;
     const json = await res.json<{ content?: { text?: string }[] }>();
     const text = (json.content?.[0]?.text ?? "").trim();
-    return JSON.parse(text.replace(/```json\n?|```/g, "").trim()) as ParsedReceipt;
+    return parseReceiptJson(text);
   } catch {
     return null;
   }

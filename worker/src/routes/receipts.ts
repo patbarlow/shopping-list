@@ -2,7 +2,7 @@ import { Hono } from "hono";
 import type { Env } from "../env";
 import { requireAuth, type AuthVariables } from "../middleware/auth";
 import { nowISO } from "../db";
-import { parseReceiptFromImage, resolveReceiptItems } from "../ai";
+import { parseReceiptFromImage, parseReceiptFromText, resolveReceiptItems } from "../ai";
 import { upsertProduct } from "./items";
 
 const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
@@ -87,13 +87,18 @@ app.get("/products", async (c) => {
 app.post("/scan", async (c) => {
   const user = c.var.user;
   const body = await c.req
-    .json<{ household_id?: string; image_base64?: string; media_type?: string }>()
+    .json<{ household_id?: string; image_base64?: string; media_type?: string; receipt_text?: string }>()
     .catch(() => ({} as Record<string, never>));
 
-  if (!body.household_id || !body.image_base64) return c.json({ error: "missing_fields" }, 400);
+  if (!body.household_id || (!body.image_base64 && !body.receipt_text?.trim())) {
+    return c.json({ error: "missing_fields" }, 400);
+  }
   if (!(await assertMember(c.env, body.household_id, user.id))) return c.json({ error: "forbidden" }, 403);
 
-  const receipt = await parseReceiptFromImage(c.env, body.image_base64, body.media_type);
+  // Prefer the PDF's text layer when present — nothing to misread, so no invented items.
+  const receipt = body.receipt_text?.trim()
+    ? await parseReceiptFromText(c.env, body.receipt_text)
+    : await parseReceiptFromImage(c.env, body.image_base64!, body.media_type);
   if (!receipt || receipt.line_items.length === 0) return c.json({ error: "could_not_parse" }, 422);
 
   const descriptions = receipt.line_items.map((i) => i.description);

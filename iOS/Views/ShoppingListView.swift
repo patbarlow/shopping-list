@@ -12,6 +12,7 @@ struct ShoppingListView: View {
     @State private var showSettings = false
     @State private var showRecipeHub = false
     @State private var showReceiptScanner = false
+    @State private var showInsights = false
     @State private var selectedHistoryDate: String? = nil
     @State private var historyDays: [HistoryDay] = []
 
@@ -98,7 +99,8 @@ struct ShoppingListView: View {
                 historyDays: historyDays,
                 selectedDate: $selectedHistoryDate,
                 isOpen: $isSidebarOpen,
-                showSettings: $showSettings
+                showSettings: $showSettings,
+                showInsights: $showInsights
             )
             .frame(width: sidebarWidth)
             .overlay(Color.black.opacity(0.4 * (1 - progress)))
@@ -139,6 +141,9 @@ struct ShoppingListView: View {
                 }
                 .sheet(isPresented: $showReceiptScanner) {
                     ReceiptScannerView(householdId: household.id).environment(services)
+                }
+                .sheet(isPresented: $showInsights) {
+                    ProductsListView(householdId: household.id).environment(services)
                 }
             }
             .background(Color(.systemBackground))
