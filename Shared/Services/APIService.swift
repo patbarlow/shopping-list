@@ -138,16 +138,12 @@ final class APIService {
         storeName: String?,
         totalAmount: Double?,
         receiptDate: String?,
-        matches: [[String: Any]],
-        corrections: [[String: Any]] = [],
-        unplanned: [[String: Any]] = []
+        items: [[String: Any]]
     ) async throws {
-        var body: [String: Any] = ["household_id": householdId, "matches": matches]
-        if let s = storeName   { body["store_name"]    = s }
-        if let t = totalAmount { body["total_amount"]  = t }
-        if let d = receiptDate { body["receipt_date"]  = d }
-        if !corrections.isEmpty { body["corrections"]  = corrections }
-        if !unplanned.isEmpty   { body["unplanned"]    = unplanned }
+        var body: [String: Any] = ["household_id": householdId, "items": items]
+        if let s = storeName   { body["store_name"]   = s }
+        if let t = totalAmount { body["total_amount"] = t }
+        if let d = receiptDate { body["receipt_date"] = d }
         let _: AnyDecodable = try await post("/v1/receipts/confirm", body: body)
     }
 

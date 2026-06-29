@@ -17,14 +17,12 @@ struct ReceiptScannerView: View {
 
     @State private var phase: Phase = .capture
     @State private var scanResult: ReceiptScanResponse? = nil
-    @State private var editableMatches: [EditableReceiptMatch] = []
-    @State private var editableUnmatched: [EditableUnmatchedItem] = []
+    @State private var editableItems: [EditableReceiptItem] = []
     @State private var errorMessage: String? = nil
 
     // Product picker sheet state
     @State private var showProductPicker = false
-    @State private var pickingForMatchId: String? = nil
-    @State private var pickingForUnmatchedId: String? = nil
+    @State private var pickingForItemId: String? = nil
     @State private var productPickerQuery: String = ""
 
     @State var selectedPhoto: PhotosPickerItem? = nil
@@ -150,6 +148,9 @@ struct ReceiptScannerView: View {
 
     // MARK: - Review
 
+    private var includedCount: Int { editableItems.filter(\.isIncluded).count }
+    private var newCount: Int { editableItems.filter { $0.isIncluded && $0.productId == nil }.count }
+
     private var reviewView: some View {
         List {
             if let result = scanResult, result.totalAmount != nil || result.storeName != nil {
@@ -163,112 +164,70 @@ struct ReceiptScannerView: View {
                 }
             }
 
-            if !editableMatches.isEmpty {
-                Section {
-                    ForEach($editableMatches) { $match in
-                        matchRow(match: $match)
-                    }
-                } header: {
-                    Text("Matched items")
-                } footer: {
-                    Text("Tap a product name to correct the match.")
+            Section {
+                ForEach($editableItems) { $item in
+                    itemRow(item: $item)
                 }
-            }
-
-            if !editableUnmatched.isEmpty {
-                Section {
-                    ForEach($editableUnmatched) { $item in
-                        unmatchedRow(item: $item)
-                    }
-                } header: {
-                    Text("Not on your list")
-                } footer: {
-                    Text("Tap an item to track it.")
-                }
+            } header: {
+                Text("^[\(includedCount) item](inflect: true)")
+            } footer: {
+                Text(newCount > 0
+                     ? "Tap a name to change the match. \(newCount) will be added as new products."
+                     : "Tap a name to link it to a different product.")
             }
         }
     }
 
     @ViewBuilder
-    private func matchRow(match: Binding<EditableReceiptMatch>) -> some View {
+    private func itemRow(item: Binding<EditableReceiptItem>) -> some View {
         HStack(spacing: 12) {
-            Toggle("", isOn: match.isIncluded).labelsHidden()
+            Toggle("", isOn: item.isIncluded).labelsHidden()
 
             VStack(alignment: .leading, spacing: 2) {
                 Button {
-                    pickingForMatchId = match.wrappedValue.id
-                    pickingForUnmatchedId = nil
-                    productPickerQuery = match.wrappedValue.receiptDescription
+                    pickingForItemId = item.wrappedValue.id
+                    productPickerQuery = item.wrappedValue.productName
                     showProductPicker = true
                 } label: {
                     HStack(spacing: 4) {
-                        Text(match.wrappedValue.displayProductName)
+                        Text(item.wrappedValue.productName)
                             .bold()
                             .foregroundStyle(.primary)
-                        if match.wrappedValue.correctedProductId != nil {
-                            Image(systemName: "pencil.circle.fill")
-                                .font(.caption)
-                                .foregroundStyle(.orange)
-                        } else {
-                            Image(systemName: "chevron.right")
-                                .font(.caption2)
-                                .foregroundStyle(.tertiary)
+                        if item.wrappedValue.productId == nil {
+                            Text("NEW")
+                                .font(.caption2).bold()
+                                .padding(.horizontal, 5).padding(.vertical, 1)
+                                .background(.green.opacity(0.18), in: Capsule())
+                                .foregroundStyle(.green)
                         }
+                        Image(systemName: "chevron.right")
+                            .font(.caption2)
+                            .foregroundStyle(.tertiary)
                     }
                 }
                 .buttonStyle(.plain)
 
-                Text(match.wrappedValue.receiptDescription)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                HStack(spacing: 4) {
+                    if let qty = item.wrappedValue.quantityText {
+                        Text("×\(qty)").font(.caption).foregroundStyle(.secondary)
+                    }
+                    Text(item.wrappedValue.description)
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
 
             Spacer()
 
             HStack(spacing: 2) {
                 Text("$").foregroundStyle(.secondary)
-                TextField("0.00", text: match.priceText)
+                TextField("0.00", text: item.priceText)
                     .keyboardType(.decimalPad)
                     .multilineTextAlignment(.trailing)
                     .frame(width: 60)
             }
         }
-        .opacity(match.wrappedValue.isIncluded ? 1 : 0.4)
-    }
-
-    @ViewBuilder
-    private func unmatchedRow(item: Binding<EditableUnmatchedItem>) -> some View {
-        Button {
-            pickingForUnmatchedId = item.wrappedValue.id
-            pickingForMatchId = nil
-            productPickerQuery = item.wrappedValue.description
-            showProductPicker = true
-        } label: {
-            HStack {
-                VStack(alignment: .leading, spacing: 2) {
-                    if let name = item.wrappedValue.resolution.resolvedName {
-                        Text(name).bold().foregroundStyle(.primary)
-                        Text(item.wrappedValue.description)
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    } else {
-                        Text(item.wrappedValue.description).foregroundStyle(.secondary)
-                    }
-                }
-                Spacer()
-                if let price = item.wrappedValue.totalPrice {
-                    Text(String(format: "$%.2f", price))
-                        .foregroundStyle(item.wrappedValue.resolution.isIgnore ? .secondary : .primary)
-                        .font(.footnote)
-                }
-                if !item.wrappedValue.resolution.isIgnore {
-                    Image(systemName: "checkmark.circle.fill")
-                        .foregroundStyle(.green)
-                        .font(.caption)
-                }
-            }
-        }
-        .buttonStyle(.plain)
+        .opacity(item.wrappedValue.isIncluded ? 1 : 0.4)
     }
 
     // MARK: - Done
@@ -287,27 +246,25 @@ struct ReceiptScannerView: View {
     // MARK: - Picker result
 
     private func applyPickerResult(_ result: ProductPickerResult) {
-        if let matchId = pickingForMatchId,
-           let idx = editableMatches.firstIndex(where: { $0.id == matchId }) {
-            switch result {
-            case .existing(let id, let name):
-                editableMatches[idx].correctedProductId = id
-                editableMatches[idx].correctedProductName = name
-            case .create(let name):
-                editableMatches[idx].correctedProductId = "__new__"
-                editableMatches[idx].correctedProductName = name
-            }
-        } else if let unmatchedId = pickingForUnmatchedId,
-                  let idx = editableUnmatched.firstIndex(where: { $0.id == unmatchedId }) {
-            switch result {
-            case .existing(let id, let name):
-                editableUnmatched[idx].resolution = .assignExisting(productId: id, name: name)
-            case .create(let name):
-                editableUnmatched[idx].resolution = .createNew(name: name)
-            }
+        guard let itemId = pickingForItemId,
+              let idx = editableItems.firstIndex(where: { $0.id == itemId }) else {
+            pickingForItemId = nil
+            return
         }
-        pickingForMatchId = nil
-        pickingForUnmatchedId = nil
+        switch result {
+        case .existing(let id, let name):
+            editableItems[idx].productId = id
+            editableItems[idx].productName = name
+            editableItems[idx].isNew = false
+        case .create(let name):
+            editableItems[idx].productId = nil
+            editableItems[idx].productName = name
+            editableItems[idx].isNew = true
+        }
+        // A manual choice no longer maps to the auto-detected list entry.
+        editableItems[idx].purchaseHistoryId = nil
+        editableItems[idx].isIncluded = true
+        pickingForItemId = nil
     }
 
     // MARK: - Image handling
@@ -404,14 +361,7 @@ struct ReceiptScannerView: View {
 
     private func applyResult(_ result: ReceiptScanResponse) {
         scanResult = result
-        editableMatches = result.matches.map { EditableReceiptMatch(from: $0) }
-        editableUnmatched = result.unmatched.enumerated().map { i, item in
-            EditableUnmatchedItem(
-                id: "\(i)-\(item.description)",
-                description: item.description,
-                totalPrice: item.totalPrice ?? item.unitPrice
-            )
-        }
+        editableItems = result.items.map { EditableReceiptItem(from: $0) }
         phase = .review
     }
 
@@ -421,41 +371,22 @@ struct ReceiptScannerView: View {
         guard case .review = phase, let result = scanResult else { return }
         phase = .confirming
 
-        let confirmedMatches: [[String: Any]] = editableMatches
-            .filter { $0.isIncluded && $0.correctedProductId == nil }
-            .compactMap { match in
-                guard let price = Double(match.priceText.replacingOccurrences(of: ",", with: ".")) else { return nil }
-                return [
-                    "purchase_history_id": match.purchaseHistoryId,
-                    "price_paid": price,
-                    "receipt_description": match.receiptDescription,
-                    "product_id": match.productId,
-                ]
-            }
-
-        let corrections: [[String: Any]] = editableMatches
-            .filter { $0.isIncluded && $0.correctedProductId != nil }
-            .compactMap { match in
-                guard let price = Double(match.priceText.replacingOccurrences(of: ",", with: ".")),
-                      let correctedId = match.correctedProductId,
-                      let correctedName = match.correctedProductName else { return nil }
-                if correctedId == "__new__" {
-                    return ["receipt_description": match.receiptDescription, "new_product_name": correctedName, "price_paid": price]
+        let items: [[String: Any]] = editableItems
+            .filter(\.isIncluded)
+            .map { item in
+                var dict: [String: Any] = ["receipt_description": item.description]
+                if let id = item.productId {
+                    dict["product_id"] = id
                 } else {
-                    return ["receipt_description": match.receiptDescription, "product_id": correctedId, "price_paid": price]
+                    dict["new_product_name"] = item.productName
                 }
+                if let phId = item.purchaseHistoryId { dict["purchase_history_id"] = phId }
+                if let qty = item.quantity { dict["quantity"] = qty }
+                if let price = Double(item.priceText.replacingOccurrences(of: ",", with: ".")) {
+                    dict["price_paid"] = price
+                }
+                return dict
             }
-
-        let unplanned: [[String: Any]] = editableUnmatched.compactMap { item in
-            let price = item.totalPrice ?? 0
-            switch item.resolution {
-            case .ignore: return nil
-            case .assignExisting(let id, _):
-                return ["receipt_description": item.description, "product_id": id, "price_paid": price]
-            case .createNew(let name):
-                return ["receipt_description": item.description, "new_product_name": name, "price_paid": price]
-            }
-        }
 
         Task {
             do {
@@ -464,12 +395,9 @@ struct ReceiptScannerView: View {
                     storeName: result.storeName,
                     totalAmount: result.totalAmount,
                     receiptDate: result.receiptDate,
-                    matches: confirmedMatches,
-                    corrections: corrections,
-                    unplanned: unplanned
+                    items: items
                 )
-                let savedCount = confirmedMatches.count + corrections.count + unplanned.count
-                phase = .done("Tracked \(savedCount) item\(savedCount == 1 ? "" : "s").")
+                phase = .done("Tracked \(items.count) item\(items.count == 1 ? "" : "s").")
             } catch {
                 phase = .review
                 errorMessage = error.localizedDescription

@@ -386,9 +386,16 @@ export async function parseReceiptFromImage(
               {
                 type: "text",
                 text:
-                  `Extract all line items from this receipt. Return ONLY valid JSON:\n` +
+                  `Extract every purchased product from this supermarket receipt. Return ONLY valid JSON:\n` +
                   `{"store_name":"...","total_amount":12.34,"receipt_date":"2026-06-20","line_items":[{"description":"...","quantity":1,"unit_price":2.50,"total_price":2.50}]}\n` +
-                  `Use null for any field you cannot read clearly. receipt_date must be ISO format (YYYY-MM-DD) or null. Exclude tax/subtotal/total rows from line_items.`,
+                  `Rules:\n` +
+                  `- "description" is the raw product text exactly as printed (keep the brand/abbreviations).\n` +
+                  `- "quantity" is the number of units (e.g. 2 for "2 @ $3.00"); use 1 if a single unit; for items sold by weight use the weight number (e.g. 0.65 for "0.65kg").\n` +
+                  `- "unit_price" is the per-unit/per-kg price; "total_price" is what was actually charged for that line.\n` +
+                  `- Use null only for a field you genuinely cannot read.\n` +
+                  `- receipt_date must be ISO format (YYYY-MM-DD) or null.\n` +
+                  `- EXCLUDE non-product rows: subtotal, total, tax/GST, rounding, change, tender/EFTPOS/cash, loyalty/points, savings, and store header/footer text.\n` +
+                  `- A discount line that reduces the price of the item above it should be folded into that item's total_price, not listed separately.`,
               },
             ],
           },
@@ -405,21 +412,53 @@ export async function parseReceiptFromImage(
   }
 }
 
+export interface ResolvedReceiptItem {
+  /** Exact name of an existing catalogue product this matches, or null if it is new. */
+  existingName: string | null;
+  /** Clean, simple, normal-case product name — used for display and for creating a new product. */
+  cleanName: string;
+}
+
 /**
- * Match receipt line items to purchase history product names.
- * Returns a map of receipt description → product name (or null if no match).
+ * Turn a raw receipt description into a clean, simple product name without any AI —
+ * strips store prefixes, sizes/weights, pack counts and prices, then title-cases.
+ * Used as a fallback when Claude is unavailable or returns nothing usable.
  */
-export async function matchReceiptItems(
+export function heuristicCleanName(raw: string): string {
+  let s = ` ${raw.toLowerCase()} `;
+  s = s.replace(/\s(ww|woolworths|coles|aldi|iga|spc|homebrand|essentials|select)\s/g, " ");
+  s = s.replace(/\s\d+(\.\d+)?\s?(kg|g|gm|ml|l|ltr|lt|pk|pack|pkt|ea|each|ct|x\d+)\b/g, " ");
+  s = s.replace(/\bx\s?\d+\b/g, " ");
+  s = s.replace(/\$?\d+(\.\d+)?/g, " ");
+  s = s.replace(/[^a-z&'\s]/g, " ").replace(/\s+/g, " ").trim();
+  if (!s) return raw.trim();
+  return s
+    .split(" ")
+    .map((w) => (w ? w[0].toUpperCase() + w.slice(1) : w))
+    .join(" ");
+}
+
+/**
+ * For each receipt line, decide whether it is the same physical grocery item as an
+ * existing catalogue product, and produce a clean simple name to use either way.
+ * One Claude call does both jobs (matching + naming) over the whole receipt.
+ */
+export async function resolveReceiptItems(
   env: Env,
   receiptDescriptions: string[],
-  productNames: string[],
-): Promise<Record<string, string | null>> {
-  if (receiptDescriptions.length === 0 || productNames.length === 0) {
-    return Object.fromEntries(receiptDescriptions.map((d) => [d, null]));
-  }
+  existingProductNames: string[],
+): Promise<Record<string, ResolvedReceiptItem>> {
+  const fallback = (): Record<string, ResolvedReceiptItem> =>
+    Object.fromEntries(
+      receiptDescriptions.map((d) => [d, { existingName: null, cleanName: heuristicCleanName(d) }]),
+    );
+
+  if (receiptDescriptions.length === 0) return {};
 
   const receiptList = receiptDescriptions.map((d, i) => `${i + 1}. "${d}"`).join("\n");
-  const productList = productNames.map((p, i) => `${i + 1}. "${p}"`).join("\n");
+  const productList = existingProductNames.length > 0
+    ? existingProductNames.map((p, i) => `${i + 1}. "${p}"`).join("\n")
+    : "(none yet)";
 
   const reply = await callClaude(
     env,
@@ -427,30 +466,43 @@ export async function matchReceiptItems(
       {
         role: "user",
         content:
-          `Match each receipt item to the most likely product. The product list is ordered by how recently each was purchased — prefer earlier entries when there is ambiguity.\n` +
-          `Receipt items:\n${receiptList}\n\n` +
-          `Products (most recent first):\n${productList}\n\n` +
-          `Reply with ONLY a JSON object where each key is a receipt item description and the value is\n` +
-          `the exact matching product name, or null if there is no clear match.\n` +
-          `Example: {"Full Cream Milk 2L": "milk", "Woolworths Greek Yoghurt": "greek yoghurt"}`,
+          `You are importing a supermarket receipt into a shopping app. For EACH raw receipt line, do two things:\n` +
+          `1. Decide if it is the same physical grocery item as one of the existing products. The existing list is ordered most-recently-purchased first — prefer earlier entries when ambiguous. If none clearly match, it is new.\n` +
+          `2. Give a clean simple product name written in normal everyday language: Title Case, NO brand, NO size/weight/pack count, NO abbreviations. It should be the generic everyday name a person would say.\n` +
+          `   Examples: "BIRDS EYE THCT CHIPS 750G" -> "Frozen Chips"; "WW FUL CRM MILK 2L" -> "Milk"; "CADBURY DAIRY MILK 180G" -> "Chocolate"; "BANANA CAVENDISH" -> "Bananas"; "CHOBANI GREEK YOG VAN 4PK" -> "Greek Yoghurt".\n` +
+          `   If the line matches an existing product, reuse that product's EXACT existing name as the clean name.\n\n` +
+          `Receipt lines:\n${receiptList}\n\n` +
+          `Existing products (most recent first):\n${productList}\n\n` +
+          `Reply with ONLY a JSON object keyed by the exact raw receipt line. Each value is\n` +
+          `{"match": "<exact existing product name>" or null, "name": "<clean simple name>"}.\n` +
+          `Example: {"WW FUL CRM MILK 2L": {"match": "Milk", "name": "Milk"}, "BIRDS EYE THCT CHIPS 750G": {"match": null, "name": "Frozen Chips"}}`,
       },
     ],
-    500,
+    1500,
   );
 
-  if (!reply) return Object.fromEntries(receiptDescriptions.map((d) => [d, null]));
+  if (!reply) return fallback();
   try {
-    const parsed = JSON.parse(reply.replace(/```json\n?|```/g, "").trim());
-    // Validate that matched names actually exist in our product list
-    const productSet = new Set(productNames.map((p) => p.toLowerCase()));
+    const parsed = JSON.parse(reply.replace(/```json\n?|```/g, "").trim()) as Record<
+      string,
+      { match?: string | null; name?: string }
+    >;
+    const productByLower = new Map(existingProductNames.map((p) => [p.toLowerCase(), p]));
     return Object.fromEntries(
       receiptDescriptions.map((d) => {
-        const match = parsed[d];
-        const valid = typeof match === "string" && productSet.has(match.toLowerCase()) ? match : null;
-        return [d, valid];
+        const entry = parsed[d];
+        const matchedName =
+          entry && typeof entry.match === "string"
+            ? productByLower.get(entry.match.toLowerCase()) ?? null
+            : null;
+        const clean =
+          (entry && typeof entry.name === "string" && entry.name.trim()) ||
+          matchedName ||
+          heuristicCleanName(d);
+        return [d, { existingName: matchedName, cleanName: clean }];
       }),
     );
   } catch {
-    return Object.fromEntries(receiptDescriptions.map((d) => [d, null]));
+    return fallback();
   }
 }
