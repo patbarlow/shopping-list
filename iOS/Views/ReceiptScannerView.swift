@@ -283,14 +283,17 @@ struct ReceiptScannerView: View {
     private func handlePDF(_ pdfData: Data) async {
         phase = .scanning
         errorMessage = nil
+
+        // 1. Prefer the PDF's text layer — most accurate for digital eReceipts.
+        //    If extraction is garbled or the server can't parse it, fall through to image OCR.
+        if let text = extractReceiptText(pdfData),
+           let result = try? await services.api.scanReceipt(householdId: householdId, receiptText: text) {
+            applyResult(result)
+            return
+        }
+
+        // 2. Fall back to rasterising the PDF and reading it as an image.
         do {
-            // Digital eReceipts carry a real text layer — parse that for accuracy.
-            // Only fall back to rasterising + image OCR when the text is missing or garbled.
-            if let text = extractReceiptText(pdfData) {
-                let result = try await services.api.scanReceipt(householdId: householdId, receiptText: text)
-                applyResult(result)
-                return
-            }
             guard let image = renderPDFToImage(pdfData) else {
                 phase = .capture; errorMessage = "Couldn't read that PDF."; return
             }

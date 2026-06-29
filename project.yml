@@ -62,6 +62,15 @@ targets:
               - shoppinglist
         NSUserActivityTypes:
           - com.patbarlow.shoppinglist.quickAdd
+        # Registers the app as a PDF handler so it appears in the share sheet (#10).
+        CFBundleDocumentTypes:
+          - CFBundleTypeName: PDF Document
+            CFBundleTypeRole: Viewer
+            LSHandlerRank: Alternate
+            LSItemContentTypes:
+              - com.adobe.pdf
+        # Export-compliance declaration so App Store builds don't prompt (#11).
+        ITSAppUsesNonExemptEncryption: false
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
