@@ -20,18 +20,20 @@ struct SidebarView: View {
 
             // Nav rows
             VStack(alignment: .leading, spacing: 2) {
-                navRow(icon: "cart.fill", label: "My List", isActive: selectedDate == nil) {
+                navRow(icon: "cart.fill", label: "My List", isActive: selectedDate == nil && !showInsights) {
                     withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.85)) {
                         selectedDate = nil
+                        showInsights = false
                         isOpen = false
                     }
                 }
 
-                navRow(icon: "chart.bar.fill", label: "Products", isActive: false) {
+                navRow(icon: "chart.bar.fill", label: "Products", isActive: showInsights) {
                     withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.85)) {
+                        selectedDate = nil
+                        showInsights = true
                         isOpen = false
                     }
-                    showInsights = true
                 }
             }
             .padding(.horizontal, 12)
@@ -117,6 +119,7 @@ struct SidebarView: View {
         Button {
             withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.85)) {
                 selectedDate = day.date
+                showInsights = false
                 isOpen = false
             }
         } label: {
