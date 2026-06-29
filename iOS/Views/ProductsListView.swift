@@ -1,15 +1,16 @@
 import SwiftUI
 
 /// Browse every product you've bought on a receipt, with how often and how much.
+/// Shown as its own page; tapping a product opens its detail as a card.
 struct ProductsListView: View {
     let householdId: String
     @Environment(AppServices.self) private var services
-    @Environment(\.dismiss) private var dismiss
 
     @State private var products: [ProductInsight] = []
     @State private var isLoading = true
     @State private var errorMessage: String? = nil
     @State private var sort: Sort = .frequency
+    @State private var selectedProduct: ProductInsight? = nil
 
     enum Sort: String, CaseIterable, Identifiable {
         case frequency = "Most bought"
@@ -29,50 +30,49 @@ struct ProductsListView: View {
     }
 
     var body: some View {
-        NavigationStack {
-            Group {
-                if isLoading {
-                    ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
-                } else if let err = errorMessage {
-                    ContentUnavailableView("Couldn't load products", systemImage: "exclamationmark.triangle", description: Text(err))
-                } else if products.isEmpty {
-                    ContentUnavailableView(
-                        "No products yet",
-                        systemImage: "cart",
-                        description: Text("Scan a receipt and the things you buy will show up here with prices and how often you buy them.")
-                    )
-                } else {
-                    List {
-                        ForEach(sorted) { product in
-                            NavigationLink {
-                                ProductDetailView(householdId: householdId, productId: product.id, fallbackName: product.name)
-                                    .environment(services)
-                            } label: {
-                                row(product)
-                            }
-                        }
-                    }
-                    .listStyle(.plain)
-                }
-            }
-            .navigationTitle("Products")
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) {
-                    Button("Done") { dismiss() }
-                }
-                if !products.isEmpty {
-                    ToolbarItem(placement: .primaryAction) {
-                        Menu {
-                            Picker("Sort", selection: $sort) {
-                                ForEach(Sort.allCases) { Text($0.rawValue).tag($0) }
-                            }
+        Group {
+            if isLoading {
+                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if let err = errorMessage {
+                ContentUnavailableView("Couldn't load products", systemImage: "exclamationmark.triangle", description: Text(err))
+            } else if products.isEmpty {
+                ContentUnavailableView(
+                    "No products yet",
+                    systemImage: "cart",
+                    description: Text("Scan a receipt and the things you buy will show up here with prices and how often you buy them.")
+                )
+            } else {
+                List {
+                    ForEach(sorted) { product in
+                        Button {
+                            selectedProduct = product
                         } label: {
-                            Image(systemName: "arrow.up.arrow.down")
+                            row(product)
                         }
+                        .buttonStyle(.plain)
+                    }
+                }
+                .listStyle(.plain)
+            }
+        }
+        .navigationTitle("Products")
+        .navigationBarTitleDisplayMode(.large)
+        .toolbar {
+            if !products.isEmpty {
+                ToolbarItem(placement: .primaryAction) {
+                    Menu {
+                        Picker("Sort", selection: $sort) {
+                            ForEach(Sort.allCases) { Text($0.rawValue).tag($0) }
+                        }
+                    } label: {
+                        Image(systemName: "arrow.up.arrow.down")
                     }
                 }
             }
+        }
+        .sheet(item: $selectedProduct) { product in
+            ProductDetailView(householdId: householdId, productId: product.id, fallbackName: product.name)
+                .environment(services)
         }
         .task {
             do {
@@ -92,7 +92,7 @@ struct ProductsListView: View {
                 .frame(width: 30)
 
             VStack(alignment: .leading, spacing: 2) {
-                Text(product.name).font(.body.weight(.medium))
+                Text(product.name).font(.body.weight(.medium)).foregroundStyle(.primary)
                 Text("Bought ^[\(product.timesPurchased) time](inflect: true)")
                     .font(.caption)
                     .foregroundStyle(.secondary)
@@ -107,7 +107,12 @@ struct ProductsListView: View {
                     Text("avg").font(.caption2).foregroundStyle(.tertiary)
                 }
             }
+
+            Image(systemName: "chevron.right")
+                .font(.caption2)
+                .foregroundStyle(.tertiary)
         }
         .padding(.vertical, 2)
+        .contentShape(Rectangle())
     }
 }

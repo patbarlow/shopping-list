@@ -108,7 +108,9 @@ struct ShoppingListView: View {
             // 2. Main content card — slides right to reveal sidebar
             NavigationStack {
                 Group {
-                    if let date = selectedHistoryDate {
+                    if showInsights {
+                        ProductsListView(householdId: household.id).environment(services)
+                    } else if let date = selectedHistoryDate {
                         HistoryDayView(householdId: household.id, date: date) {
                             selectedHistoryDate = nil
                         }
@@ -141,9 +143,6 @@ struct ShoppingListView: View {
                 }
                 .sheet(isPresented: $showReceiptScanner) {
                     ReceiptScannerView(householdId: household.id).environment(services)
-                }
-                .sheet(isPresented: $showInsights) {
-                    ProductsListView(householdId: household.id).environment(services)
                 }
             }
             .background(Color(.systemBackground))
@@ -602,7 +601,7 @@ struct ShoppingListView: View {
                 Image(systemName: "line.3.horizontal")
             }
         }
-        if selectedHistoryDate == nil {
+        if selectedHistoryDate == nil && !showInsights {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { showReceiptScanner = true } label: {
                     Image(systemName: "receipt")
