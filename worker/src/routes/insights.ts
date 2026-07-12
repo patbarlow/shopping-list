@@ -212,12 +212,16 @@ app.get("/products/:id", async (c) => {
   const prices = purchases.map((p) => p.price_paid).filter((v): v is number => v != null);
   const dates = purchases.map((p) => p.purchased_at).filter(Boolean).sort();
   const totalSpend = prices.reduce((a, b) => a + b, 0);
+  // Multiple line items (e.g. two chip flavours) bought on the same shopping
+  // trip are one purchase occasion, not two — dedupe by calendar day so the
+  // interval reflects trip frequency rather than items-per-trip.
+  const distinctDays = Array.from(new Set(dates.map((d) => d.slice(0, 10)))).sort();
   let avgIntervalDays: number | null = null;
-  if (dates.length >= 2) {
-    const first = Date.parse(dates[0]);
-    const last = Date.parse(dates[dates.length - 1]);
+  if (distinctDays.length >= 2) {
+    const first = Date.parse(distinctDays[0]);
+    const last = Date.parse(distinctDays[distinctDays.length - 1]);
     if (!Number.isNaN(first) && !Number.isNaN(last) && last > first) {
-      avgIntervalDays = Math.round((last - first) / 86_400_000 / (dates.length - 1));
+      avgIntervalDays = Math.round((last - first) / 86_400_000 / (distinctDays.length - 1));
     }
   }
 
