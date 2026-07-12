@@ -168,6 +168,8 @@ app.post("/scan", async (c) => {
       quantity: lineItem.quantity,
       unit_price: lineItem.unit_price,
       total_price: lineItem.total_price,
+      size_value: lineItem.size_value,
+      size_unit: lineItem.size_unit,
       product_id: productId,
       product_name: productName,
       is_new: productId === null,
@@ -194,6 +196,11 @@ type ConfirmItem = {
   price_paid?: number | null;
   /** If set, backfill this already-existing (unpriced) purchase_history row instead of inserting. */
   purchase_history_id?: string | null;
+  /** Per-kg/per-L rate for loose weight-sold items — already a $/unit baseline as printed. */
+  unit_price?: number | null;
+  /** Printed package size (e.g. 175 "g"), for computing a $/100g or $/100mL baseline. */
+  size_value?: number | null;
+  size_unit?: string | null;
 };
 
 // POST /v1/receipts/confirm
@@ -267,11 +274,12 @@ app.post("/confirm", async (c) => {
 
     statements.push(
       c.env.DB.prepare(
-        `INSERT INTO receipt_line_items (id, receipt_id, household_id, raw_description, quantity, total_price, product_id, match_source, confirmed, purchase_history_id, created_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
+        `INSERT INTO receipt_line_items (id, receipt_id, household_id, raw_description, quantity, unit_price, total_price, size_value, size_unit, product_id, match_source, confirmed, purchase_history_id, created_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)`,
       ).bind(
         crypto.randomUUID(), receiptId, body.household_id, item.receipt_description,
-        quantity, price, item.productId, item.isNew ? "new" : "existing", phId, now,
+        quantity, item.unit_price ?? null, price, item.size_value ?? null, item.size_unit ?? null,
+        item.productId, item.isNew ? "new" : "existing", phId, now,
       ),
     );
   }

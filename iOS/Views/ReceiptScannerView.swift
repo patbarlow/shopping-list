@@ -427,6 +427,9 @@ struct ReceiptScannerView: View {
                 if let price = Double(item.priceText.replacingOccurrences(of: ",", with: ".")) {
                     dict["price_paid"] = price
                 }
+                if let unitPrice = item.unitPrice { dict["unit_price"] = unitPrice }
+                if let sizeValue = item.sizeValue { dict["size_value"] = sizeValue }
+                if let sizeUnit = item.sizeUnit { dict["size_unit"] = sizeUnit }
                 return dict
             }
 

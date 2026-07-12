@@ -65,14 +65,58 @@ struct ProductPurchase: Decodable, Identifiable {
     let quantity: String?
     let variant: String?
     let storeName: String?
+    /// Baseline price for comparing pack sizes — value is per `unitPriceUnit` ("100g" or "100mL").
+    let unitPrice: Double?
+    let unitPriceUnit: String?
 
     enum CodingKeys: String, CodingKey {
         case id, quantity, variant
-        case purchasedAt = "purchased_at"
-        case pricePaid   = "price_paid"
-        case storeName   = "store_name"
+        case purchasedAt   = "purchased_at"
+        case pricePaid     = "price_paid"
+        case storeName     = "store_name"
+        case unitPrice     = "unit_price"
+        case unitPriceUnit = "unit_price_unit"
     }
 
     /// Date portion ("2026-06-28") used for grouping the purchase log.
     var dayKey: String { String(purchasedAt.prefix(10)) }
+}
+
+struct PredictedListResponse: Decodable {
+    let range: Range
+    let items: [PredictedItem]
+    let predictedTotal: Double
+
+    struct Range: Decodable {
+        let start: String
+        let end: String
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case range, items
+        case predictedTotal = "predicted_total"
+    }
+}
+
+struct PredictedItem: Decodable, Identifiable {
+    let productId: String
+    let name: String
+    let category: String
+    let predictedDate: String
+    let predictedPrice: Double?
+    let avgIntervalDays: Int
+    let timesPurchased: Int
+    let lastPurchasedAt: String
+
+    var id: String { productId }
+
+    enum CodingKeys: String, CodingKey {
+        case name, category
+        case productId       = "product_id"
+        case predictedDate    = "predicted_date"
+        case predictedPrice   = "predicted_price"
+        case avgIntervalDays  = "avg_interval_days"
+        case timesPurchased   = "times_purchased"
+        case lastPurchasedAt  = "last_purchased_at"
+    }
 }

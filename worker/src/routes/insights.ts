@@ -135,6 +135,50 @@ app.get("/history/day/:date", async (c) => {
 // ticking items off the shopping list (source 'manual') is excluded by design.
 const RECEIPT_SOURCE = "ph.source LIKE 'receipt%'";
 
+// Typical gap between shopping trips for a product, in days. Multiple line
+// items (e.g. two chip flavours) bought on the same trip are one purchase
+// occasion, not two — dedupe to distinct calendar days first so the interval
+// reflects trip frequency rather than items-per-trip.
+function avgIntervalFromDates(purchasedAts: string[]): { avgIntervalDays: number | null; distinctDays: string[] } {
+  const distinctDays = Array.from(new Set(purchasedAts.filter(Boolean).map((d) => d.slice(0, 10)))).sort();
+  let avgIntervalDays: number | null = null;
+  if (distinctDays.length >= 2) {
+    const first = Date.parse(distinctDays[0]);
+    const last = Date.parse(distinctDays[distinctDays.length - 1]);
+    if (!Number.isNaN(first) && !Number.isNaN(last) && last > first) {
+      avgIntervalDays = Math.round((last - first) / 86_400_000 / (distinctDays.length - 1));
+    }
+  }
+  return { avgIntervalDays, distinctDays };
+}
+
+// A baseline price ($/100g or $/100mL) so different pack sizes of the same
+// product can be compared on value, the way supermarket shelf tags do.
+function unitPriceFor(input: {
+  pricePaid: number | null;
+  quantity: number | null;
+  unitPrice: number | null;
+  sizeValue: number | null;
+  sizeUnit: string | null;
+}): { value: number; unit: "100g" | "100mL" } | null {
+  // Loose weight-sold items (produce, deli, meat): the receipt's own unit_price
+  // is already a $/kg rate — just rescale it to the same "/100g" baseline.
+  if (input.unitPrice != null && input.unitPrice > 0) {
+    return { value: input.unitPrice / 10, unit: "100g" };
+  }
+
+  if (input.pricePaid == null || !input.sizeValue || !input.sizeUnit) return null;
+  const qty = input.quantity && input.quantity > 0 ? input.quantity : 1;
+  const perPackage = input.pricePaid / qty;
+
+  const unit = input.sizeUnit.trim().toLowerCase();
+  if (unit === "g" || unit === "gm") return { value: (perPackage / input.sizeValue) * 100, unit: "100g" };
+  if (unit === "kg") return { value: (perPackage / (input.sizeValue * 1000)) * 100, unit: "100g" };
+  if (unit === "ml") return { value: (perPackage / input.sizeValue) * 100, unit: "100mL" };
+  if (unit === "l" || unit === "lt" || unit === "ltr") return { value: (perPackage / (input.sizeValue * 1000)) * 100, unit: "100mL" };
+  return null;
+}
+
 // GET /v1/insights/products?household_id=xxx — every product you've bought on a receipt, with stats
 app.get("/products", async (c) => {
   const user = c.var.user;
@@ -186,10 +230,14 @@ app.get("/products/:id", async (c) => {
   if (!product) return c.json({ error: "not_found" }, 404);
 
   // Each receipt purchase, newest first, with the actual variant bought and the store.
-  const { results: purchases } = await c.env.DB
+  const { results: rawPurchases } = await c.env.DB
     .prepare(
       `SELECT ph.id, ph.purchased_at, ph.price_paid, ph.quantity,
               rli.raw_description AS variant,
+              rli.quantity        AS rli_quantity,
+              rli.unit_price      AS rli_unit_price,
+              rli.size_value      AS rli_size_value,
+              rli.size_unit       AS rli_size_unit,
               r.store_name        AS store_name
        FROM purchase_history ph
        LEFT JOIN receipt_line_items rli ON rli.purchase_history_id = ph.id
@@ -204,22 +252,39 @@ app.get("/products/:id", async (c) => {
       price_paid: number | null;
       quantity: string | null;
       variant: string | null;
+      rli_quantity: number | null;
+      rli_unit_price: number | null;
+      rli_size_value: number | null;
+      rli_size_unit: string | null;
       store_name: string | null;
     }>();
+
+  const purchases = rawPurchases.map((p) => {
+    const unitPrice = unitPriceFor({
+      pricePaid: p.price_paid,
+      quantity: p.rli_quantity,
+      unitPrice: p.rli_unit_price,
+      sizeValue: p.rli_size_value,
+      sizeUnit: p.rli_size_unit,
+    });
+    return {
+      id: p.id,
+      purchased_at: p.purchased_at,
+      price_paid: p.price_paid,
+      quantity: p.quantity,
+      variant: p.variant,
+      store_name: p.store_name,
+      unit_price: unitPrice?.value ?? null,
+      unit_price_unit: unitPrice?.unit ?? null,
+    };
+  });
 
   // Aggregate stats. avg_interval_days is the typical gap between purchases —
   // groundwork for future "you usually buy this every N days" suggestions.
   const prices = purchases.map((p) => p.price_paid).filter((v): v is number => v != null);
   const dates = purchases.map((p) => p.purchased_at).filter(Boolean).sort();
   const totalSpend = prices.reduce((a, b) => a + b, 0);
-  let avgIntervalDays: number | null = null;
-  if (dates.length >= 2) {
-    const first = Date.parse(dates[0]);
-    const last = Date.parse(dates[dates.length - 1]);
-    if (!Number.isNaN(first) && !Number.isNaN(last) && last > first) {
-      avgIntervalDays = Math.round((last - first) / 86_400_000 / (dates.length - 1));
-    }
-  }
+  const { avgIntervalDays } = avgIntervalFromDates(dates);
 
   return c.json({
     product,
@@ -234,6 +299,83 @@ app.get("/products/:id", async (c) => {
       avg_interval_days: avgIntervalDays,
     },
     purchases,
+  });
+});
+
+// Minimum number of distinct shopping trips before a product's cadence is
+// considered reliable enough to predict from.
+const MIN_OCCASIONS_FOR_PREDICTION = 3;
+
+// GET /v1/insights/predictions?household_id=xxx — items likely due within the next 7 days
+app.get("/predictions", async (c) => {
+  const user = c.var.user;
+  const householdId = c.req.query("household_id");
+  if (!householdId) return c.json({ error: "missing_household_id" }, 400);
+  if (!(await assertMember(c.env, householdId, user.id))) return c.json({ error: "forbidden" }, 403);
+
+  const { results: rows } = await c.env.DB
+    .prepare(
+      `SELECT p.id, p.name, p.category, ph.purchased_at, ph.price_paid
+       FROM purchase_history ph
+       JOIN products p ON ph.product_id = p.id
+       WHERE ph.household_id = ? AND ${RECEIPT_SOURCE}
+       ORDER BY p.id, ph.purchased_at`,
+    )
+    .bind(householdId)
+    .all<{ id: string; name: string; category: string; purchased_at: string; price_paid: number | null }>();
+
+  const byProduct = new Map<string, { name: string; category: string; purchasedAt: string[]; prices: number[] }>();
+  for (const row of rows) {
+    let group = byProduct.get(row.id);
+    if (!group) {
+      group = { name: row.name, category: row.category, purchasedAt: [], prices: [] };
+      byProduct.set(row.id, group);
+    }
+    group.purchasedAt.push(row.purchased_at);
+    if (row.price_paid != null) group.prices.push(row.price_paid);
+  }
+
+  const todayMs = Date.parse(new Date().toISOString().slice(0, 10));
+  const horizonEnd = todayMs + 7 * 86_400_000;
+
+  const items: {
+    product_id: string;
+    name: string;
+    category: string;
+    predicted_date: string;
+    predicted_price: number | null;
+    avg_interval_days: number;
+    times_purchased: number;
+    last_purchased_at: string;
+  }[] = [];
+
+  for (const [productId, group] of byProduct) {
+    const { avgIntervalDays, distinctDays } = avgIntervalFromDates(group.purchasedAt);
+    if (avgIntervalDays == null || distinctDays.length < MIN_OCCASIONS_FOR_PREDICTION) continue;
+
+    const lastDay = distinctDays[distinctDays.length - 1];
+    const predictedMs = Date.parse(lastDay) + avgIntervalDays * 86_400_000;
+    if (predictedMs > horizonEnd) continue;
+
+    items.push({
+      product_id: productId,
+      name: group.name,
+      category: group.category,
+      predicted_date: new Date(predictedMs).toISOString().slice(0, 10),
+      predicted_price: group.prices.length ? group.prices.reduce((a, b) => a + b, 0) / group.prices.length : null,
+      avg_interval_days: avgIntervalDays,
+      times_purchased: group.purchasedAt.length,
+      last_purchased_at: lastDay,
+    });
+  }
+
+  items.sort((a, b) => a.predicted_date.localeCompare(b.predicted_date));
+  const predictedTotal = items.reduce((sum, item) => sum + (item.predicted_price ?? 0), 0);
+
+  return c.json({
+    range: { start: new Date(todayMs).toISOString().slice(0, 10), end: new Date(horizonEnd).toISOString().slice(0, 10) },
+    items,
+    predicted_total: predictedTotal,
   });
 });
 

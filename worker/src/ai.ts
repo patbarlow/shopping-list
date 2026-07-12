@@ -357,6 +357,8 @@ export interface ReceiptLineItem {
   quantity: number | null;
   unit_price: number | null;
   total_price: number | null;
+  size_value: number | null;
+  size_unit: string | null;
 }
 
 export interface ParsedReceipt {
@@ -368,12 +370,13 @@ export interface ParsedReceipt {
 
 const RECEIPT_RULES =
   `Return ONLY valid JSON:\n` +
-  `{"store_name":"...","total_amount":12.34,"receipt_date":"2026-06-20","line_items":[{"description":"...","quantity":1,"unit_price":2.50,"total_price":2.50}]}\n` +
+  `{"store_name":"...","total_amount":12.34,"receipt_date":"2026-06-20","line_items":[{"description":"...","quantity":1,"unit_price":2.50,"total_price":2.50,"size_value":175,"size_unit":"g"}]}\n` +
   `Rules:\n` +
   `- Transcribe EXACTLY what is on the receipt. Never invent, guess, or "correct" a product, size, brand or price. If a value is unclear, use null — do NOT fill it in from what is typical.\n` +
   `- "description" is the raw product text exactly as printed, including the size/volume if shown (e.g. "WW FUL CRM MILK 2L" stays 2L, not 3L).\n` +
   `- "quantity" is the number of units (e.g. 2 for "2 @ $3.00"); use 1 for a single unit; for items sold by weight use the weight number (e.g. 0.65 for "0.65kg").\n` +
   `- "unit_price" is the per-unit/per-kg price; "total_price" is what was actually charged for that line.\n` +
+  `- "size_value"/"size_unit" are the PACKAGE size printed on the line, e.g. "175G" -> size_value:175, size_unit:"g"; "2L" -> size_value:2, size_unit:"L"; "6X250ML" -> size_value:1500, size_unit:"mL" (total volume of the multipack). Use null for both if no package size is shown, or if the item is sold loose by weight (its "unit_price" already gives the per-kg rate).\n` +
   `- receipt_date must be ISO format (YYYY-MM-DD) or null.\n` +
   `- EXCLUDE non-product rows: subtotal, total, tax/GST, rounding, change, tender/EFTPOS/cash, loyalty/points, savings, and store header/footer text.\n` +
   `- A discount line that reduces the price of the item above it should be folded into that item's total_price, not listed separately.\n` +
