@@ -76,3 +76,42 @@ struct ProductPurchase: Decodable, Identifiable {
     /// Date portion ("2026-06-28") used for grouping the purchase log.
     var dayKey: String { String(purchasedAt.prefix(10)) }
 }
+
+struct PredictedListResponse: Decodable {
+    let range: Range
+    let items: [PredictedItem]
+    let predictedTotal: Double
+
+    struct Range: Decodable {
+        let start: String
+        let end: String
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case range, items
+        case predictedTotal = "predicted_total"
+    }
+}
+
+struct PredictedItem: Decodable, Identifiable {
+    let productId: String
+    let name: String
+    let category: String
+    let predictedDate: String
+    let predictedPrice: Double?
+    let avgIntervalDays: Int
+    let timesPurchased: Int
+    let lastPurchasedAt: String
+
+    var id: String { productId }
+
+    enum CodingKeys: String, CodingKey {
+        case name, category
+        case productId       = "product_id"
+        case predictedDate    = "predicted_date"
+        case predictedPrice   = "predicted_price"
+        case avgIntervalDays  = "avg_interval_days"
+        case timesPurchased   = "times_purchased"
+        case lastPurchasedAt  = "last_purchased_at"
+    }
+}

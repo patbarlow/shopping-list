@@ -135,6 +135,23 @@ app.get("/history/day/:date", async (c) => {
 // ticking items off the shopping list (source 'manual') is excluded by design.
 const RECEIPT_SOURCE = "ph.source LIKE 'receipt%'";
 
+// Typical gap between shopping trips for a product, in days. Multiple line
+// items (e.g. two chip flavours) bought on the same trip are one purchase
+// occasion, not two — dedupe to distinct calendar days first so the interval
+// reflects trip frequency rather than items-per-trip.
+function avgIntervalFromDates(purchasedAts: string[]): { avgIntervalDays: number | null; distinctDays: string[] } {
+  const distinctDays = Array.from(new Set(purchasedAts.filter(Boolean).map((d) => d.slice(0, 10)))).sort();
+  let avgIntervalDays: number | null = null;
+  if (distinctDays.length >= 2) {
+    const first = Date.parse(distinctDays[0]);
+    const last = Date.parse(distinctDays[distinctDays.length - 1]);
+    if (!Number.isNaN(first) && !Number.isNaN(last) && last > first) {
+      avgIntervalDays = Math.round((last - first) / 86_400_000 / (distinctDays.length - 1));
+    }
+  }
+  return { avgIntervalDays, distinctDays };
+}
+
 // GET /v1/insights/products?household_id=xxx — every product you've bought on a receipt, with stats
 app.get("/products", async (c) => {
   const user = c.var.user;
@@ -212,18 +229,7 @@ app.get("/products/:id", async (c) => {
   const prices = purchases.map((p) => p.price_paid).filter((v): v is number => v != null);
   const dates = purchases.map((p) => p.purchased_at).filter(Boolean).sort();
   const totalSpend = prices.reduce((a, b) => a + b, 0);
-  // Multiple line items (e.g. two chip flavours) bought on the same shopping
-  // trip are one purchase occasion, not two — dedupe by calendar day so the
-  // interval reflects trip frequency rather than items-per-trip.
-  const distinctDays = Array.from(new Set(dates.map((d) => d.slice(0, 10)))).sort();
-  let avgIntervalDays: number | null = null;
-  if (distinctDays.length >= 2) {
-    const first = Date.parse(distinctDays[0]);
-    const last = Date.parse(distinctDays[distinctDays.length - 1]);
-    if (!Number.isNaN(first) && !Number.isNaN(last) && last > first) {
-      avgIntervalDays = Math.round((last - first) / 86_400_000 / (distinctDays.length - 1));
-    }
-  }
+  const { avgIntervalDays } = avgIntervalFromDates(dates);
 
   return c.json({
     product,
@@ -238,6 +244,83 @@ app.get("/products/:id", async (c) => {
       avg_interval_days: avgIntervalDays,
     },
     purchases,
+  });
+});
+
+// Minimum number of distinct shopping trips before a product's cadence is
+// considered reliable enough to predict from.
+const MIN_OCCASIONS_FOR_PREDICTION = 3;
+
+// GET /v1/insights/predictions?household_id=xxx — items likely due within the next 7 days
+app.get("/predictions", async (c) => {
+  const user = c.var.user;
+  const householdId = c.req.query("household_id");
+  if (!householdId) return c.json({ error: "missing_household_id" }, 400);
+  if (!(await assertMember(c.env, householdId, user.id))) return c.json({ error: "forbidden" }, 403);
+
+  const { results: rows } = await c.env.DB
+    .prepare(
+      `SELECT p.id, p.name, p.category, ph.purchased_at, ph.price_paid
+       FROM purchase_history ph
+       JOIN products p ON ph.product_id = p.id
+       WHERE ph.household_id = ? AND ${RECEIPT_SOURCE}
+       ORDER BY p.id, ph.purchased_at`,
+    )
+    .bind(householdId)
+    .all<{ id: string; name: string; category: string; purchased_at: string; price_paid: number | null }>();
+
+  const byProduct = new Map<string, { name: string; category: string; purchasedAt: string[]; prices: number[] }>();
+  for (const row of rows) {
+    let group = byProduct.get(row.id);
+    if (!group) {
+      group = { name: row.name, category: row.category, purchasedAt: [], prices: [] };
+      byProduct.set(row.id, group);
+    }
+    group.purchasedAt.push(row.purchased_at);
+    if (row.price_paid != null) group.prices.push(row.price_paid);
+  }
+
+  const todayMs = Date.parse(new Date().toISOString().slice(0, 10));
+  const horizonEnd = todayMs + 7 * 86_400_000;
+
+  const items: {
+    product_id: string;
+    name: string;
+    category: string;
+    predicted_date: string;
+    predicted_price: number | null;
+    avg_interval_days: number;
+    times_purchased: number;
+    last_purchased_at: string;
+  }[] = [];
+
+  for (const [productId, group] of byProduct) {
+    const { avgIntervalDays, distinctDays } = avgIntervalFromDates(group.purchasedAt);
+    if (avgIntervalDays == null || distinctDays.length < MIN_OCCASIONS_FOR_PREDICTION) continue;
+
+    const lastDay = distinctDays[distinctDays.length - 1];
+    const predictedMs = Date.parse(lastDay) + avgIntervalDays * 86_400_000;
+    if (predictedMs > horizonEnd) continue;
+
+    items.push({
+      product_id: productId,
+      name: group.name,
+      category: group.category,
+      predicted_date: new Date(predictedMs).toISOString().slice(0, 10),
+      predicted_price: group.prices.length ? group.prices.reduce((a, b) => a + b, 0) / group.prices.length : null,
+      avg_interval_days: avgIntervalDays,
+      times_purchased: group.purchasedAt.length,
+      last_purchased_at: lastDay,
+    });
+  }
+
+  items.sort((a, b) => a.predicted_date.localeCompare(b.predicted_date));
+  const predictedTotal = items.reduce((sum, item) => sum + (item.predicted_price ?? 0), 0);
+
+  return c.json({
+    range: { start: new Date(todayMs).toISOString().slice(0, 10), end: new Date(horizonEnd).toISOString().slice(0, 10) },
+    items,
+    predicted_total: predictedTotal,
   });
 });
 

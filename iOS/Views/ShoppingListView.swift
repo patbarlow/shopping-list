@@ -13,6 +13,7 @@ struct ShoppingListView: View {
     @State private var showRecipeHub = false
     @State private var showReceiptScanner = false
     @State private var showInsights = false
+    @State private var showForecast = false
     @State private var selectedHistoryDate: String? = nil
     @State private var historyDays: [HistoryDay] = []
 
@@ -100,7 +101,8 @@ struct ShoppingListView: View {
                 selectedDate: $selectedHistoryDate,
                 isOpen: $isSidebarOpen,
                 showSettings: $showSettings,
-                showInsights: $showInsights
+                showInsights: $showInsights,
+                showForecast: $showForecast
             )
             .frame(width: sidebarWidth)
             .overlay(Color.black.opacity(0.4 * (1 - progress)))
@@ -110,6 +112,8 @@ struct ShoppingListView: View {
                 Group {
                     if showInsights {
                         ProductsListView(householdId: household.id).environment(services)
+                    } else if showForecast {
+                        PredictedListView(householdId: household.id).environment(services)
                     } else if let date = selectedHistoryDate {
                         HistoryDayView(householdId: household.id, date: date) {
                             selectedHistoryDate = nil
@@ -601,7 +605,7 @@ struct ShoppingListView: View {
                 Image(systemName: "line.3.horizontal")
             }
         }
-        if selectedHistoryDate == nil && !showInsights {
+        if selectedHistoryDate == nil && !showInsights && !showForecast {
             ToolbarItem(placement: .navigationBarTrailing) {
                 Button { showReceiptScanner = true } label: {
                     Image(systemName: "receipt")

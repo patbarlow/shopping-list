@@ -7,6 +7,7 @@ struct SidebarView: View {
     @Binding var isOpen: Bool
     @Binding var showSettings: Bool
     @Binding var showInsights: Bool
+    @Binding var showForecast: Bool
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
@@ -20,10 +21,11 @@ struct SidebarView: View {
 
             // Nav rows
             VStack(alignment: .leading, spacing: 2) {
-                navRow(icon: "cart.fill", label: "My List", isActive: selectedDate == nil && !showInsights) {
+                navRow(icon: "cart.fill", label: "My List", isActive: selectedDate == nil && !showInsights && !showForecast) {
                     withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.85)) {
                         selectedDate = nil
                         showInsights = false
+                        showForecast = false
                         isOpen = false
                     }
                 }
@@ -32,6 +34,16 @@ struct SidebarView: View {
                     withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.85)) {
                         selectedDate = nil
                         showInsights = true
+                        showForecast = false
+                        isOpen = false
+                    }
+                }
+
+                navRow(icon: "calendar.badge.clock", label: "Forecast", isActive: showForecast) {
+                    withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.85)) {
+                        selectedDate = nil
+                        showInsights = false
+                        showForecast = true
                         isOpen = false
                     }
                 }
@@ -120,6 +132,7 @@ struct SidebarView: View {
             withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.85)) {
                 selectedDate = day.date
                 showInsights = false
+                showForecast = false
                 isOpen = false
             }
         } label: {

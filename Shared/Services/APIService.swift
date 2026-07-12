@@ -193,6 +193,10 @@ final class APIService {
         try await get("/v1/insights/products/\(productId)", query: ["household_id": householdId])
     }
 
+    func fetchPredictedList(householdId: String) async throws -> PredictedListResponse {
+        try await get("/v1/insights/predictions", query: ["household_id": householdId])
+    }
+
     // MARK: - Households
 
     func createHousehold(name: String) async throws -> Household {
