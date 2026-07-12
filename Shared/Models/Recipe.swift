@@ -199,6 +199,8 @@ struct ReceiptScanItem: Decodable, Identifiable {
     let quantity: Double?
     let unitPrice: Double?
     let totalPrice: Double?
+    let sizeValue: Double?         // printed package size, e.g. 175 for "175g"
+    let sizeUnit: String?          // "g", "kg", "mL", "L"
     let productId: String?        // non-nil → matched an existing product
     let productName: String       // existing name, or a clean simple name for the new product
     let isNew: Bool
@@ -208,6 +210,8 @@ struct ReceiptScanItem: Decodable, Identifiable {
         case description, quantity
         case unitPrice          = "unit_price"
         case totalPrice         = "total_price"
+        case sizeValue          = "size_value"
+        case sizeUnit           = "size_unit"
         case productId          = "product_id"
         case productName        = "product_name"
         case isNew              = "is_new"
@@ -229,6 +233,11 @@ struct EditableReceiptItem: Identifiable {
     var isNew: Bool
     var purchaseHistoryId: String?
 
+    // Carried through unedited to /confirm for the $/100g-style unit price baseline.
+    let unitPrice: Double?
+    let sizeValue: Double?
+    let sizeUnit: String?
+
     init(from item: ReceiptScanItem) {
         self.id                = item.description
         self.description       = item.description
@@ -239,6 +248,9 @@ struct EditableReceiptItem: Identifiable {
         self.productName       = item.productName
         self.isNew             = item.isNew
         self.purchaseHistoryId = item.purchaseHistoryId
+        self.unitPrice         = item.unitPrice
+        self.sizeValue         = item.sizeValue
+        self.sizeUnit          = item.sizeUnit
     }
 
     var quantityText: String? {

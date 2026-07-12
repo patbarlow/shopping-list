@@ -65,12 +65,17 @@ struct ProductPurchase: Decodable, Identifiable {
     let quantity: String?
     let variant: String?
     let storeName: String?
+    /// Baseline price for comparing pack sizes — value is per `unitPriceUnit` ("100g" or "100mL").
+    let unitPrice: Double?
+    let unitPriceUnit: String?
 
     enum CodingKeys: String, CodingKey {
         case id, quantity, variant
-        case purchasedAt = "purchased_at"
-        case pricePaid   = "price_paid"
-        case storeName   = "store_name"
+        case purchasedAt   = "purchased_at"
+        case pricePaid     = "price_paid"
+        case storeName     = "store_name"
+        case unitPrice     = "unit_price"
+        case unitPriceUnit = "unit_price_unit"
     }
 
     /// Date portion ("2026-06-28") used for grouping the purchase log.

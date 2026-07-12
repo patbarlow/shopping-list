@@ -152,6 +152,33 @@ function avgIntervalFromDates(purchasedAts: string[]): { avgIntervalDays: number
   return { avgIntervalDays, distinctDays };
 }
 
+// A baseline price ($/100g or $/100mL) so different pack sizes of the same
+// product can be compared on value, the way supermarket shelf tags do.
+function unitPriceFor(input: {
+  pricePaid: number | null;
+  quantity: number | null;
+  unitPrice: number | null;
+  sizeValue: number | null;
+  sizeUnit: string | null;
+}): { value: number; unit: "100g" | "100mL" } | null {
+  // Loose weight-sold items (produce, deli, meat): the receipt's own unit_price
+  // is already a $/kg rate — just rescale it to the same "/100g" baseline.
+  if (input.unitPrice != null && input.unitPrice > 0) {
+    return { value: input.unitPrice / 10, unit: "100g" };
+  }
+
+  if (input.pricePaid == null || !input.sizeValue || !input.sizeUnit) return null;
+  const qty = input.quantity && input.quantity > 0 ? input.quantity : 1;
+  const perPackage = input.pricePaid / qty;
+
+  const unit = input.sizeUnit.trim().toLowerCase();
+  if (unit === "g" || unit === "gm") return { value: (perPackage / input.sizeValue) * 100, unit: "100g" };
+  if (unit === "kg") return { value: (perPackage / (input.sizeValue * 1000)) * 100, unit: "100g" };
+  if (unit === "ml") return { value: (perPackage / input.sizeValue) * 100, unit: "100mL" };
+  if (unit === "l" || unit === "lt" || unit === "ltr") return { value: (perPackage / (input.sizeValue * 1000)) * 100, unit: "100mL" };
+  return null;
+}
+
 // GET /v1/insights/products?household_id=xxx — every product you've bought on a receipt, with stats
 app.get("/products", async (c) => {
   const user = c.var.user;
@@ -203,10 +230,14 @@ app.get("/products/:id", async (c) => {
   if (!product) return c.json({ error: "not_found" }, 404);
 
   // Each receipt purchase, newest first, with the actual variant bought and the store.
-  const { results: purchases } = await c.env.DB
+  const { results: rawPurchases } = await c.env.DB
     .prepare(
       `SELECT ph.id, ph.purchased_at, ph.price_paid, ph.quantity,
               rli.raw_description AS variant,
+              rli.quantity        AS rli_quantity,
+              rli.unit_price      AS rli_unit_price,
+              rli.size_value      AS rli_size_value,
+              rli.size_unit       AS rli_size_unit,
               r.store_name        AS store_name
        FROM purchase_history ph
        LEFT JOIN receipt_line_items rli ON rli.purchase_history_id = ph.id
@@ -221,8 +252,32 @@ app.get("/products/:id", async (c) => {
       price_paid: number | null;
       quantity: string | null;
       variant: string | null;
+      rli_quantity: number | null;
+      rli_unit_price: number | null;
+      rli_size_value: number | null;
+      rli_size_unit: string | null;
       store_name: string | null;
     }>();
+
+  const purchases = rawPurchases.map((p) => {
+    const unitPrice = unitPriceFor({
+      pricePaid: p.price_paid,
+      quantity: p.rli_quantity,
+      unitPrice: p.rli_unit_price,
+      sizeValue: p.rli_size_value,
+      sizeUnit: p.rli_size_unit,
+    });
+    return {
+      id: p.id,
+      purchased_at: p.purchased_at,
+      price_paid: p.price_paid,
+      quantity: p.quantity,
+      variant: p.variant,
+      store_name: p.store_name,
+      unit_price: unitPrice?.value ?? null,
+      unit_price_unit: unitPrice?.unit ?? null,
+    };
+  });
 
   // Aggregate stats. avg_interval_days is the typical gap between purchases —
   // groundwork for future "you usually buy this every N days" suggestions.

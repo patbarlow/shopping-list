@@ -127,8 +127,15 @@ struct ProductDetailView: View {
                 }
             }
             Spacer()
-            if let price = purchase.pricePaid {
-                Text(currency(price)).font(.subheadline.weight(.semibold))
+            VStack(alignment: .trailing, spacing: 2) {
+                if let price = purchase.pricePaid {
+                    Text(currency(price)).font(.subheadline.weight(.semibold))
+                }
+                if let unitPrice = purchase.unitPrice, let unit = purchase.unitPriceUnit {
+                    Text("\(currency(unitPrice)) / \(unit)")
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
+                }
             }
         }
         .padding(.vertical, 10)
