@@ -38,9 +38,15 @@ interface Row {
 // Same unit vocabulary/order as heuristicCleanName() in worker/src/ai.ts, so
 // this recognizes exactly what the receipt-scan prompt already knows to print.
 const SIZE_UNITS = "kg|g|gm|ml|l|ltr|lt";
+// Bottled/canned drinks print per-bottle volume + a separate pack count (e.g.
+// "150ml x 8pk"), unlike solid goods where the label always shows total pack
+// weight — so only these units need the count multiplied back in.
+const VOLUME_UNITS = "ml|l|ltr|lt";
 
 // "6x250ml", "4 x 250g" — total content of the multipack.
 const MULTIPACK_RE = new RegExp(`(?:^|\\s)(\\d+)\\s?x\\s?(\\d+(?:\\.\\d+)?)\\s?(${SIZE_UNITS})\\b`, "i");
+// "150ml x 8pk", "250ml 4pk" — per-bottle volume printed before the pack count.
+const SUFFIX_MULTIPACK_RE = new RegExp(`(?:^|\\s)(\\d+(?:\\.\\d+)?)\\s?(${VOLUME_UNITS})\\s?x?\\s?(\\d+)\\s?pk\\b`, "i");
 // "165g", "2l", "500ml", "1kg"
 const SIMPLE_SIZE_RE = new RegExp(`(?:^|\\s)(\\d+(?:\\.\\d+)?)\\s?(${SIZE_UNITS})\\b`, "i");
 
@@ -53,6 +59,14 @@ function extractSize(description: string): { value: number; unit: string } | nul
     const each = parseFloat(multi[2]);
     const value = count * each;
     if (isPlausible(value, multi[3])) return { value, unit: multi[3] };
+  }
+
+  const suffixMulti = s.match(SUFFIX_MULTIPACK_RE);
+  if (suffixMulti) {
+    const each = parseFloat(suffixMulti[1]);
+    const count = parseFloat(suffixMulti[3]);
+    const value = each * count;
+    if (isPlausible(value, suffixMulti[2])) return { value, unit: suffixMulti[2] };
   }
 
   const simple = s.match(SIMPLE_SIZE_RE);
