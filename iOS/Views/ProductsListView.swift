@@ -56,7 +56,7 @@ struct ProductsListView: View {
             }
         }
         .navigationTitle("Products")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if !products.isEmpty {
                 ToolbarItem(placement: .primaryAction) {

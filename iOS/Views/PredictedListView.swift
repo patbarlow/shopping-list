@@ -41,7 +41,7 @@ struct PredictedListView: View {
             }
         }
         .navigationTitle("Forecast")
-        .navigationBarTitleDisplayMode(.large)
+        .navigationBarTitleDisplayMode(.inline)
         .task {
             do {
                 response = try await services.api.fetchPredictedList(householdId: householdId)
