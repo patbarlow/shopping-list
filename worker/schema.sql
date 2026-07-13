@@ -15,10 +15,11 @@ CREATE TABLE IF NOT EXISTS email_codes (
 );
 
 CREATE TABLE IF NOT EXISTS households (
-  id          TEXT PRIMARY KEY,
-  name        TEXT NOT NULL,
-  invite_code TEXT UNIQUE NOT NULL,
-  created_at  TEXT NOT NULL
+  id                 TEXT PRIMARY KEY,
+  name               TEXT NOT NULL,
+  invite_code        TEXT UNIQUE NOT NULL,
+  shopping_frequency TEXT NOT NULL DEFAULT 'weekly',
+  created_at         TEXT NOT NULL
 );
 
 CREATE TABLE IF NOT EXISTS household_members (

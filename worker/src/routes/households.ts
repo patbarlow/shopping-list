@@ -1,11 +1,19 @@
 import { Hono } from "hono";
 import type { Env } from "../env";
 import { requireAuth, type AuthVariables } from "../middleware/auth";
-import { nowISO, generateInviteCode, type Household } from "../db";
+import { nowISO, generateInviteCode, isValidShoppingFrequency, type Household } from "../db";
 
 const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
 app.use("*", requireAuth);
+
+async function assertMember(env: Env, householdId: string, userId: string): Promise<boolean> {
+  const row = await env.DB
+    .prepare("SELECT id FROM household_members WHERE household_id = ? AND user_id = ?")
+    .bind(householdId, userId)
+    .first();
+  return row !== null;
+}
 
 // GET /v1/households/mine — fetch the household this user belongs to
 app.get("/mine", async (c) => {
@@ -44,7 +52,10 @@ app.post("/", async (c) => {
     ).bind(crypto.randomUUID(), id, user.id, now),
   ]);
 
-  return c.json({ household: { id, name, invite_code: inviteCode, created_at: now } }, 201);
+  return c.json(
+    { household: { id, name, invite_code: inviteCode, shopping_frequency: "weekly", created_at: now } },
+    201,
+  );
 });
 
 // POST /v1/households/join — join via invite code
@@ -69,6 +80,34 @@ app.post("/join", async (c) => {
     )
     .bind(crypto.randomUUID(), household.id, user.id, nowISO())
     .run();
+
+  return c.json({ household });
+});
+
+// PATCH /v1/households/:id — update household settings (currently: shopping_frequency)
+app.patch("/:id", async (c) => {
+  const user = c.var.user;
+  const householdId = c.req.param("id");
+
+  if (!(await assertMember(c.env, householdId, user.id))) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+
+  const body = await c.req.json<{ shopping_frequency?: string }>().catch(() => ({}) as { shopping_frequency?: string });
+  const frequency = body.shopping_frequency;
+  if (!frequency || !isValidShoppingFrequency(frequency)) {
+    return c.json({ error: "invalid_shopping_frequency" }, 400);
+  }
+
+  await c.env.DB
+    .prepare("UPDATE households SET shopping_frequency = ? WHERE id = ?")
+    .bind(frequency, householdId)
+    .run();
+
+  const household = await c.env.DB
+    .prepare("SELECT * FROM households WHERE id = ?")
+    .bind(householdId)
+    .first<Household>();
 
   return c.json({ household });
 });

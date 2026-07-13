@@ -217,6 +217,14 @@ final class APIService {
         return response.household
     }
 
+    func updateShoppingFrequency(householdId: String, frequency: ShoppingFrequency) async throws -> Household {
+        let response: HouseholdResponse = try await patch(
+            "/v1/households/\(householdId)",
+            body: ["shopping_frequency": frequency.rawValue]
+        )
+        return response.household
+    }
+
     func fetchMyHousehold() async throws -> Household? {
         let response: HouseholdNullableResponse = try await get(
             "/v1/households/mine",
