@@ -10,6 +10,7 @@ export interface Household {
   id: string;
   name: string;
   invite_code: string;
+  shopping_frequency: string;
   created_at: string;
 }
 
@@ -168,4 +169,18 @@ export function nowISO(): string {
 export function generateInviteCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   return Array.from({ length: 6 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+}
+
+// How often a household does a big shop, and the forecast horizon (in days)
+// that implies — used to size the "predictions" window instead of a fixed week.
+export const SHOPPING_FREQUENCY_DAYS: Record<string, number> = {
+  twice_weekly: 4,
+  weekly: 7,
+  biweekly: 14,
+  twice_monthly: 15,
+  monthly: 30,
+};
+
+export function isValidShoppingFrequency(value: string): boolean {
+  return value in SHOPPING_FREQUENCY_DAYS;
 }

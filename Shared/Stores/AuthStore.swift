@@ -114,6 +114,17 @@ import Observation
         isLoading = false
     }
 
+    func updateShoppingFrequency(_ frequency: ShoppingFrequency) async {
+        guard let householdId = household?.id else { return }
+        do {
+            let h = try await api.updateShoppingFrequency(householdId: householdId, frequency: frequency)
+            household = h
+            persistHousehold(h)
+        } catch {
+            self.error = error.localizedDescription
+        }
+    }
+
     private func persistHousehold(_ h: Household) {
         UserDefaults.sharedGroup.set(try? JSONEncoder().encode(h), forKey: "sl_household")
     }

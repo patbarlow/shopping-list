@@ -1,7 +1,8 @@
 import SwiftUI
 
-/// Products likely due for a re-buy in the next 7 days, based on each
-/// product's typical shopping-trip cadence, with an estimated cost.
+/// Products likely due for a re-buy before your next big shop, based on each
+/// product's typical shopping-trip cadence and your shopping frequency setting,
+/// with an estimated cost.
 struct PredictedListView: View {
     let householdId: String
     @Environment(AppServices.self) private var services
@@ -20,7 +21,7 @@ struct PredictedListView: View {
                 ContentUnavailableView(
                     "Not enough data yet",
                     systemImage: "calendar.badge.clock",
-                    description: Text("Scan a few more receipts and we'll start predicting what you'll need this week.")
+                    description: Text("Scan a few more receipts and we'll start predicting what you'll need before your next big shop.")
                 )
             } else if let response {
                 List {
@@ -56,7 +57,7 @@ struct PredictedListView: View {
 
     private func summaryCard(_ response: PredictedListResponse) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("PREDICTED FOR THIS WEEK")
+            Text("PREDICTED FOR YOUR NEXT SHOP")
                 .font(.caption2.weight(.bold))
                 .foregroundStyle(.secondary)
             Text(currency(response.predictedTotal))

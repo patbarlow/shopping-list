@@ -586,6 +586,12 @@ private struct MacSettingsView: View {
     @Environment(AppServices.self) private var services
     @Environment(\.dismiss) private var dismiss
     @State private var copied = false
+    @State private var frequency: ShoppingFrequency
+
+    init(household: Household) {
+        self.household = household
+        _frequency = State(initialValue: household.shoppingFrequency)
+    }
 
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
@@ -622,6 +628,24 @@ private struct MacSettingsView: View {
                 .padding(4)
             }
 
+            GroupBox("Shopping Frequency") {
+                VStack(alignment: .leading, spacing: 8) {
+                    Picker("How often do you shop?", selection: $frequency) {
+                        ForEach(ShoppingFrequency.allCases) { freq in
+                            Text(freq.label).tag(freq)
+                        }
+                    }
+                    .labelsHidden()
+                    .onChange(of: frequency) { _, newValue in
+                        Task { await services.auth.updateShoppingFrequency(newValue) }
+                    }
+                    Text("Used to predict what you'll need before your next big shop.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
+                .padding(4)
+            }
+
             Spacer()
 
             Button("Sign Out", role: .destructive) {
@@ -631,7 +655,7 @@ private struct MacSettingsView: View {
             .frame(maxWidth: .infinity)
         }
         .padding(24)
-        .frame(width: 340, height: 280)
+        .frame(width: 340, height: 360)
     }
 }
 

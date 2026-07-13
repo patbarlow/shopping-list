@@ -5,6 +5,12 @@ struct SettingsView: View {
     @Environment(AppServices.self) private var services
     @Environment(\.dismiss) private var dismiss
     @State private var copied = false
+    @State private var frequency: ShoppingFrequency
+
+    init(household: Household) {
+        self.household = household
+        _frequency = State(initialValue: household.shoppingFrequency)
+    }
 
     var body: some View {
         NavigationStack {
@@ -34,6 +40,22 @@ struct SettingsView: View {
                         .foregroundStyle(.secondary)
                 } header: {
                     Text("Household")
+                }
+
+                // ── Shopping frequency ────────────────────────────────────
+                Section {
+                    Picker("How often do you shop?", selection: $frequency) {
+                        ForEach(ShoppingFrequency.allCases) { freq in
+                            Text(freq.label).tag(freq)
+                        }
+                    }
+                    .onChange(of: frequency) { _, newValue in
+                        Task { await services.auth.updateShoppingFrequency(newValue) }
+                    }
+                } header: {
+                    Text("Shopping Frequency")
+                } footer: {
+                    Text("Used to predict what you'll need before your next big shop.")
                 }
 
                 // ── Sign out ───────────────────────────────────────────────

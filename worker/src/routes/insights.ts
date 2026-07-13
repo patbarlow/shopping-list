@@ -1,6 +1,7 @@
 import { Hono } from "hono";
 import type { Env } from "../env";
 import { requireAuth, type AuthVariables } from "../middleware/auth";
+import { SHOPPING_FREQUENCY_DAYS, type Household } from "../db";
 
 const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
@@ -306,12 +307,19 @@ app.get("/products/:id", async (c) => {
 // considered reliable enough to predict from.
 const MIN_OCCASIONS_FOR_PREDICTION = 3;
 
-// GET /v1/insights/predictions?household_id=xxx — items likely due within the next 7 days
+// GET /v1/insights/predictions?household_id=xxx — items likely due before the
+// household's next big shop, sized by their shopping_frequency setting.
 app.get("/predictions", async (c) => {
   const user = c.var.user;
   const householdId = c.req.query("household_id");
   if (!householdId) return c.json({ error: "missing_household_id" }, 400);
   if (!(await assertMember(c.env, householdId, user.id))) return c.json({ error: "forbidden" }, 403);
+
+  const household = await c.env.DB
+    .prepare("SELECT * FROM households WHERE id = ?")
+    .bind(householdId)
+    .first<Household>();
+  const horizonDays = SHOPPING_FREQUENCY_DAYS[household?.shopping_frequency ?? "weekly"] ?? 7;
 
   const { results: rows } = await c.env.DB
     .prepare(
@@ -336,7 +344,7 @@ app.get("/predictions", async (c) => {
   }
 
   const todayMs = Date.parse(new Date().toISOString().slice(0, 10));
-  const horizonEnd = todayMs + 7 * 86_400_000;
+  const horizonEnd = todayMs + horizonDays * 86_400_000;
 
   const items: {
     product_id: string;
