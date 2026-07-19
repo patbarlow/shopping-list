@@ -380,11 +380,15 @@ const RECEIPT_RULES =
   `- receipt_date must be ISO format (YYYY-MM-DD) or null.\n` +
   `- EXCLUDE non-product rows: subtotal, total, tax/GST, rounding, change, tender/EFTPOS/cash, loyalty/points, savings, and store header/footer text.\n` +
   `- A discount line that reduces the price of the item above it should be folded into that item's total_price, not listed separately.\n` +
+  `- Some receipts print a product across TWO lines: the name alone on one line, then a continuation line below it with the weight/quantity, unit rate and price (e.g. "Potato Sweet Gold" followed by "1.017 kg NET @ $3.90/kg  3.97", or a name followed by "Qty 2 @ $2.40 each  4.80"). Merge each such pair into ONE line item — do not emit the name and its continuation as two separate items.\n` +
   `- Include EVERY product line that is actually printed, and ONLY lines that are actually printed.`;
 
 function parseReceiptJson(text: string): ParsedReceipt | null {
+  const start = text.indexOf("{");
+  const end = text.lastIndexOf("}");
+  if (start === -1 || end === -1 || end < start) return null;
   try {
-    const parsed = JSON.parse(text.replace(/```json\n?|```/g, "").trim()) as ParsedReceipt;
+    const parsed = JSON.parse(text.slice(start, end + 1)) as ParsedReceipt;
     if (!parsed || !Array.isArray(parsed.line_items)) return null;
     return parsed;
   } catch {
