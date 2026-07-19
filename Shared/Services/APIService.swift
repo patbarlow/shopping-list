@@ -128,15 +128,19 @@ final class APIService {
 
     // MARK: - Receipts
 
+    // The worker runs two sequential Claude calls to parse and match a receipt (up to
+    // 30s each), which can exceed URLSession's default 60s timeout on a slow response.
+    private let receiptScanTimeout: TimeInterval = 120
+
     func scanReceipt(householdId: String, imageBase64: String, mediaType: String = "image/jpeg") async throws -> ReceiptScanResponse {
         let body: [String: Any] = ["household_id": householdId, "image_base64": imageBase64, "media_type": mediaType]
-        return try await post("/v1/receipts/scan", body: body)
+        return try await post("/v1/receipts/scan", body: body, timeout: receiptScanTimeout)
     }
 
     /// Parse a digital receipt from its extracted text layer (PDF). More accurate than image OCR.
     func scanReceipt(householdId: String, receiptText: String) async throws -> ReceiptScanResponse {
         let body: [String: Any] = ["household_id": householdId, "receipt_text": receiptText]
-        return try await post("/v1/receipts/scan", body: body)
+        return try await post("/v1/receipts/scan", body: body, timeout: receiptScanTimeout)
     }
 
     func confirmReceipt(
@@ -249,7 +253,7 @@ final class APIService {
         return try await execute(req)
     }
 
-    func post<T: Decodable>(_ path: String, body: [String: Any], authenticated: Bool = true) async throws -> T {
+    func post<T: Decodable>(_ path: String, body: [String: Any], authenticated: Bool = true, timeout: TimeInterval? = nil) async throws -> T {
         guard let url = URL(string: baseURL + path) else { throw APIError.badURL }
         var req = URLRequest(url: url)
         req.httpMethod = "POST"
@@ -257,6 +261,7 @@ final class APIService {
         if authenticated, let token = authToken {
             req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
+        if let timeout { req.timeoutInterval = timeout }
         req.httpBody = try JSONSerialization.data(withJSONObject: body)
         return try await execute(req)
     }
