@@ -307,7 +307,7 @@ struct ReceiptScannerView: View {
             applyResult(result)
         } catch {
             phase = .capture
-            errorMessage = "Couldn't read that receipt."
+            errorMessage = "Couldn't read that receipt. (\(error.localizedDescription))"
         }
     }
 
@@ -382,7 +382,7 @@ struct ReceiptScannerView: View {
             applyResult(result)
         } catch {
             phase = .capture
-            errorMessage = "Couldn't read that receipt."
+            errorMessage = "Couldn't read that receipt. (\(error.localizedDescription))"
         }
     }
 
@@ -397,7 +397,7 @@ struct ReceiptScannerView: View {
             applyResult(result)
         } catch {
             phase = .capture
-            errorMessage = "Couldn't read that receipt."
+            errorMessage = "Couldn't read that receipt. (\(error.localizedDescription))"
         }
     }
 
