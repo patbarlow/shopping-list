@@ -113,7 +113,8 @@ struct ShoppingListView: View {
                     if showInsights {
                         ProductsListView(householdId: household.id).environment(services)
                     } else if showForecast {
-                        PredictedListView(householdId: household.id).environment(services)
+                        PredictedListView(householdId: household.id, shoppingFrequency: household.shoppingFrequency)
+                            .environment(services)
                     } else if let date = selectedHistoryDate {
                         HistoryDayView(householdId: household.id, date: date) {
                             selectedHistoryDate = nil

@@ -1,7 +1,7 @@
 import SwiftUI
 
 /// Browse every product you've bought on a receipt, with how often and how much.
-/// Shown as its own page; tapping a product opens its detail as a card.
+/// Shown as its own page; tapping a product pushes its detail page.
 struct ProductsListView: View {
     let householdId: String
     @Environment(AppServices.self) private var services
@@ -10,7 +10,7 @@ struct ProductsListView: View {
     @State private var isLoading = true
     @State private var errorMessage: String? = nil
     @State private var sort: Sort = .frequency
-    @State private var selectedProduct: ProductInsight? = nil
+    @State private var searchText = ""
 
     enum Sort: String, CaseIterable, Identifiable {
         case frequency = "Most bought"
@@ -21,11 +21,14 @@ struct ProductsListView: View {
     }
 
     private var sorted: [ProductInsight] {
+        let filtered = searchText.isEmpty
+            ? products
+            : products.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
         switch sort {
-        case .frequency: return products.sorted { $0.timesPurchased > $1.timesPurchased }
-        case .spend:     return products.sorted { ($0.totalSpend ?? 0) > ($1.totalSpend ?? 0) }
-        case .recent:    return products.sorted { ($0.lastPurchasedAt ?? "") > ($1.lastPurchasedAt ?? "") }
-        case .name:      return products.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        case .frequency: return filtered.sorted { $0.timesPurchased > $1.timesPurchased }
+        case .spend:     return filtered.sorted { ($0.totalSpend ?? 0) > ($1.totalSpend ?? 0) }
+        case .recent:    return filtered.sorted { ($0.lastPurchasedAt ?? "") > ($1.lastPurchasedAt ?? "") }
+        case .name:      return filtered.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         }
     }
 
@@ -44,15 +47,16 @@ struct ProductsListView: View {
             } else {
                 List {
                     ForEach(sorted) { product in
-                        Button {
-                            selectedProduct = product
+                        NavigationLink {
+                            ProductDetailView(householdId: householdId, productId: product.id, fallbackName: product.name)
+                                .environment(services)
                         } label: {
                             row(product)
                         }
-                        .buttonStyle(.plain)
                     }
                 }
                 .listStyle(.plain)
+                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic))
             }
         }
         .navigationTitle("Products")
@@ -69,10 +73,6 @@ struct ProductsListView: View {
                     }
                 }
             }
-        }
-        .sheet(item: $selectedProduct) { product in
-            ProductDetailView(householdId: householdId, productId: product.id, fallbackName: product.name)
-                .environment(services)
         }
         .task {
             do {
@@ -93,7 +93,7 @@ struct ProductsListView: View {
 
             VStack(alignment: .leading, spacing: 2) {
                 Text(product.name).font(.body.weight(.medium)).foregroundStyle(.primary)
-                Text("Bought ^[\(product.timesPurchased) time](inflect: true)")
+                Text(subtitle(product))
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
@@ -102,17 +102,43 @@ struct ProductsListView: View {
 
             VStack(alignment: .trailing, spacing: 2) {
                 if let avg = product.avgPrice {
-                    Text(avg, format: .currency(code: "AUD"))
-                        .font(.subheadline.weight(.semibold))
+                    HStack(spacing: 3) {
+                        trendArrow(product)
+                        Text(avg, format: .currency(code: "AUD"))
+                            .font(.subheadline.weight(.semibold))
+                    }
                     Text("avg").font(.caption2).foregroundStyle(.tertiary)
                 }
             }
-
-            Image(systemName: "chevron.right")
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
         }
         .padding(.vertical, 2)
         .contentShape(Rectangle())
     }
+
+    /// Last price above/below the running average by 5%+ — the shelf-tag fact
+    /// supermarkets never print.
+    @ViewBuilder
+    private func trendArrow(_ product: ProductInsight) -> some View {
+        switch product.priceTrend {
+        case .up:   Image(systemName: "arrow.up").font(.caption2.bold()).foregroundStyle(.red)
+        case .down: Image(systemName: "arrow.down").font(.caption2.bold()).foregroundStyle(.green)
+        case nil:   EmptyView()
+        }
+    }
+
+    private func subtitle(_ product: ProductInsight) -> String {
+        var parts = ["\(product.timesPurchased)×"]
+        if let last = product.lastPurchasedAt, let d = Self.dayFormatter.date(from: String(last.prefix(10))) {
+            let f = DateFormatter()
+            f.setLocalizedDateFormatFromTemplate("d MMM")
+            parts.append("last \(f.string(from: d))")
+        }
+        return parts.joined(separator: " · ")
+    }
+
+    private static let dayFormatter: DateFormatter = {
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        return f
+    }()
 }

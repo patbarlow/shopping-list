@@ -39,6 +39,17 @@ enum ShoppingFrequency: String, Codable, CaseIterable, Identifiable {
         case .monthly:      "Once a month"
         }
     }
+
+    /// Days between big shops — mirrors SHOPPING_FREQUENCY_DAYS on the server.
+    var tripDays: Int {
+        switch self {
+        case .twiceWeekly:  4
+        case .weekly:       7
+        case .biweekly:     14
+        case .twiceMonthly: 15
+        case .monthly:      30
+        }
+    }
 }
 
 struct HouseholdMember: Codable, Identifiable {

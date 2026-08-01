@@ -220,7 +220,7 @@ struct ReceiptScannerView: View {
 
                 HStack(spacing: 4) {
                     if let qty = item.wrappedValue.quantityText {
-                        Text("×\(qty)").font(.caption).foregroundStyle(.secondary)
+                        Text(qty).font(.caption).foregroundStyle(.secondary)
                     }
                     Text(item.wrappedValue.description)
                         .font(.caption)
@@ -317,7 +317,7 @@ struct ReceiptScannerView: View {
         guard let doc = PDFDocument(data: data) else { return nil }
         var text = ""
         for i in 0 ..< doc.pageCount {
-            if let s = doc.page(at: i)?.string { text += s + "\n" }
+            if let page = doc.page(at: i) { text += layoutText(for: page) + "\n" }
         }
         let trimmed = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard trimmed.count >= 40, trimmed.rangeOfCharacter(from: .decimalDigits) != nil else { return nil }
@@ -330,6 +330,40 @@ struct ReceiptScannerView: View {
         let readable = trimmed.unicodeScalars.filter { readableSet.contains($0) }.count
         guard Double(readable) / Double(trimmed.unicodeScalars.count) >= 0.85 else { return nil }
         return trimmed
+    }
+
+    /// Rebuild a page's text in visual order. `PDFPage.string` returns text in
+    /// content-stream order, which on two-column receipts emits all descriptions and
+    /// then all prices as separate runs — so prices end up paired with the wrong items.
+    /// Regrouping the line fragments by baseline puts each price back on its item's line.
+    private func layoutText(for page: PDFPage) -> String {
+        guard let full = page.selection(for: page.bounds(for: .mediaBox)) else {
+            return page.string ?? ""
+        }
+        struct Fragment {
+            let x: CGFloat
+            let y: CGFloat
+            let text: String
+        }
+        var fragments: [Fragment] = []
+        for line in full.selectionsByLine() {
+            guard let t = line.string?.trimmingCharacters(in: .whitespaces), !t.isEmpty else { continue }
+            let b = line.bounds(for: page)
+            fragments.append(Fragment(x: b.minX, y: b.midY, text: t))
+        }
+        guard !fragments.isEmpty else { return page.string ?? "" }
+
+        var rows: [(y: CGFloat, frags: [Fragment])] = []
+        for f in fragments.sorted(by: { $0.y > $1.y }) {
+            if let last = rows.indices.last, abs(rows[last].y - f.y) < 3 {
+                rows[last].frags.append(f)
+            } else {
+                rows.append((f.y, [f]))
+            }
+        }
+        return rows
+            .map { $0.frags.sorted { $0.x < $1.x }.map(\.text).joined(separator: " ") }
+            .joined(separator: "\n")
     }
 
     private func renderPDFToImage(_ data: Data) -> UIImage? {

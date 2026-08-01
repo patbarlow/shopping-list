@@ -255,8 +255,9 @@ struct EditableReceiptItem: Identifiable {
 
     var quantityText: String? {
         guard let q = quantity, q != 1 else { return nil }
-        // Show whole numbers without a decimal, weights with up to 2 places.
-        return q == q.rounded() ? String(Int(q)) : String(format: "%g", q)
+        // Whole numbers are unit counts ("×2"); fractional quantities are loose
+        // weights, which receipts print in kg ("1.017 kg").
+        return q == q.rounded() ? "×\(Int(q))" : String(format: "%g kg", q)
     }
 }
 
