@@ -376,6 +376,8 @@ const RECEIPT_RULES =
   `- "description" is the raw product text exactly as printed, including the size/volume if shown (e.g. "WW FUL CRM MILK 2L" stays 2L, not 3L).\n` +
   `- "quantity" is the number of units (e.g. 2 for "2 @ $3.00"); use 1 for a single unit; for items sold by weight use the weight number (e.g. 0.65 for "0.65kg").\n` +
   `- "unit_price" is the per-unit/per-kg price; "total_price" is what was actually charged for that line.\n` +
+  `- A quantity line like "Qty 2 @ $2.40 each" / "Qty 2 @ $1.69 ea." is printed on its own line DIRECTLY BELOW the product it belongs to: merge it into that product (quantity 2, unit_price 2.40, total_price = the printed line total). Same for weight lines like "1.017 kg NET @ $3.90/kg" below a product: quantity 1.017, unit_price 3.90. Copy these numbers digit-for-digit; never emit such a line as its own item.\n` +
+  `- ALDI: a leading numeric item code (e.g. "399060 Milk Almond UHT 1L") is NOT part of the description — drop it. A single trailing letter after a price (e.g. "3.38 A") is a tax marker, not part of the price.\n` +
   `- "size_value"/"size_unit" are the PACKAGE size printed on the line, e.g. "175G" -> size_value:175, size_unit:"g"; "2L" -> size_value:2, size_unit:"L"; "6X250ML" -> size_value:1500, size_unit:"mL" (total volume of the multipack). Use null for both if no package size is shown, or if the item is sold loose by weight (its "unit_price" already gives the per-kg rate).\n` +
   `- receipt_date must be ISO format (YYYY-MM-DD) or null.\n` +
   `- EXCLUDE non-product rows: subtotal, total, tax/GST, rounding, change, tender/EFTPOS/cash, loyalty/points, savings, and store header/footer text.\n` +

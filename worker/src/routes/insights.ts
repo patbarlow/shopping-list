@@ -193,7 +193,11 @@ app.get("/products", async (c) => {
               COUNT(ph.id)        AS times_purchased,
               AVG(ph.price_paid)  AS avg_price,
               SUM(ph.price_paid)  AS total_spend,
-              MAX(ph.purchased_at) AS last_purchased_at
+              MAX(ph.purchased_at) AS last_purchased_at,
+              (SELECT ph2.price_paid FROM purchase_history ph2
+               WHERE ph2.product_id = p.id AND ph2.household_id = ?
+                 AND ph2.source LIKE 'receipt%' AND ph2.price_paid IS NOT NULL
+               ORDER BY ph2.purchased_at DESC LIMIT 1) AS last_price
        FROM products p
        JOIN purchase_history ph
          ON ph.product_id = p.id AND ph.household_id = ? AND ${RECEIPT_SOURCE}
@@ -201,7 +205,7 @@ app.get("/products", async (c) => {
        GROUP BY p.id
        ORDER BY times_purchased DESC, total_spend DESC, p.name ASC`,
     )
-    .bind(householdId, householdId)
+    .bind(householdId, householdId, householdId)
     .all<{
       id: string;
       name: string;
@@ -211,6 +215,7 @@ app.get("/products", async (c) => {
       avg_price: number | null;
       total_spend: number | null;
       last_purchased_at: string;
+      last_price: number | null;
     }>();
 
   return c.json({ products: results });

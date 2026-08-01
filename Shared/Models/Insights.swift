@@ -10,6 +10,7 @@ struct ProductInsight: Decodable, Identifiable {
     let avgPrice: Double?
     let totalSpend: Double?
     let lastPurchasedAt: String?
+    let lastPrice: Double?
 
     enum CodingKeys: String, CodingKey {
         case id, name, category
@@ -17,6 +18,16 @@ struct ProductInsight: Decodable, Identifiable {
         case avgPrice        = "avg_price"
         case totalSpend      = "total_spend"
         case lastPurchasedAt = "last_purchased_at"
+        case lastPrice       = "last_price"
+    }
+
+    /// Whether the most recent price is meaningfully above/below the running average.
+    enum PriceTrend { case up, down }
+    var priceTrend: PriceTrend? {
+        guard let last = lastPrice, let avg = avgPrice, avg > 0 else { return nil }
+        if last >= avg * 1.05 { return .up }
+        if last <= avg * 0.95 { return .down }
+        return nil
     }
 }
 

@@ -2,46 +2,39 @@ import SwiftUI
 
 /// A single product's stats (times bought, average, all-time spend) and a
 /// date-grouped log of every actual product bought under it, with prices.
+/// Pushed from the Products list.
 struct ProductDetailView: View {
     let householdId: String
     let productId: String
     let fallbackName: String
     @Environment(AppServices.self) private var services
-    @Environment(\.dismiss) private var dismiss
 
     @State private var detail: ProductInsightDetail? = nil
     @State private var isLoading = true
     @State private var errorMessage: String? = nil
 
     var body: some View {
-        NavigationStack {
-            ScrollView {
-                if isLoading {
-                    ProgressView().frame(maxWidth: .infinity).padding(.vertical, 80)
-                } else if let detail {
-                    VStack(alignment: .leading, spacing: 20) {
-                        statCards(detail.stats)
-                        if let interval = detail.stats.avgIntervalDays, interval > 0 {
-                            Label("You buy this about every \(interval) day\(interval == 1 ? "" : "s").", systemImage: "clock.arrow.circlepath")
-                                .font(.subheadline)
-                                .foregroundStyle(.secondary)
-                        }
-                        purchaseLog(detail.purchases)
+        ScrollView {
+            if isLoading {
+                ProgressView().frame(maxWidth: .infinity).padding(.vertical, 80)
+            } else if let detail {
+                VStack(alignment: .leading, spacing: 20) {
+                    statCards(detail.stats)
+                    if let interval = detail.stats.avgIntervalDays, interval > 0 {
+                        Label("You buy this about every \(interval) day\(interval == 1 ? "" : "s").", systemImage: "clock.arrow.circlepath")
+                            .font(.subheadline)
+                            .foregroundStyle(.secondary)
                     }
-                    .padding(16)
-                } else if let errorMessage {
-                    ContentUnavailableView("Couldn't load", systemImage: "exclamationmark.triangle", description: Text(errorMessage))
-                        .padding(.top, 80)
+                    purchaseLog(detail.purchases)
                 }
-            }
-            .navigationTitle(detail?.product.name ?? fallbackName)
-            .navigationBarTitleDisplayMode(.large)
-            .toolbar {
-                ToolbarItem(placement: .confirmationAction) {
-                    Button("Done") { dismiss() }
-                }
+                .padding(16)
+            } else if let errorMessage {
+                ContentUnavailableView("Couldn't load", systemImage: "exclamationmark.triangle", description: Text(errorMessage))
+                    .padding(.top, 80)
             }
         }
+        .navigationTitle(detail?.product.name ?? fallbackName)
+        .navigationBarTitleDisplayMode(.large)
         .task {
             do {
                 detail = try await services.api.fetchProductInsight(householdId: householdId, productId: productId)
