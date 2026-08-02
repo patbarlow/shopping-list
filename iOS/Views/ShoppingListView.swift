@@ -12,10 +12,6 @@ struct ShoppingListView: View {
     @State private var showSettings = false
     @State private var showRecipeHub = false
     @State private var showReceiptScanner = false
-    @State private var showInsights = false
-    @State private var showForecast = false
-    @State private var selectedHistoryDate: String? = nil
-    @State private var historyDays: [HistoryDay] = []
 
     // ── Inline add ─────────────────────────────────────────────────────────────
     @State private var isAdding  = false
@@ -49,26 +45,9 @@ struct ShoppingListView: View {
     @State private var swipeOffsets: [String: CGFloat] = [:]
     @State private var swipePassedThreshold: Set<String> = []
 
-    // ── Sidebar Interaction ───────────────────────────────────────────────────
-    @State private var isSidebarOpen = false
-    @State private var dragOffset: CGFloat = 0
-    private let sidebarWidth: CGFloat = 280
-
-    // Single source of truth for "how far open"
-    private var currentOffset: CGFloat {
-        let base = isSidebarOpen ? sidebarWidth : 0
-        return min(max(base + dragOffset, 0), sidebarWidth)
-    }
-
-    private var progress: CGFloat { currentOffset / sidebarWidth }
-    private var deviceCornerRadius: CGFloat {
-        let screen = UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .first?.screen
-        return (screen?.value(forKey: "_displayCornerRadius") as? CGFloat) ?? 44
-    }
-
     private var store: ShoppingListStore { services.shopping }
+
+    private var isEditingItem: Bool { editingItemID != nil }
 
     // Multi-item paste preview — shown when paste produces >1 item
     private var parsedAddItems: [String] {
@@ -89,53 +68,20 @@ struct ShoppingListView: View {
     // MARK: - Body
 
     var body: some View {
-        ZStack(alignment: .leading) {
-            // Background fill — sidebar color bleeds into content card corner radius gap
-            Color(.systemGroupedBackground)
-                .ignoresSafeArea()
-
-            // 1. Stationary sidebar — dims to black when closed, clears as it opens
-            SidebarView(
-                household: household,
-                historyDays: historyDays,
-                selectedDate: $selectedHistoryDate,
-                isOpen: $isSidebarOpen,
-                showSettings: $showSettings,
-                showInsights: $showInsights,
-                showForecast: $showForecast
-            )
-            .frame(width: sidebarWidth)
-            .overlay(Color.black.opacity(0.4 * (1 - progress)))
-
-            // 2. Main content card — slides right to reveal sidebar
-            NavigationStack {
-                Group {
-                    if showInsights {
-                        ProductsListView(householdId: household.id).environment(services)
-                    } else if showForecast {
-                        PredictedListView(householdId: household.id, shoppingFrequency: household.shoppingFrequency)
-                            .environment(services)
-                    } else if let date = selectedHistoryDate {
-                        HistoryDayView(householdId: household.id, date: date) {
-                            selectedHistoryDate = nil
-                        }
-                        .environment(services)
-                    } else {
-                        mainList
-                            .overlay(alignment: .bottom) {
-                                LinearGradient(
-                                    colors: [.clear, Color(.systemBackground)],
-                                    startPoint: .top,
-                                    endPoint: .bottom
-                                )
-                                .frame(height: 80)
-                                .padding(.bottom, -56)
-                                .allowsHitTesting(false)
-                            }
-                            .safeAreaInset(edge: .bottom, spacing: 0) {
-                                addItemAccessory
-                            }
-                    }
+        NavigationStack {
+            mainList
+                .overlay(alignment: .bottom) {
+                    LinearGradient(
+                        colors: [.clear, Color(.systemBackground)],
+                        startPoint: .top,
+                        endPoint: .bottom
+                    )
+                    .frame(height: 80)
+                    .padding(.bottom, -56)
+                    .allowsHitTesting(false)
+                }
+                .safeAreaInset(edge: .bottom, spacing: 0) {
+                    addItemAccessory
                 }
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
@@ -149,41 +95,9 @@ struct ShoppingListView: View {
                 .sheet(isPresented: $showReceiptScanner) {
                     ReceiptScannerView(householdId: household.id).environment(services)
                 }
-            }
-            .background(Color(.systemBackground))
-            .clipShape(RoundedRectangle(cornerRadius: progress > 0 ? deviceCornerRadius : 0, style: .continuous))
-            .shadow(color: .black.opacity(0.25 * progress), radius: 16, x: -4, y: 0)
-            .offset(x: currentOffset)
-            .allowsHitTesting(!isSidebarOpen)
-
-            // 3. Thin edge strip — opens sidebar via drag from the left edge
-            if !isSidebarOpen {
-                Color.clear
-                    .frame(width: 20)
-                    .frame(maxHeight: .infinity)
-                    .contentShape(Rectangle())
-                    .gesture(openDragGesture)
-            }
-
-            // 4. Tap/drag overlay over the visible content strip — closes sidebar when open
-            if isSidebarOpen {
-                HStack(spacing: 0) {
-                    Color.clear
-                        .frame(width: sidebarWidth)
-                        .allowsHitTesting(false)
-                    Color.clear
-                        .frame(maxWidth: .infinity)
-                        .contentShape(Rectangle())
-                        .onTapGesture { close() }
-                        .gesture(closeDragGesture)
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-            }
         }
-        .ignoresSafeArea()
         .task {
             await store.load(householdId: household.id)
-            historyDays = (try? await services.api.fetchHistoryDays(householdId: household.id)) ?? []
         }
         .onChange(of: focusedField) { old, new in handleFocusChange(old: old, new: new) }
         .onChange(of: addText) { old, new in
@@ -295,7 +209,12 @@ struct ShoppingListView: View {
             VStack(alignment: .leading, spacing: 0) {
                 // Name row
                 HStack(spacing: 12) {
-                    if isAdding {
+                    if isEditingItem {
+                        Image(systemName: "pencil")
+                            .font(.body.weight(.semibold))
+                            .foregroundStyle(.tint)
+                            .frame(width: 24, height: 24)
+                    } else if isAdding {
                         Image(systemName: "circle")
                             .foregroundStyle(.tertiary)
                             .font(.body)
@@ -306,7 +225,19 @@ struct ShoppingListView: View {
                             .foregroundStyle(.tint)
                             .frame(width: 24, height: 24)
                     }
-                    if isAdding {
+                    if isEditingItem {
+                        TextField("Item name", text: $editName)
+                            .focused($focusedField, equals: .editName)
+                            .submitLabel(.done)
+                            .onSubmit { commitCurrentEdit() }
+                        Button {
+                            cancelEditing()
+                        } label: {
+                            Image(systemName: "xmark.circle.fill")
+                                .foregroundStyle(.tertiary)
+                        }
+                        .buttonStyle(.plain)
+                    } else if isAdding {
                         TextField("Item name", text: $addText)
                             .focused($focusedField, equals: .newName)
                             .submitLabel(.done)
@@ -327,32 +258,32 @@ struct ShoppingListView: View {
                     }
                 }
                 .padding(.horizontal, 16)
-                .padding(.vertical, isAdding ? 10 : 16)
+                .padding(.vertical, (isAdding || isEditingItem) ? 10 : 16)
 
-                // Extra fields — only when actively adding
-                if isAdding {
+                // Extra fields — shown while adding or editing
+                if isAdding || isEditingItem {
                     Divider().padding(.horizontal, 16).opacity(0.2)
                     HStack(spacing: 12) {
                         Color.clear.frame(width: 24)
-                        TextField("Qty", text: $addQty)
+                        TextField("Qty", text: isEditingItem ? $editQty : $addQty)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                            .focused($focusedField, equals: .newQty)
+                            .focused($focusedField, equals: isEditingItem ? .editQty : .newQty)
                             .submitLabel(.next)
-                            .onSubmit { focusedField = .newNotes }
+                            .onSubmit { focusedField = isEditingItem ? .editNotes : .newNotes }
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
                     Divider().padding(.horizontal, 16).opacity(0.2)
                     HStack(spacing: 12) {
                         Color.clear.frame(width: 24)
-                        TextField("Note", text: $addNotes, axis: .vertical)
+                        TextField("Note", text: isEditingItem ? $editNotes : $addNotes, axis: .vertical)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
-                            .focused($focusedField, equals: .newNotes)
+                            .focused($focusedField, equals: isEditingItem ? .editNotes : .newNotes)
                             .lineLimit(1...2)
                             .submitLabel(.done)
-                            .onSubmit { commitAdd() }
+                            .onSubmit { isEditingItem ? commitCurrentEdit() : commitAdd() }
                     }
                     .padding(.horizontal, 16)
                     .padding(.vertical, 8)
@@ -366,7 +297,7 @@ struct ShoppingListView: View {
             .padding(.bottom, 10)
             .padding(.top, 6)
             .contentShape(Rectangle())
-            .onTapGesture { if !isAdding { startAdding() } }
+            .onTapGesture { if !isAdding && !isEditingItem { startAdding() } }
             .simultaneousGesture(
                 DragGesture(minimumDistance: 8, coordinateSpace: .local)
                     .onEnded { value in
@@ -377,12 +308,15 @@ struct ShoppingListView: View {
                             focusedField = nil
                         } else if dy < -20 && isAdding && focusedField == nil {
                             focusedField = .newName
-                        } else if dy < -20 && !isAdding {
+                        } else if dy < -20 && isEditingItem && focusedField == nil {
+                            focusedField = .editName
+                        } else if dy < -20 && !isAdding && !isEditingItem {
                             startAdding()
                         }
                     }
             )
             .animation(.spring(response: 0.25, dampingFraction: 0.82), value: isAdding)
+            .animation(.spring(response: 0.25, dampingFraction: 0.82), value: isEditingItem)
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: suggestions)
         .animation(.spring(duration: 0.35), value: store.recentlyCompleted.isEmpty)
@@ -501,63 +435,24 @@ struct ShoppingListView: View {
         let isVisuallyComplete = isComplete || pendingCompleteIDs.contains(item.id)
         return VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .center, spacing: 10) {
-                if isEditing {
-                    Button {
-                        triggerComplete(item)
-                    } label: {
-                        Image(systemName: isVisuallyComplete ? "checkmark.circle.fill" : "circle")
-                            .foregroundStyle(isVisuallyComplete ? .green : Color(.systemGray3))
-                            .font(.title3)
-                            .frame(width: 28, height: 28)
+                Image(systemName: isVisuallyComplete ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isVisuallyComplete ? .green : Color(.systemGray3))
+                    .font(.title3)
+                    .frame(width: 28, height: 28)
+                    .contentShape(Circle())
+                    .onTapGesture { triggerComplete(item) }
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(item.name)
+                        .foregroundStyle(isComplete ? .secondary : .primary)
+                    if let qty = item.quantity, !qty.isEmpty {
+                        Text(qty)
+                            .font(.subheadline)
+                            .foregroundStyle(.tertiary)
                     }
-                    .buttonStyle(.plain)
-                } else {
-                    Image(systemName: isVisuallyComplete ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(isVisuallyComplete ? .green : Color(.systemGray3))
-                        .font(.title3)
-                        .frame(width: 28, height: 28)
-                        .contentShape(Circle())
-                        .onTapGesture { triggerComplete(item) }
                 }
-                if isEditing {
-                    TextField("Name", text: $editName)
-                        .focused($focusedField, equals: .editName)
-                        .submitLabel(.done)
-                        .onSubmit { commitCurrentEdit() }
-                } else {
-                    HStack(alignment: .firstTextBaseline, spacing: 6) {
-                        Text(item.name)
-                            .foregroundStyle(isComplete ? .secondary : .primary)
-                        if let qty = item.quantity, !qty.isEmpty {
-                            Text(qty)
-                                .font(.subheadline)
-                                .foregroundStyle(.tertiary)
-                        }
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-            if isEditing {
-                HStack(spacing: 10) {
-                    Color.clear.frame(width: 28)
-                    TextField("Qty", text: $editQty)
-                        .font(.subheadline)
-                        .foregroundStyle(.secondary)
-                        .focused($focusedField, equals: .editQty)
-                        .submitLabel(.next)
-                        .onSubmit { focusedField = .editNotes }
-                }
-                HStack(spacing: 10) {
-                    Color.clear.frame(width: 28)
-                    TextField("Note", text: $editNotes, axis: .vertical)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                        .focused($focusedField, equals: .editNotes)
-                        .lineLimit(1...3)
-                        .submitLabel(.done)
-                        .onSubmit { commitCurrentEdit() }
-                }
-            } else if let notes = item.notes, !notes.isEmpty {
+            if let notes = item.notes, !notes.isEmpty {
                 HStack(spacing: 10) {
                     Color.clear.frame(width: 24)
                     Text(notes)
@@ -568,6 +463,9 @@ struct ShoppingListView: View {
             }
         }
         .padding(.vertical, 1)
+        .padding(.horizontal, 6)
+        .background(isEditing ? Color.accentColor.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 8))
+        .padding(.horizontal, -6)
         .contentShape(Rectangle())
         .onTapGesture { if !isEditing { beginEditing(item) } }
     }
@@ -596,26 +494,18 @@ struct ShoppingListView: View {
     @ToolbarContentBuilder
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigationBarLeading) {
-            Button {
-                if !isSidebarOpen { sidebarHaptic() }
-                withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.85)) {
-                    isSidebarOpen = true
-                    dragOffset = 0
-                }
-            } label: {
-                Image(systemName: "line.3.horizontal")
+            Button { showSettings = true } label: {
+                Image(systemName: "gearshape")
             }
         }
-        if selectedHistoryDate == nil && !showInsights && !showForecast {
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button { showReceiptScanner = true } label: {
-                    Image(systemName: "receipt")
-                }
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Button { showReceiptScanner = true } label: {
+                Image(systemName: "receipt")
             }
-            ToolbarItem(placement: .navigationBarTrailing) {
-                Button { showRecipeHub = true } label: {
-                    Image(systemName: "fork.knife")
-                }
+        }
+        ToolbarItem(placement: .navigationBarTrailing) {
+            Button { showRecipeHub = true } label: {
+                Image(systemName: "fork.knife")
             }
         }
     }
@@ -744,6 +634,12 @@ struct ShoppingListView: View {
         }
     }
 
+    private func cancelEditing() {
+        focusLossTask?.cancel()
+        editingItemID = nil
+        focusedField = nil
+    }
+
     private func commitCurrentEdit() {
         guard let id = editingItemID,
               let item = store.items.first(where: { $0.id == id })
@@ -786,6 +682,10 @@ struct ShoppingListView: View {
         DragGesture(minimumDistance: 20)
             .onChanged { value in
                 let translation = value.translation.width
+                // Only begin a delete swipe when the drag is clearly horizontal —
+                // a diagonal scroll should never start revealing delete.
+                let alreadySwiping = (swipeOffsets[item.id] ?? 0) != 0
+                guard alreadySwiping || abs(translation) > abs(value.translation.height) * 1.5 else { return }
                 if translation < 0 {
                     swipeOffsets[item.id] = translation
                     if translation < -100 {
@@ -812,42 +712,6 @@ struct ShoppingListView: View {
                 }
                 swipePassedThreshold.remove(item.id)
             }
-    }
-
-    // MARK: - Sidebar gesture helpers
-
-    private var openDragGesture: some Gesture {
-        DragGesture(minimumDistance: 8)
-            .onChanged { value in dragOffset = max(0, value.translation.width) }
-            .onEnded { value in settle(value) }
-    }
-
-    private var closeDragGesture: some Gesture {
-        DragGesture(minimumDistance: 8)
-            .onChanged { value in dragOffset = min(0, value.translation.width) }
-            .onEnded { value in settle(value) }
-    }
-
-    private func settle(_ value: DragGesture.Value) {
-        let projected = currentOffset + (value.predictedEndTranslation.width - value.translation.width)
-        let willOpen = projected > sidebarWidth / 2
-        if willOpen != isSidebarOpen { sidebarHaptic() }
-        withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.85)) {
-            isSidebarOpen = willOpen
-            dragOffset = 0
-        }
-    }
-
-    private func close() {
-        sidebarHaptic()
-        withAnimation(.interactiveSpring(response: 0.35, dampingFraction: 0.85)) {
-            isSidebarOpen = false
-            dragOffset = 0
-        }
-    }
-
-    private func sidebarHaptic() {
-        UIImpactFeedbackGenerator(style: .medium).impactOccurred()
     }
 
     private func showDuplicateToast(for name: String) {
