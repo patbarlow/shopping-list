@@ -20,3 +20,7 @@ new_classes = ["HouseholdRoom"]
 #   ANTHROPIC_API_KEY   (from console.anthropic.com)
 #   RESEND_API_KEY      (from resend.com)
 #   RESEND_FROM         (e.g. "Shopping List <noreply@speaking.computer>")
+#   HA_WEBHOOK_URL       optional — Home Assistant webhook URL, from the
+#                        shopping_list_cf integration's config flow
+#   HA_WEBHOOK_SECRET    optional — shared secret sent as X-Webhook-Secret,
+#                        also from the config flow

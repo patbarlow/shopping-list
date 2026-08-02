@@ -1,0 +1,26 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Connect to Shopping List",
+        "description": "Enter the Worker's base URL and a bearer session token. Get a token by calling POST {base_url}/auth/email/start with your email, then POST /auth/email/verify with the code emailed to you — the response's `session` field is the token.",
+        "data": {
+          "url": "Base URL",
+          "api_token": "API token"
+        }
+      },
+      "webhook_info": {
+        "title": "Set up push sync",
+        "description": "To sync instantly when changes happen outside Home Assistant, set these as secrets on the Worker:\n\n```\nwrangler secret put HA_WEBHOOK_URL\n{webhook_url}\n\nwrangler secret put HA_WEBHOOK_SECRET\n{webhook_secret}\n```\n\nThen redeploy the Worker. HA will also poll every 20 minutes as a fallback. Click Submit to finish setup."
+      }
+    },
+    "error": {
+      "invalid_auth": "The API token was rejected. Check the token and try again.",
+      "cannot_connect": "Could not reach the Worker at that URL.",
+      "no_household": "That account doesn't belong to any household yet."
+    },
+    "abort": {
+      "already_configured": "This household is already configured."
+    }
+  }
+}

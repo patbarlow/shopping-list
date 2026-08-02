@@ -1,0 +1,12 @@
+{
+  "domain": "shopping_list_cf",
+  "name": "Shopping List (Cloudflare)",
+  "codeowners": ["@patbarlow"],
+  "config_flow": true,
+  "dependencies": ["webhook"],
+  "documentation": "https://github.com/patbarlow/shopping-list",
+  "integration_type": "service",
+  "iot_class": "cloud_push",
+  "requirements": [],
+  "version": "0.1.0"
+}

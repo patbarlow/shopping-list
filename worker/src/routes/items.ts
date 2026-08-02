@@ -3,6 +3,7 @@ import type { Env } from "../env";
 import { requireAuth, type AuthVariables } from "../middleware/auth";
 import { nowISO, type ShoppingItem, type Product } from "../db";
 import { categorise, findMatchingProduct } from "../ai";
+import { notifyHomeAssistant } from "../ha";
 
 const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
@@ -198,6 +199,7 @@ app.post("/", async (c) => {
     .run();
 
   void broadcastToHousehold(c.env, householdId, "create", item);
+  void notifyHomeAssistant(c.env, "create", item);
 
   return c.json(toResponse(item), 201);
 });
@@ -232,6 +234,7 @@ app.post("/:id/complete", async (c) => {
   await c.env.DB.prepare("DELETE FROM shopping_items WHERE id = ?").bind(itemId).run();
 
   void broadcastToHousehold(c.env, existing.household_id, "delete", existing);
+  void notifyHomeAssistant(c.env, "delete", existing);
 
   return c.body(null, 204);
 });
@@ -279,6 +282,7 @@ app.patch("/:id", async (c) => {
     .run();
 
   void broadcastToHousehold(c.env, existing.household_id, "update", updated);
+  void notifyHomeAssistant(c.env, "update", updated);
 
   return c.json(toResponse(updated));
 });
@@ -302,6 +306,7 @@ app.delete("/:id", async (c) => {
   await c.env.DB.prepare("DELETE FROM shopping_items WHERE id = ?").bind(itemId).run();
 
   void broadcastToHousehold(c.env, existing.household_id, "delete", existing);
+  void notifyHomeAssistant(c.env, "delete", existing);
 
   return c.body(null, 204);
 });
@@ -399,6 +404,7 @@ app.post("/bulk", async (c) => {
 
   for (const item of validItems) {
     void broadcastToHousehold(c.env, householdId, "create", item);
+    void notifyHomeAssistant(c.env, "create", item);
   }
 
   return c.json({ items: validItems.map(toResponse) }, 201);
