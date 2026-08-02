@@ -82,6 +82,15 @@ struct ProductsListView: View {
             }
             isLoading = false
         }
+        .onAppear {
+            // Fires again when popping back from a detail page — pick up renames/merges.
+            guard !isLoading else { return }
+            Task {
+                if let fresh = try? await services.api.fetchProductInsights(householdId: householdId) {
+                    products = fresh
+                }
+            }
+        }
     }
 
     private func row(_ product: ProductInsight) -> some View {

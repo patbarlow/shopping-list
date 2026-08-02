@@ -197,8 +197,21 @@ final class APIService {
         try await get("/v1/insights/products/\(productId)", query: ["household_id": householdId])
     }
 
+    /// Rename a product; the server merges it into an existing product if the
+    /// name already exists. Returns the surviving product.
+    func renameProduct(householdId: String, productId: String, name: String) async throws -> RenameProductResponse {
+        try await patch(
+            "/v1/insights/products/\(productId)",
+            body: ["household_id": householdId, "name": name]
+        )
+    }
+
     func fetchPredictedList(householdId: String) async throws -> PredictedListResponse {
         try await get("/v1/insights/predictions", query: ["household_id": householdId])
+    }
+
+    func fetchTrips(householdId: String) async throws -> TripsResponse {
+        try await get("/v1/insights/trips", query: ["household_id": householdId])
     }
 
     // MARK: - Households

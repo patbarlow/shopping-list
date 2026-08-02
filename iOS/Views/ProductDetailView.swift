@@ -13,6 +13,11 @@ struct ProductDetailView: View {
     @State private var isLoading = true
     @State private var errorMessage: String? = nil
 
+    // Rename — a merge can move history to another product, so track the live id.
+    @State private var activeProductId: String? = nil
+    @State private var showRename = false
+    @State private var renameText = ""
+
     var body: some View {
         ScrollView {
             if isLoading {
@@ -35,13 +40,48 @@ struct ProductDetailView: View {
         }
         .navigationTitle(detail?.product.name ?? fallbackName)
         .navigationBarTitleDisplayMode(.large)
-        .task {
-            do {
-                detail = try await services.api.fetchProductInsight(householdId: householdId, productId: productId)
-            } catch {
-                errorMessage = "Please try again."
+        .toolbar {
+            ToolbarItem(placement: .primaryAction) {
+                Button {
+                    renameText = detail?.product.name ?? fallbackName
+                    showRename = true
+                } label: {
+                    Image(systemName: "pencil")
+                }
+                .disabled(detail == nil)
             }
-            isLoading = false
+        }
+        .alert("Rename Product", isPresented: $showRename) {
+            TextField("Name", text: $renameText)
+            Button("Save") { Task { await rename() } }
+            Button("Cancel", role: .cancel) {}
+        } message: {
+            Text("If another product already has this name, their purchase history will be combined.")
+        }
+        .task {
+            await load(productId)
+        }
+    }
+
+    private func load(_ id: String) async {
+        do {
+            detail = try await services.api.fetchProductInsight(householdId: householdId, productId: id)
+            activeProductId = id
+            errorMessage = nil
+        } catch {
+            errorMessage = "Please try again."
+        }
+        isLoading = false
+    }
+
+    private func rename() async {
+        let name = renameText.trimmingCharacters(in: .whitespaces)
+        guard !name.isEmpty, let currentId = activeProductId ?? detail?.product.id else { return }
+        do {
+            let response = try await services.api.renameProduct(householdId: householdId, productId: currentId, name: name)
+            await load(response.product.id)
+        } catch {
+            errorMessage = "Rename failed. Please try again."
         }
     }
 

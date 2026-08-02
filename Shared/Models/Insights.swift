@@ -93,6 +93,52 @@ struct ProductPurchase: Decodable, Identifiable {
     var dayKey: String { String(purchasedAt.prefix(10)) }
 }
 
+// MARK: - Spend trends
+
+struct TripsResponse: Decodable {
+    let trips: [ShoppingTrip]
+    let categorySpend: [CategorySpend]
+
+    enum CodingKeys: String, CodingKey {
+        case trips
+        case categorySpend = "category_spend"
+    }
+}
+
+/// One scanned receipt = one trip to a store.
+struct ShoppingTrip: Decodable, Identifiable {
+    let id: String
+    let date: String            // "2026-07-25"
+    let storeName: String?
+    let totalAmount: Double?
+    let itemCount: Int
+
+    enum CodingKeys: String, CodingKey {
+        case id, date
+        case storeName   = "store_name"
+        case totalAmount = "total_amount"
+        case itemCount   = "item_count"
+    }
+
+    /// Collapses store branches to a brand ("Woolworths 1649 Marrickville
+    /// Metro" → "Woolworths") so colors stay stable across receipts.
+    var brand: String {
+        guard let first = storeName?.split(separator: " ").first, !first.isEmpty else { return "Other" }
+        return String(first).capitalized
+    }
+}
+
+struct CategorySpend: Decodable {
+    let date: String
+    let category: String
+    let total: Double
+}
+
+struct RenameProductResponse: Decodable {
+    let product: ProductInsightDetail.ProductRef
+    let merged: Bool
+}
+
 struct PredictedListResponse: Decodable {
     let range: Range
     let items: [PredictedItem]

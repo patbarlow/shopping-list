@@ -7,7 +7,14 @@ struct ContentView: View {
         Group {
             if services.auth.isLoggedIn {
                 if let household = services.auth.household {
-                    ShoppingListView(household: household)
+                    TabView {
+                        Tab("List", systemImage: "cart") {
+                            ShoppingListView(household: household)
+                        }
+                        Tab("Insights", systemImage: "chart.bar") {
+                            InsightsHubView(household: household)
+                        }
+                    }
                 } else {
                     HouseholdSetupView()
                 }

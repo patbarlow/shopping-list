@@ -111,19 +111,32 @@ import Observation
     static func extractQuantity(from raw: String) -> (name: String, qty: String?) {
         let t = raw.trimmingCharacters(in: .whitespaces)
         let pattern = #"^(\d+(?:[.,/]\d+)?(?:\s*(?:g|kg|ml|L|l|oz|lbs?|tbsp|tsp|cups?|pcs?|packs?|bunch|x))?)(?:\s+)(.+)$"#
-        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) else {
-            return (name: t, qty: nil)
+        if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
+            let range = NSRange(t.startIndex..., in: t)
+            if let match = regex.firstMatch(in: t, range: range),
+               let qr = Range(match.range(at: 1), in: t),
+               let nr = Range(match.range(at: 2), in: t) {
+                let qty  = String(t[qr]).trimmingCharacters(in: .whitespaces)
+                let name = String(t[nr]).trimmingCharacters(in: .whitespaces)
+                if !name.isEmpty {
+                    return (name: name, qty: qty.isEmpty ? nil : qty)
+                }
+            }
         }
-        let range = NSRange(t.startIndex..., in: t)
-        guard let match = regex.firstMatch(in: t, range: range),
-              let qr = Range(match.range(at: 1), in: t),
-              let nr = Range(match.range(at: 2), in: t) else {
-            return (name: t, qty: nil)
+        // Trailing multiplier: "Milk x2" / "Milk 2x"
+        let suffixPattern = #"^(.+?)\s+(?:x\s*(\d+(?:[.,/]\d+)?)|(\d+(?:[.,/]\d+)?)\s*x)$"#
+        if let regex = try? NSRegularExpression(pattern: suffixPattern, options: .caseInsensitive) {
+            let range = NSRange(t.startIndex..., in: t)
+            if let match = regex.firstMatch(in: t, range: range),
+               let nr = Range(match.range(at: 1), in: t) {
+                let numRange = Range(match.range(at: 2), in: t) ?? Range(match.range(at: 3), in: t)
+                let name = String(t[nr]).trimmingCharacters(in: .whitespaces)
+                if let numRange, !name.isEmpty {
+                    return (name: name, qty: "\(t[numRange])x")
+                }
+            }
         }
-        let qty  = String(t[qr]).trimmingCharacters(in: .whitespaces)
-        let name = String(t[nr]).trimmingCharacters(in: .whitespaces)
-        guard !name.isEmpty else { return (name: t, qty: nil) }
-        return (name: name, qty: qty.isEmpty ? nil : qty)
+        return (name: t, qty: nil)
     }
 
     static func capitalizeFirst(_ s: String) -> String {

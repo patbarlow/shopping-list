@@ -162,21 +162,30 @@ function unitPriceFor(input: {
   sizeValue: number | null;
   sizeUnit: string | null;
 }): { value: number; unit: "100g" | "100mL" } | null {
-  // Loose weight-sold items (produce, deli, meat): the receipt's own unit_price
-  // is already a $/kg rate — just rescale it to the same "/100g" baseline.
-  if (input.unitPrice != null && input.unitPrice > 0) {
-    return { value: input.unitPrice / 10, unit: "100g" };
+  // Packaged goods with a printed size: derive the baseline from what was
+  // actually paid. Receipts often put a per-each or pre-discount figure in
+  // unit_price ("2 for $5" prints 5), so it can't be trusted when a size is known.
+  if (input.pricePaid != null && input.sizeValue && input.sizeUnit) {
+    const qty = input.quantity && input.quantity > 0 ? input.quantity : 1;
+    const perPackage = input.pricePaid / qty;
+    const unit = input.sizeUnit.trim().toLowerCase();
+    if (unit === "g" || unit === "gm") return { value: (perPackage / input.sizeValue) * 100, unit: "100g" };
+    if (unit === "kg") return { value: (perPackage / (input.sizeValue * 1000)) * 100, unit: "100g" };
+    if (unit === "ml") return { value: (perPackage / input.sizeValue) * 100, unit: "100mL" };
+    if (unit === "l" || unit === "lt" || unit === "ltr") return { value: (perPackage / (input.sizeValue * 1000)) * 100, unit: "100mL" };
+    return null;
   }
 
-  if (input.pricePaid == null || !input.sizeValue || !input.sizeUnit) return null;
-  const qty = input.quantity && input.quantity > 0 ? input.quantity : 1;
-  const perPackage = input.pricePaid / qty;
-
-  const unit = input.sizeUnit.trim().toLowerCase();
-  if (unit === "g" || unit === "gm") return { value: (perPackage / input.sizeValue) * 100, unit: "100g" };
-  if (unit === "kg") return { value: (perPackage / (input.sizeValue * 1000)) * 100, unit: "100g" };
-  if (unit === "ml") return { value: (perPackage / input.sizeValue) * 100, unit: "100mL" };
-  if (unit === "l" || unit === "lt" || unit === "ltr") return { value: (perPackage / (input.sizeValue * 1000)) * 100, unit: "100mL" };
+  // No printed size: unit_price is only a $/kg rate when the item was weighed,
+  // which shows up as a fractional quantity (0.227 onions). An integer quantity
+  // means unit_price is a per-each price (packs, catchweight lines where it
+  // just mirrors the total) — no size, no comparable baseline.
+  if (
+    input.unitPrice != null && input.unitPrice > 0 &&
+    input.quantity != null && input.quantity > 0 && !Number.isInteger(input.quantity)
+  ) {
+    return { value: input.unitPrice / 10, unit: "100g" };
+  }
   return null;
 }
 
@@ -306,6 +315,91 @@ app.get("/products/:id", async (c) => {
     },
     purchases,
   });
+});
+
+// GET /v1/insights/trips?household_id=xxx — every scanned receipt as a shopping
+// trip, plus per-day category spend. Range filtering happens client-side; the
+// dataset is one row per receipt, so it stays tiny.
+app.get("/trips", async (c) => {
+  const user = c.var.user;
+  const householdId = c.req.query("household_id");
+  if (!householdId) return c.json({ error: "missing_household_id" }, 400);
+  if (!(await assertMember(c.env, householdId, user.id))) return c.json({ error: "forbidden" }, 403);
+
+  const { results: trips } = await c.env.DB
+    .prepare(
+      `SELECT r.id,
+              COALESCE(r.receipt_date, DATE(r.scanned_at)) AS date,
+              r.store_name,
+              r.total_amount,
+              (SELECT COUNT(*) FROM receipt_line_items rli WHERE rli.receipt_id = r.id) AS item_count
+       FROM receipts r
+       WHERE r.household_id = ?
+       ORDER BY date ASC`,
+    )
+    .bind(householdId)
+    .all<{ id: string; date: string; store_name: string | null; total_amount: number | null; item_count: number }>();
+
+  const { results: category_spend } = await c.env.DB
+    .prepare(
+      `SELECT DATE(ph.purchased_at) AS date, p.category, SUM(ph.price_paid) AS total
+       FROM purchase_history ph
+       JOIN products p ON ph.product_id = p.id
+       WHERE ph.household_id = ? AND ${RECEIPT_SOURCE} AND ph.price_paid IS NOT NULL
+       GROUP BY DATE(ph.purchased_at), p.category
+       ORDER BY date ASC`,
+    )
+    .bind(householdId)
+    .all<{ date: string; category: string; total: number }>();
+
+  return c.json({ trips, category_spend });
+});
+
+// PATCH /v1/insights/products/:id — rename a product. If the new name matches
+// another product in the household, the two are merged: all history moves to
+// the existing product and the renamed one is deleted.
+app.patch("/products/:id", async (c) => {
+  const user = c.var.user;
+  const productId = c.req.param("id");
+  const body = await c.req.json<{ household_id?: string; name?: string }>().catch(() => ({}) as { household_id?: string; name?: string });
+  const householdId = body.household_id;
+  const name = body.name?.trim();
+  if (!householdId) return c.json({ error: "missing_household_id" }, 400);
+  if (!name) return c.json({ error: "missing_name" }, 400);
+  if (!(await assertMember(c.env, householdId, user.id))) return c.json({ error: "forbidden" }, 403);
+
+  const product = await c.env.DB
+    .prepare(`SELECT id, name, category FROM products WHERE id = ? AND household_id = ?`)
+    .bind(productId, householdId)
+    .first<{ id: string; name: string; category: string }>();
+  if (!product) return c.json({ error: "not_found" }, 404);
+
+  const now = new Date().toISOString();
+
+  // products.name is COLLATE NOCASE + UNIQUE per household, so a case-insensitive
+  // clash means merge rather than rename.
+  const existing = await c.env.DB
+    .prepare(`SELECT id, name, category FROM products WHERE household_id = ? AND name = ? AND id != ?`)
+    .bind(householdId, name, productId)
+    .first<{ id: string; name: string; category: string }>();
+
+  if (existing) {
+    await c.env.DB.batch([
+      c.env.DB.prepare(`UPDATE purchase_history SET product_id = ? WHERE product_id = ?`).bind(existing.id, productId),
+      c.env.DB.prepare(`UPDATE receipt_line_items SET product_id = ? WHERE product_id = ?`).bind(existing.id, productId),
+      c.env.DB.prepare(`UPDATE shopping_items SET product_id = ? WHERE product_id = ?`).bind(existing.id, productId),
+      c.env.DB.prepare(`UPDATE recipe_ingredients SET product_id = ? WHERE product_id = ?`).bind(existing.id, productId),
+      c.env.DB.prepare(`DELETE FROM products WHERE id = ?`).bind(productId),
+      c.env.DB.prepare(`UPDATE products SET updated_at = ? WHERE id = ?`).bind(now, existing.id),
+    ]);
+    return c.json({ product: existing, merged: true });
+  }
+
+  await c.env.DB
+    .prepare(`UPDATE products SET name = ?, updated_at = ? WHERE id = ?`)
+    .bind(name, now, productId)
+    .run();
+  return c.json({ product: { id: product.id, name, category: product.category }, merged: false });
 });
 
 // Minimum number of distinct shopping trips before a product's cadence is
