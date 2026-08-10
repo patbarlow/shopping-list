@@ -1,15 +1,24 @@
 import SwiftUI
 import PhotosUI
 import PDFKit
+import VisionKit
 
 struct ReceiptScannerView: View {
     let householdId: String
+    /// When set, the source picker for this is triggered immediately instead
+    /// of showing the "choose a source" list — driven from a menu upstream.
+    var initialSource: CaptureSource? = nil
     @Environment(AppServices.self) private var services
     @Environment(\.dismiss) private var dismiss
+
+    enum CaptureSource: Equatable {
+        case documentScanner, photoLibrary, files
+    }
 
     private enum Phase {
         case capture
         case scanning
+        case printing(ReceiptScanResponse)
         case review
         case confirming
         case done(String)
@@ -26,18 +35,31 @@ struct ReceiptScannerView: View {
     @State private var productPickerQuery: String = ""
 
     @State var selectedPhoto: PhotosPickerItem? = nil
-    @State var showCamera = false
-    @State var showFilePicker = false
+    @State var showPhotoPicker: Bool
+    @State var showDocumentScanner: Bool
+    @State var showFilePicker: Bool
+
+    init(householdId: String, initialSource: CaptureSource? = nil) {
+        self.householdId = householdId
+        self.initialSource = initialSource
+        // Set before the first render (not in .task, which runs after it) so
+        // the picker is already on its way up and the capture list never
+        // flashes on screen first.
+        _showDocumentScanner = State(initialValue: initialSource == .documentScanner)
+        _showPhotoPicker = State(initialValue: initialSource == .photoLibrary)
+        _showFilePicker = State(initialValue: initialSource == .files)
+    }
 
     var body: some View {
         NavigationStack {
             Group {
                 switch phase {
-                case .capture:         captureView
-                case .scanning:        ScanningProgressView()
-                case .review:          reviewView
-                case .confirming:      loadingView("Saving…")
-                case .done(let msg):   doneView(msg)
+                case .capture:              captureView
+                case .scanning:             ScanningProgressView()
+                case .printing(let result): ReceiptPrintingView(result: result) { phase = .review }
+                case .review:               reviewView
+                case .confirming:           loadingView("Saving…")
+                case .done(let msg):        doneView(msg)
                 }
             }
             .navigationTitle(navTitle)
@@ -57,12 +79,16 @@ struct ReceiptScannerView: View {
             guard let item else { return }
             Task { await handlePhotoSelection(item) }
         }
-        .sheet(isPresented: $showCamera) {
-            CameraCapture { image in
-                showCamera = false
-                Task { await handleCapturedImage(image) }
+        .fullScreenCover(isPresented: $showDocumentScanner) {
+            DocumentScannerCapture { images in
+                showDocumentScanner = false
+                Task { await handleScannedPages(images) }
+            } onCancel: {
+                showDocumentScanner = false
             }
+            .ignoresSafeArea()
         }
+        .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhoto, matching: .images)
         .fileImporter(
             isPresented: $showFilePicker,
             allowedContentTypes: [.pdf],
@@ -82,6 +108,10 @@ struct ReceiptScannerView: View {
             }
         }
         .task {
+            // The picker matching `initialSource` is already on its way up —
+            // set in init, before the first render. A hand-off PDF (AirDrop,
+            // share sheet) takes over if present; the caller clears any
+            // stale `initialSource` before presenting that path.
             if let pdf = services.pendingReceiptPDF {
                 services.pendingReceiptPDF = nil
                 await handlePDF(pdf)
@@ -93,6 +123,7 @@ struct ReceiptScannerView: View {
         switch phase {
         case .capture:    return "Scan Receipt"
         case .scanning:   return "Scanning…"
+        case .printing:   return scanResult?.storeName ?? "Reading Receipt…"
         case .review:     return scanResult?.storeName ?? "Match Items"
         case .confirming: return "Saving…"
         case .done:       return "Done"
@@ -105,9 +136,9 @@ struct ReceiptScannerView: View {
         List {
             Section {
                 Button {
-                    showCamera = true
+                    showDocumentScanner = true
                 } label: {
-                    Label("Camera", systemImage: "camera")
+                    Label("Scan Receipt", systemImage: "doc.viewfinder")
                         .frame(maxWidth: .infinity, alignment: .leading)
                 }
 
@@ -420,11 +451,17 @@ struct ReceiptScannerView: View {
         }
     }
 
-    private func handleCapturedImage(_ image: UIImage) async {
+    /// The document scanner can return more than one page (a long receipt
+    /// scanned in sections) — stitch them into one tall image, same as the
+    /// multi-page PDF path below.
+    private func handleScannedPages(_ images: [UIImage]) async {
         phase = .scanning
         errorMessage = nil
+        guard let stitched = images.count > 1 ? stitchVertically(images) : images.first else {
+            phase = .capture; errorMessage = "Couldn't read that scan."; return
+        }
         do {
-            guard let compressed = image.compressedForUpload() else {
+            guard let compressed = stitched.compressedForUpload() else {
                 phase = .capture; errorMessage = "Image error."; return
             }
             let result = try await services.api.scanReceipt(householdId: householdId, imageBase64: compressed.base64EncodedString())
@@ -435,10 +472,21 @@ struct ReceiptScannerView: View {
         }
     }
 
+    private func stitchVertically(_ images: [UIImage]) -> UIImage? {
+        let width = images.map(\.size.width).max() ?? 0
+        let totalHeight = images.reduce(0) { $0 + $1.size.height }
+        guard width > 0, totalHeight > 0 else { return nil }
+        UIGraphicsBeginImageContextWithOptions(CGSize(width: width, height: totalHeight), true, 1.0)
+        defer { UIGraphicsEndImageContext() }
+        var y: CGFloat = 0
+        for img in images { img.draw(at: CGPoint(x: 0, y: y)); y += img.size.height }
+        return UIGraphicsGetImageFromCurrentImageContext()
+    }
+
     private func applyResult(_ result: ReceiptScanResponse) {
         scanResult = result
         editableItems = result.items.map { EditableReceiptItem(from: $0) }
-        phase = .review
+        phase = .printing(result)
     }
 
     // MARK: - Confirm
@@ -482,6 +530,179 @@ struct ReceiptScannerView: View {
                 errorMessage = error.localizedDescription
             }
         }
+    }
+}
+
+// MARK: - Document scanner
+
+/// Wraps VisionKit's document scanner — the same "Scan Documents" UI as
+/// Files/Notes: automatic edge detection in the camera, then crop/filter
+/// before finishing, optionally across multiple pages.
+private struct DocumentScannerCapture: UIViewControllerRepresentable {
+    let onScan: ([UIImage]) -> Void
+    let onCancel: () -> Void
+
+    func makeUIViewController(context: Context) -> VNDocumentCameraViewController {
+        let vc = VNDocumentCameraViewController()
+        vc.delegate = context.coordinator
+        return vc
+    }
+
+    func updateUIViewController(_ uiViewController: VNDocumentCameraViewController, context: Context) {}
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator(onScan: onScan, onCancel: onCancel)
+    }
+
+    final class Coordinator: NSObject, VNDocumentCameraViewControllerDelegate {
+        let onScan: ([UIImage]) -> Void
+        let onCancel: () -> Void
+        init(onScan: @escaping ([UIImage]) -> Void, onCancel: @escaping () -> Void) {
+            self.onScan = onScan
+            self.onCancel = onCancel
+        }
+
+        func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFinishWith scan: VNDocumentCameraScan) {
+            var images: [UIImage] = []
+            for i in 0..<scan.pageCount { images.append(scan.imageOfPage(at: i)) }
+            controller.dismiss(animated: true)
+            onScan(images)
+        }
+
+        func documentCameraViewControllerDidCancel(_ controller: VNDocumentCameraViewController) {
+            controller.dismiss(animated: true)
+            onCancel()
+        }
+
+        func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFailWithError error: Error) {
+            controller.dismiss(animated: true)
+            onCancel()
+        }
+    }
+}
+
+// MARK: - Receipt printing reveal
+
+/// The scan result already arrived in one response; this plays it onto the
+/// screen the way a receipt prints — store, then date, then each line item,
+/// then the total — before handing off to item matching. Same visual
+/// language as TripReceiptView (monospaced, dashed rules) so a scanned
+/// receipt and a saved one look like the same object.
+private struct ReceiptPrintingView: View {
+    let result: ReceiptScanResponse
+    let onFinished: () -> Void
+
+    /// 0 = nothing shown, 1 = store, 2 = + date, 3+i = + item i, then total.
+    @State private var revealedLines = 0
+    @State private var revealedTotal = false
+
+    var body: some View {
+        ScrollView {
+            VStack(spacing: 0) {
+                VStack(spacing: 4) {
+                    if revealedLines >= 1 {
+                        Text(result.storeName ?? "Receipt")
+                            .font(.system(.headline, design: .monospaced).weight(.bold))
+                            .multilineTextAlignment(.center)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
+                    if revealedLines >= 2, let date = displayDate {
+                        Text(date)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(.secondary)
+                            .transition(.opacity)
+                    }
+                }
+                .padding(.top, 22)
+                .padding(.bottom, 14)
+                .padding(.horizontal, 16)
+                .frame(minHeight: 66)
+
+                dashedDivider
+
+                VStack(spacing: 0) {
+                    ForEach(Array(result.items.enumerated()), id: \.offset) { i, item in
+                        if revealedLines >= 3 + i {
+                            HStack(alignment: .top, spacing: 10) {
+                                Text(item.description)
+                                    .font(.system(.footnote, design: .monospaced))
+                                    .frame(maxWidth: .infinity, alignment: .leading)
+                                if let price = item.totalPrice {
+                                    Text(price, format: .currency(code: "AUD"))
+                                        .font(.system(.footnote, design: .monospaced))
+                                }
+                            }
+                            .padding(.vertical, 6)
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                        }
+                    }
+                }
+                .padding(.horizontal, 16)
+
+                if revealedTotal {
+                    dashedDivider
+                    HStack {
+                        Text("TOTAL").font(.system(.subheadline, design: .monospaced).weight(.bold))
+                        Spacer()
+                        if let total = result.totalAmount {
+                            Text(total, format: .currency(code: "AUD"))
+                                .font(.system(.subheadline, design: .monospaced).weight(.bold))
+                        }
+                    }
+                    .padding(.horizontal, 16)
+                    .padding(.top, 14)
+                    .padding(.bottom, 20)
+                    .transition(.opacity)
+                }
+            }
+            .background(Color(.secondarySystemGroupedBackground))
+            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
+            .shadow(color: .black.opacity(0.08), radius: 12, y: 6)
+            .padding(20)
+        }
+        .background(Color(.systemGroupedBackground))
+        .task { await runReveal() }
+    }
+
+    private var dashedDivider: some View {
+        HStack(spacing: 4) {
+            ForEach(0..<44, id: \.self) { _ in
+                Rectangle().frame(width: 3, height: 1)
+            }
+        }
+        .foregroundStyle(.tertiary)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 6)
+        .fixedSize(horizontal: false, vertical: true)
+        .clipped()
+    }
+
+    private var displayDate: String? {
+        guard let raw = result.receiptDate else { return nil }
+        let f = DateFormatter()
+        f.dateFormat = "yyyy-MM-dd"
+        guard let d = f.date(from: String(raw.prefix(10))) else { return nil }
+        f.dateStyle = .full
+        f.timeStyle = .none
+        return f.string(from: d)
+    }
+
+    private func runReveal() async {
+        func pause(_ delay: Duration) async { try? await Task.sleep(for: delay) }
+
+        await pause(.milliseconds(300))
+        withAnimation(.spring(duration: 0.35)) { revealedLines = 1 }
+        await pause(.milliseconds(350))
+        withAnimation(.spring(duration: 0.35)) { revealedLines = 2 }
+        await pause(.milliseconds(300))
+        for i in 0 ..< result.items.count {
+            withAnimation(.spring(duration: 0.3)) { revealedLines = 3 + i }
+            await pause(.milliseconds(90))
+        }
+        await pause(.milliseconds(250))
+        withAnimation(.spring(duration: 0.35)) { revealedTotal = true }
+        await pause(.milliseconds(700))
+        onFinished()
     }
 }
 

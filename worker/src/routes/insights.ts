@@ -227,7 +227,58 @@ app.get("/products", async (c) => {
       last_price: number | null;
     }>();
 
-  return c.json({ products: results });
+  // A $/100g or $/100mL baseline per product — the shelf-tag-style figure
+  // that's actually useful for "is this a good price" while standing in the
+  // aisle, since it's comparable across pack sizes. Same unitPriceFor() logic
+  // as the per-product detail route, aggregated across every line item.
+  const { results: lineItems } = await c.env.DB
+    .prepare(
+      `SELECT ph.product_id, ph.price_paid,
+              rli.quantity AS rli_quantity, rli.unit_price AS rli_unit_price,
+              rli.size_value AS rli_size_value, rli.size_unit AS rli_size_unit
+       FROM purchase_history ph
+       JOIN receipt_line_items rli ON rli.purchase_history_id = ph.id
+       WHERE ph.household_id = ? AND ${RECEIPT_SOURCE}`,
+    )
+    .bind(householdId)
+    .all<{
+      product_id: string;
+      price_paid: number | null;
+      rli_quantity: number | null;
+      rli_unit_price: number | null;
+      rli_size_value: number | null;
+      rli_size_unit: string | null;
+    }>();
+
+  const unitPriceByProduct = new Map<string, { sum: number; count: number; unit: "100g" | "100mL" }>();
+  for (const row of lineItems) {
+    const unitPrice = unitPriceFor({
+      pricePaid: row.price_paid,
+      quantity: row.rli_quantity,
+      unitPrice: row.rli_unit_price,
+      sizeValue: row.rli_size_value,
+      sizeUnit: row.rli_size_unit,
+    });
+    if (!unitPrice) continue;
+    const existing = unitPriceByProduct.get(row.product_id);
+    if (!existing) {
+      unitPriceByProduct.set(row.product_id, { sum: unitPrice.value, count: 1, unit: unitPrice.unit });
+    } else if (existing.unit === unitPrice.unit) {
+      existing.sum += unitPrice.value;
+      existing.count += 1;
+    }
+  }
+
+  const productsWithUnitPrice = results.map((p) => {
+    const agg = unitPriceByProduct.get(p.id);
+    return {
+      ...p,
+      avg_unit_price: agg ? agg.sum / agg.count : null,
+      avg_unit_price_unit: agg?.unit ?? null,
+    };
+  });
+
+  return c.json({ products: productsWithUnitPrice });
 });
 
 // GET /v1/insights/products/:id?household_id=xxx — one product's stats + full purchase log
@@ -353,6 +404,37 @@ app.get("/trips", async (c) => {
     .all<{ date: string; category: string; total: number }>();
 
   return c.json({ trips, category_spend });
+});
+
+// GET /v1/insights/receipts/:id?household_id=xxx — one scanned receipt's line
+// items, in scan order, for a receipt-style detail view of that trip.
+app.get("/receipts/:id", async (c) => {
+  const user = c.var.user;
+  const householdId = c.req.query("household_id");
+  const receiptId = c.req.param("id");
+  if (!householdId) return c.json({ error: "missing_household_id" }, 400);
+  if (!(await assertMember(c.env, householdId, user.id))) return c.json({ error: "forbidden" }, 403);
+
+  const receipt = await c.env.DB
+    .prepare(
+      `SELECT id, COALESCE(receipt_date, DATE(scanned_at)) AS date, store_name, total_amount
+       FROM receipts WHERE id = ? AND household_id = ?`,
+    )
+    .bind(receiptId, householdId)
+    .first<{ id: string; date: string; store_name: string | null; total_amount: number | null }>();
+  if (!receipt) return c.json({ error: "not_found" }, 404);
+
+  const { results: items } = await c.env.DB
+    .prepare(
+      `SELECT id, raw_description, quantity, total_price
+       FROM receipt_line_items
+       WHERE receipt_id = ? AND household_id = ?
+       ORDER BY created_at ASC, rowid ASC`,
+    )
+    .bind(receiptId, householdId)
+    .all<{ id: string; raw_description: string; quantity: number | null; total_price: number | null }>();
+
+  return c.json({ receipt, items });
 });
 
 // PATCH /v1/insights/products/:id — rename a product. If the new name matches

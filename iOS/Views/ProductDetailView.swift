@@ -89,28 +89,26 @@ struct ProductDetailView: View {
 
     private func statCards(_ stats: ProductStats) -> some View {
         HStack(spacing: 10) {
-            statCard(title: "Bought", value: "\(stats.timesPurchased)", caption: "times")
-            statCard(title: "Average", value: stats.avgPrice.map { currency($0) } ?? "—", caption: "per buy")
-            statCard(title: "All-time", value: stats.totalSpend.map { currency($0) } ?? "—", caption: "spent")
+            statCard(value: "\(stats.timesPurchased)", label: "times bought")
+            statCard(value: stats.avgPrice.map { currency($0) } ?? "—", label: "average per buy")
+            statCard(value: stats.totalSpend.map { currency($0) } ?? "—", label: "all-time spend")
         }
     }
 
-    private func statCard(title: String, value: String, caption: String) -> some View {
+    private func statCard(value: String, label: String) -> some View {
         VStack(spacing: 4) {
-            Text(title.uppercased())
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(.secondary)
             Text(value)
-                .font(.title3.weight(.bold))
+                .font(.title2.weight(.heavy))
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
-            Text(caption)
-                .font(.caption2)
-                .foregroundStyle(.tertiary)
+            Text(label)
+                .font(.caption)
+                .foregroundStyle(.secondary)
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: .black.opacity(0.05), radius: 6, y: 3)
     }
 
     // MARK: - Purchase log
@@ -129,9 +127,9 @@ struct ProductDetailView: View {
                 .foregroundStyle(.secondary)
         } else {
             VStack(alignment: .leading, spacing: 16) {
-                Text("PURCHASES")
-                    .font(.caption2.weight(.bold))
-                    .foregroundStyle(.secondary)
+                Text("Purchases")
+                    .font(.title3.weight(.bold))
+                    .foregroundStyle(.primary)
                 ForEach(groupedPurchases, id: \.day) { group in
                     VStack(alignment: .leading, spacing: 8) {
                         Text(displayDate(group.day))
@@ -165,9 +163,7 @@ struct ProductDetailView: View {
                     Text(currency(price)).font(.subheadline.weight(.semibold))
                 }
                 if let unitPrice = purchase.unitPrice, let unit = purchase.unitPriceUnit {
-                    Text("\(currency(unitPrice)) / \(unit)")
-                        .font(.caption2)
-                        .foregroundStyle(.secondary)
+                    unitPriceText(unitPrice, unit)
                 }
             }
         }
@@ -178,6 +174,13 @@ struct ProductDetailView: View {
 
     private func currency(_ value: Double) -> String {
         value.formatted(.currency(code: "AUD"))
+    }
+
+    /// The price is the number worth seeing at a glance — the unit label rides
+    /// along smaller and quieter after it.
+    private func unitPriceText(_ value: Double, _ unit: String) -> Text {
+        Text(currency(value)).font(.caption).foregroundStyle(.secondary)
+            + Text(" / \(unit)").font(.caption2).foregroundStyle(.tertiary)
     }
 
     private func displayDate(_ day: String) -> String {

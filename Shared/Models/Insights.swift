@@ -11,14 +11,19 @@ struct ProductInsight: Decodable, Identifiable {
     let totalSpend: Double?
     let lastPurchasedAt: String?
     let lastPrice: Double?
+    /// $/100g or $/100mL baseline — comparable across pack sizes, unlike avgPrice.
+    let avgUnitPrice: Double?
+    let avgUnitPriceUnit: String?
 
     enum CodingKeys: String, CodingKey {
         case id, name, category
-        case timesPurchased  = "times_purchased"
-        case avgPrice        = "avg_price"
-        case totalSpend      = "total_spend"
-        case lastPurchasedAt = "last_purchased_at"
-        case lastPrice       = "last_price"
+        case timesPurchased   = "times_purchased"
+        case avgPrice         = "avg_price"
+        case totalSpend       = "total_spend"
+        case lastPurchasedAt  = "last_purchased_at"
+        case lastPrice        = "last_price"
+        case avgUnitPrice     = "avg_unit_price"
+        case avgUnitPriceUnit = "avg_unit_price_unit"
     }
 
     /// Whether the most recent price is meaningfully above/below the running average.
@@ -125,6 +130,38 @@ struct ShoppingTrip: Decodable, Identifiable {
     var brand: String {
         guard let first = storeName?.split(separator: " ").first, !first.isEmpty else { return "Other" }
         return String(first).capitalized
+    }
+}
+
+struct ReceiptDetailResponse: Decodable {
+    let receipt: ReceiptSummary
+    let items: [ReceiptLineItem]
+}
+
+struct ReceiptSummary: Decodable {
+    let id: String
+    let date: String
+    let storeName: String?
+    let totalAmount: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case id, date
+        case storeName   = "store_name"
+        case totalAmount = "total_amount"
+    }
+}
+
+struct ReceiptLineItem: Decodable, Identifiable {
+    let id: String
+    let rawDescription: String
+    let quantity: Double?
+    let totalPrice: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case rawDescription = "raw_description"
+        case quantity
+        case totalPrice     = "total_price"
     }
 }
 

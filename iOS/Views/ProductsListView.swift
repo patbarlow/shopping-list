@@ -20,6 +20,20 @@ struct ProductsListView: View {
         var id: String { rawValue }
     }
 
+    /// A soft periwinkle wash — same treatment as Insights' mint and Forecast's
+    /// coral, in a cooler tone for "what you buy" as distinct from spend or timing.
+    private static let headerGradient = LinearGradient(
+        stops: [
+            .init(color: Color(red: 0.72, green: 0.78, blue: 0.96), location: 0),
+            .init(color: Color(red: 0.76, green: 0.81, blue: 0.96).opacity(0.85), location: 0.2),
+            .init(color: Color(red: 0.80, green: 0.85, blue: 0.97).opacity(0.5), location: 0.45),
+            .init(color: Color(red: 0.84, green: 0.88, blue: 0.98).opacity(0.18), location: 0.7),
+            .init(color: Color(red: 0.84, green: 0.88, blue: 0.98).opacity(0), location: 1),
+        ],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+
     private var sorted: [ProductInsight] {
         let filtered = searchText.isEmpty
             ? products
@@ -33,34 +47,49 @@ struct ProductsListView: View {
     }
 
     var body: some View {
-        Group {
+        ZStack(alignment: .top) {
+            Color(.systemGroupedBackground).ignoresSafeArea()
+            Self.headerGradient
+                .frame(height: 700)
+                .ignoresSafeArea(edges: .top)
+
             if isLoading {
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                ProgressView().frame(maxWidth: .infinity).padding(.vertical, 80)
             } else if let err = errorMessage {
                 ContentUnavailableView("Couldn't load products", systemImage: "exclamationmark.triangle", description: Text(err))
+                    .padding(.top, 60)
             } else if products.isEmpty {
                 ContentUnavailableView(
                     "No products yet",
                     systemImage: "cart",
                     description: Text("Scan a receipt and the things you buy will show up here with prices and how often you buy them.")
                 )
+                .padding(.top, 60)
             } else {
-                List {
-                    ForEach(sorted) { product in
-                        NavigationLink {
-                            ProductDetailView(householdId: householdId, productId: product.id, fallbackName: product.name)
-                                .environment(services)
-                        } label: {
-                            row(product)
+                ScrollView {
+                    card {
+                        LazyVStack(spacing: 0) {
+                            ForEach(Array(sorted.enumerated()), id: \.element.id) { i, product in
+                                if i > 0 { Divider().padding(.leading, 16) }
+                                NavigationLink {
+                                    ProductDetailView(householdId: householdId, productId: product.id, fallbackName: product.name)
+                                        .environment(services)
+                                } label: {
+                                    row(product)
+                                }
+                                .buttonStyle(.plain)
+                            }
                         }
                     }
+                    .padding(16)
                 }
-                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
                 .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic))
             }
         }
         .navigationTitle("Products")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             if !products.isEmpty {
                 ToolbarItem(placement: .primaryAction) {
@@ -93,13 +122,19 @@ struct ProductsListView: View {
         }
     }
 
-    private func row(_ product: ProductInsight) -> some View {
-        let category = ItemCategory(rawValue: product.category) ?? .other
-        return HStack(spacing: 12) {
-            Text(category.emoji)
-                .font(.title3)
-                .frame(width: 30)
+    // MARK: - Card container
 
+    private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        content()
+            .padding(.vertical, 6)
+            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+            .shadow(color: .black.opacity(0.05), radius: 8, y: 3)
+    }
+
+    // MARK: - Row
+
+    private func row(_ product: ProductInsight) -> some View {
+        HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(product.name).font(.body.weight(.medium)).foregroundStyle(.primary)
                 Text(subtitle(product))
@@ -110,7 +145,13 @@ struct ProductsListView: View {
             Spacer()
 
             VStack(alignment: .trailing, spacing: 2) {
-                if let avg = product.avgPrice {
+                if let unitValue = product.avgUnitPrice, let unit = product.avgUnitPriceUnit {
+                    HStack(spacing: 3) {
+                        trendArrow(product)
+                        unitPriceText(unitValue, unit)
+                    }
+                    Text("avg").font(.caption2).foregroundStyle(.tertiary)
+                } else if let avg = product.avgPrice {
                     HStack(spacing: 3) {
                         trendArrow(product)
                         Text(avg, format: .currency(code: "AUD"))
@@ -120,8 +161,16 @@ struct ProductsListView: View {
                 }
             }
         }
-        .padding(.vertical, 2)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 8)
         .contentShape(Rectangle())
+    }
+
+    /// The price is the number worth seeing at a glance — the unit label rides
+    /// along smaller and quieter, e.g. "$0.24" in front of a faint " / 100g".
+    private func unitPriceText(_ value: Double, _ unit: String) -> Text {
+        Text(value, format: .currency(code: "AUD")).font(.subheadline.weight(.semibold))
+            + Text(" / \(unit)").font(.caption2).foregroundStyle(.secondary)
     }
 
     /// Last price above/below the running average by 5%+ — the shelf-tag fact
