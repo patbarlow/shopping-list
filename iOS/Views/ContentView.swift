@@ -12,7 +12,13 @@ struct ContentView: View {
                             ShoppingListView(household: household)
                         }
                         Tab("Insights", systemImage: "chart.bar") {
-                            InsightsHubView(household: household)
+                            SpendTrendsView(household: household)
+                        }
+                        Tab("Forecast", systemImage: "calendar.badge.clock") {
+                            NavigationStack {
+                                PredictedListView(householdId: household.id, shoppingFrequency: household.shoppingFrequency)
+                                    .environment(services)
+                            }
                         }
                     }
                 } else {

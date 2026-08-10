@@ -14,44 +14,62 @@ struct PredictedListView: View {
     /// Names already on the shopping list (lowercased) — shown as ticked.
     @State private var onListNames: Set<String> = []
 
+    /// A coral/salmon wash — same treatment as Spend Trends' mint, in the warm
+    /// tone that distinguishes "what's coming up" from "what happened."
+    private static let headerGradient = LinearGradient(
+        stops: [
+            .init(color: Color(red: 0.97, green: 0.62, blue: 0.53), location: 0),
+            .init(color: Color(red: 0.97, green: 0.68, blue: 0.60).opacity(0.85), location: 0.2),
+            .init(color: Color(red: 0.97, green: 0.74, blue: 0.68).opacity(0.5), location: 0.45),
+            .init(color: Color(red: 0.97, green: 0.80, blue: 0.76).opacity(0.18), location: 0.7),
+            .init(color: Color(red: 0.97, green: 0.80, blue: 0.76).opacity(0), location: 1),
+        ],
+        startPoint: .top,
+        endPoint: .bottom
+    )
+
     var body: some View {
-        Group {
+        ZStack(alignment: .top) {
+            Color(.systemGroupedBackground).ignoresSafeArea()
+            Self.headerGradient
+                .frame(height: 700)
+                .ignoresSafeArea(edges: .top)
+
             if isLoading {
-                ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
+                ProgressView().frame(maxWidth: .infinity).padding(.vertical, 80)
             } else if let err = errorMessage {
                 ContentUnavailableView("Couldn't load forecast", systemImage: "exclamationmark.triangle", description: Text(err))
+                    .padding(.top, 60)
             } else if let response, response.items.isEmpty {
                 ContentUnavailableView(
                     "Not enough data yet",
                     systemImage: "calendar.badge.clock",
                     description: Text("Scan a few more receipts and we'll start predicting what you'll need before your next big shop.")
                 )
+                .padding(.top, 60)
             } else if let response {
-                List {
-                    Section {
+                ScrollView {
+                    VStack(alignment: .leading, spacing: 20) {
                         summaryCard(response)
-                    }
-                    .listRowInsets(EdgeInsets())
-                    .listRowBackground(Color.clear)
-                    .listRowSeparator(.hidden)
 
-                    let (dueNow, upcoming) = splitItems(response.items)
-                    if !dueNow.isEmpty {
-                        Section("This shop") {
-                            ForEach(dueNow) { row($0) }
+                        let (dueNow, upcoming) = splitItems(response.items)
+                        if !dueNow.isEmpty {
+                            sectionHeader("This shop")
+                            card { rows(dueNow) }
+                        }
+                        if !upcoming.isEmpty {
+                            sectionHeader("Probably next shop")
+                            card { rows(upcoming) }
                         }
                     }
-                    if !upcoming.isEmpty {
-                        Section("Probably next shop") {
-                            ForEach(upcoming) { row($0) }
-                        }
-                    }
+                    .padding(16)
                 }
-                .listStyle(.plain)
+                .scrollContentBackground(.hidden)
             }
         }
         .navigationTitle("Forecast")
         .navigationBarTitleDisplayMode(.inline)
+        .toolbarBackground(.hidden, for: .navigationBar)
         .task {
             do {
                 async let predicted = services.api.fetchPredictedList(householdId: householdId)
@@ -80,11 +98,8 @@ struct PredictedListView: View {
 
     private func summaryCard(_ response: PredictedListResponse) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            Text("PREDICTED FOR YOUR NEXT SHOP")
-                .font(.caption2.weight(.bold))
-                .foregroundStyle(.secondary)
-            Text(currency(response.predictedTotal))
-                .font(.largeTitle.weight(.bold))
+            Text(currencyRounded(response.predictedTotal))
+                .font(.title.weight(.heavy))
             Text("^[\(response.items.count) item](inflect: true) likely due through \(displayDate(response.range.end))")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -104,19 +119,40 @@ struct PredictedListView: View {
         }
         .frame(maxWidth: .infinity, alignment: .leading)
         .padding(16)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 14))
-        .padding(.bottom, 6)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+        .shadow(color: .black.opacity(0.05), radius: 6, y: 3)
     }
 
-    // MARK: - Row
+    // MARK: - Card container
+
+    private func sectionHeader(_ title: String) -> some View {
+        Text(title)
+            .font(.title3.weight(.bold))
+            .foregroundStyle(.primary)
+    }
+
+    private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
+        VStack(alignment: .leading, spacing: 0) {
+            content()
+        }
+        .padding(.vertical, 6)
+        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .shadow(color: .black.opacity(0.05), radius: 8, y: 3)
+    }
+
+    // MARK: - Rows
+
+    private func rows(_ items: [PredictedItem]) -> some View {
+        VStack(spacing: 0) {
+            ForEach(Array(items.enumerated()), id: \.element.id) { i, item in
+                if i > 0 { Divider().padding(.leading, 16) }
+                row(item)
+            }
+        }
+    }
 
     private func row(_ item: PredictedItem) -> some View {
-        let category = ItemCategory(rawValue: item.category) ?? .other
-        return HStack(spacing: 12) {
-            Text(category.emoji)
-                .font(.title3)
-                .frame(width: 30)
-
+        HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 2) {
                 Text(item.name).font(.body.weight(.medium)).foregroundStyle(.primary)
                 Text("\(cadenceLabel(item.avgIntervalDays)) · last \(displayShortDate(item.lastPurchasedAt))")
@@ -146,7 +182,8 @@ struct PredictedListView: View {
                 .buttonStyle(.borderless)
             }
         }
-        .padding(.vertical, 2)
+        .padding(.horizontal, 16)
+        .padding(.vertical, 10)
     }
 
     // MARK: - Add to list
@@ -196,6 +233,13 @@ struct PredictedListView: View {
 
     private func currency(_ value: Double) -> String {
         value.formatted(.currency(code: "AUD"))
+    }
+
+    /// The headline predicted-total is an insight number, not a receipt line —
+    /// rounded to the nearest dollar like Spend Trends. Per-item prices below
+    /// it keep cents since they're closer to a product-level detail.
+    private func currencyRounded(_ value: Double) -> String {
+        value.formatted(.currency(code: "AUD").precision(.fractionLength(0)))
     }
 
     private func displayDate(_ day: String) -> String {

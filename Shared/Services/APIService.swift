@@ -214,6 +214,10 @@ final class APIService {
         try await get("/v1/insights/trips", query: ["household_id": householdId])
     }
 
+    func fetchReceipt(householdId: String, receiptId: String) async throws -> ReceiptDetailResponse {
+        try await get("/v1/insights/receipts/\(receiptId)", query: ["household_id": householdId])
+    }
+
     // MARK: - Households
 
     func createHousehold(name: String) async throws -> Household {

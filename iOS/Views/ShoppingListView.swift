@@ -10,8 +10,8 @@ struct ShoppingListView: View {
     let household: Household
     @Environment(AppServices.self) private var services
     @State private var showSettings = false
-    @State private var showRecipeHub = false
     @State private var showReceiptScanner = false
+    @State private var receiptSource: ReceiptScannerView.CaptureSource? = nil
 
     // ── Inline add ─────────────────────────────────────────────────────────────
     @State private var isAdding  = false
@@ -44,6 +44,9 @@ struct ShoppingListView: View {
     // ── Swipe-to-delete tracking ───────────────────────────────────────────────
     @State private var swipeOffsets: [String: CGFloat] = [:]
     @State private var swipePassedThreshold: Set<String> = []
+
+    // ── Reference unit price (for the subtle "expected price" hint) ────────────
+    @State private var unitPricesByName: [String: (value: Double, unit: String)] = [:]
 
     private var store: ShoppingListStore { services.shopping }
 
@@ -83,21 +86,36 @@ struct ShoppingListView: View {
                 .safeAreaInset(edge: .bottom, spacing: 0) {
                     addItemAccessory
                 }
+                // Applied after the accessory's safeAreaInset so the empty state
+                // centers on the true full-screen bounds, not the shrinking
+                // content area — otherwise it visibly drifts up as the add-item
+                // bar grows taller (extra fields, suggestions, toasts).
+                .overlay {
+                    if store.items.isEmpty && !store.isLoading {
+                        emptyState
+                    }
+                }
                 .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { toolbarContent }
                 .sheet(isPresented: $showSettings) {
                     SettingsView(household: household).environment(services)
                 }
-                .sheet(isPresented: $showRecipeHub) {
-                    RecipeHubView(householdId: household.id).environment(services)
-                }
                 .sheet(isPresented: $showReceiptScanner) {
-                    ReceiptScannerView(householdId: household.id).environment(services)
+                    ReceiptScannerView(householdId: household.id, initialSource: receiptSource).environment(services)
                 }
         }
         .task {
             await store.load(householdId: household.id)
+        }
+        .task {
+            guard let products = try? await services.api.fetchProductInsights(householdId: household.id) else { return }
+            var lookup: [String: (value: Double, unit: String)] = [:]
+            for product in products {
+                guard let value = product.avgUnitPrice, let unit = product.avgUnitPriceUnit else { continue }
+                lookup[product.name.lowercased()] = (value, unit)
+            }
+            unitPricesByName = lookup
         }
         .onChange(of: focusedField) { old, new in handleFocusChange(old: old, new: new) }
         .onChange(of: addText) { old, new in
@@ -119,7 +137,11 @@ struct ShoppingListView: View {
             if url.host == "quick-add" { startAdding() }
         }
         .onChange(of: services.pendingReceiptPDF) { _, pdf in
-            if pdf != nil { showReceiptScanner = true }
+            guard pdf != nil else { return }
+            // A stale source from a previous menu pick shouldn't hijack a
+            // PDF handed to us externally (AirDrop, share sheet, etc).
+            receiptSource = nil
+            showReceiptScanner = true
         }
         .onContinueUserActivity("com.patbarlow.shoppinglist.quickAdd") { _ in
             startAdding()
@@ -129,6 +151,7 @@ struct ShoppingListView: View {
     // MARK: - Bottom Accessory
 
     private var addItemAccessory: some View {
+        GlassEffectContainer(spacing: 12) {
         VStack(alignment: .trailing, spacing: 6) {
             // Duplicate-item toast
             if let dupe = duplicateToastName {
@@ -320,6 +343,7 @@ struct ShoppingListView: View {
         }
         .animation(.spring(response: 0.3, dampingFraction: 0.8), value: suggestions)
         .animation(.spring(duration: 0.35), value: store.recentlyCompleted.isEmpty)
+        }
     }
 
     // MARK: - List
@@ -327,7 +351,7 @@ struct ShoppingListView: View {
     @ViewBuilder
     private var mainList: some View {
         if store.items.isEmpty && !store.isLoading {
-            emptyState
+            Color.clear
         } else {
             ScrollView {
                 LazyVStack(spacing: 10) {
@@ -451,6 +475,11 @@ struct ShoppingListView: View {
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
+
+                if let reference = unitPricesByName[item.name.lowercased()] {
+                    referencePriceText(reference)
+                        .padding(.leading, 8)
+                }
             }
             if let notes = item.notes, !notes.isEmpty {
                 HStack(spacing: 10) {
@@ -470,6 +499,13 @@ struct ShoppingListView: View {
         .onTapGesture { if !isEditing { beginEditing(item) } }
     }
 
+    /// A faded in-aisle reference price — the number is what matters, so it
+    /// reads a shade darker than the unit label riding along after it.
+    private func referencePriceText(_ reference: (value: Double, unit: String)) -> Text {
+        Text(reference.value, format: .currency(code: "AUD")).font(.caption).foregroundStyle(.tertiary)
+            + Text(" / \(reference.unit)").font(.caption2).foregroundStyle(.quaternary)
+    }
+
     // MARK: - Empty state
 
     private var emptyState: some View {
@@ -477,15 +513,11 @@ struct ShoppingListView: View {
             Image(systemName: "cart")
                 .font(.system(size: 72, weight: .ultraLight))
                 .foregroundStyle(.quaternary)
-            VStack(spacing: 6) {
-                Text("Your list is empty")
-                    .font(.title3.weight(.medium))
-                    .foregroundStyle(.secondary)
-                Text("Tap \"Add item\u{2026}\" below to get started")
-                    .font(.subheadline)
-                    .foregroundStyle(.tertiary)
-            }
+            Text("Your list is empty")
+                .font(.title3.weight(.medium))
+                .foregroundStyle(.secondary)
         }
+        .allowsHitTesting(false)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -499,13 +531,27 @@ struct ShoppingListView: View {
             }
         }
         ToolbarItem(placement: .navigationBarTrailing) {
-            Button { showReceiptScanner = true } label: {
+            Menu {
+                Button {
+                    receiptSource = .documentScanner
+                    showReceiptScanner = true
+                } label: {
+                    Label("Scan Receipt", systemImage: "doc.viewfinder")
+                }
+                Button {
+                    receiptSource = .photoLibrary
+                    showReceiptScanner = true
+                } label: {
+                    Label("Photo Library", systemImage: "photo.on.rectangle")
+                }
+                Button {
+                    receiptSource = .files
+                    showReceiptScanner = true
+                } label: {
+                    Label("Files", systemImage: "folder")
+                }
+            } label: {
                 Image(systemName: "receipt")
-            }
-        }
-        ToolbarItem(placement: .navigationBarTrailing) {
-            Button { showRecipeHub = true } label: {
-                Image(systemName: "fork.knife")
             }
         }
     }
