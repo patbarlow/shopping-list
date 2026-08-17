@@ -97,7 +97,6 @@ struct SpendTrendsView: View {
             }
             .navigationTitle("Insights")
             .navigationBarTitleDisplayMode(.inline)
-            .toolbarBackground(.hidden, for: .navigationBar)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button { showSettings = true } label: {

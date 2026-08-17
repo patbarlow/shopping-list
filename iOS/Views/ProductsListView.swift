@@ -96,7 +96,6 @@ struct ProductsListView: View {
         }
         .navigationTitle("Products")
         .navigationBarTitleDisplayMode(.inline)
-        .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
             // Kept in the toolbar unconditionally (just disabled while there's
             // nothing to sort) rather than only inserting it once `products`
