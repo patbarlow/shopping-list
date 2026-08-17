@@ -10,7 +10,6 @@ struct ProductsListView: View {
     @State private var isLoading = true
     @State private var errorMessage: String? = nil
     @State private var sort: Sort = .frequency
-    @State private var searchText = ""
 
     enum Sort: String, CaseIterable, Identifiable {
         case frequency = "Most bought"
@@ -35,36 +34,26 @@ struct ProductsListView: View {
     )
 
     private var sorted: [ProductInsight] {
-        let filtered = searchText.isEmpty
-            ? products
-            : products.filter { $0.name.localizedCaseInsensitiveContains(searchText) }
         switch sort {
-        case .frequency: return filtered.sorted { $0.timesPurchased > $1.timesPurchased }
-        case .spend:     return filtered.sorted { ($0.totalSpend ?? 0) > ($1.totalSpend ?? 0) }
-        case .recent:    return filtered.sorted { ($0.lastPurchasedAt ?? "") > ($1.lastPurchasedAt ?? "") }
-        case .name:      return filtered.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+        case .frequency: return products.sorted { $0.timesPurchased > $1.timesPurchased }
+        case .spend:     return products.sorted { ($0.totalSpend ?? 0) > ($1.totalSpend ?? 0) }
+        case .recent:    return products.sorted { ($0.lastPurchasedAt ?? "") > ($1.lastPurchasedAt ?? "") }
+        case .name:      return products.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
         }
     }
 
     var body: some View {
-        ZStack(alignment: .top) {
-            Color(.systemGroupedBackground).ignoresSafeArea()
-            Self.headerGradient
-                .frame(height: 700)
-                .ignoresSafeArea(edges: .top)
-
+        Group {
             if isLoading {
                 ProgressView().frame(maxWidth: .infinity).padding(.vertical, 80)
             } else if let err = errorMessage {
                 ContentUnavailableView("Couldn't load products", systemImage: "exclamationmark.triangle", description: Text(err))
-                    .padding(.top, 60)
             } else if products.isEmpty {
                 ContentUnavailableView(
                     "No products yet",
                     systemImage: "cart",
                     description: Text("Scan a receipt and the things you buy will show up here with prices and how often you buy them.")
                 )
-                .padding(.top, 60)
             } else {
                 ScrollView {
                     card {
@@ -82,32 +71,30 @@ struct ProductsListView: View {
                         }
                     }
                     .padding(.horizontal, 16)
-                    // The large title reserves extra height beyond the
-                    // standard nav bar, but this ScrollView sits inside a
-                    // custom ZStack rather than being the NavigationStack's
-                    // direct content, so it isn't automatically inset to
-                    // clear that extra space the way a plain List/ScrollView
-                    // would be — without this, content (and the search field
-                    // below) renders straight under the title instead of
-                    // below it.
-                    .padding(.top, 96)
+                    .padding(.top, 8)
                     .padding(.bottom, 16)
                 }
                 .scrollContentBackground(.hidden)
-                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Attached via .background rather than as a ZStack sibling in front
+        // of the ScrollView — that arrangement kept the ScrollView from being
+        // recognized as the NavigationStack's scrollable content, so the
+        // large title's extra height never got automatically reserved for it
+        // (needing a hand-tuned top-padding fudge that was never quite right,
+        // and threw off the system's own scroll-to-top-on-tab-tap since it
+        // targets the real, automatic inset). As a .background this stays a
+        // passive layer behind the content without interfering with that.
+        .background {
+            ZStack(alignment: .top) {
+                Color(.systemGroupedBackground).ignoresSafeArea()
+                Self.headerGradient
+                    .frame(height: 700)
+                    .ignoresSafeArea(edges: .top)
             }
         }
         .navigationTitle("Products")
-        // A large title collapsing into the inline one as you scroll is
-        // ordinary NavigationStack behavior — the system handles the
-        // fade/blur of content passing behind the bar as part of that,
-        // reliably, the same way in a TestFlight build as it does when
-        // Xcode installs the app straight onto a device. That's exactly the
-        // transition the manual fade overlay and scrollEdgeEffectStyle were
-        // both trying (and, in TestFlight's case, failing) to fake by hand —
-        // and it also means the content no longer needs a manual top-padding
-        // fudge to clear the bar, since the large title already reserves
-        // that space itself.
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             // Kept in the toolbar unconditionally (just disabled while there's

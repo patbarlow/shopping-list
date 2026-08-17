@@ -581,7 +581,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.7.6;
+				MARKETING_VERSION = 1.7.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.patbarlow.shoppinglist;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -662,7 +662,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.7.6;
+				MARKETING_VERSION = 1.7.7;
 				PRODUCT_BUNDLE_IDENTIFIER = com.patbarlow.shoppinglist;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
