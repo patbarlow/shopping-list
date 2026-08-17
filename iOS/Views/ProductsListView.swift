@@ -82,28 +82,24 @@ struct ProductsListView: View {
                         }
                     }
                     .padding(.horizontal, 16)
-                    .padding(.top, 32)
                     .padding(.bottom, 16)
                 }
                 .scrollContentBackground(.hidden)
-                // .automatic only reveals the field on a pull-down gesture, which
-                // this page's custom ZStack header/scroll-edge styling was
-                // swallowing before it could fully open. Always-visible sidesteps
-                // that gesture entirely.
                 .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always))
             }
-
-            // Fades scrolled content out before it reaches the nav bar — done
-            // by hand rather than via scrollEdgeEffectStyle, which turned out
-            // not to render reliably in TestFlight builds (works when Xcode
-            // installs the app straight to a device, not once it's gone
-            // through Xcode Cloud/App Store distribution, even with the same
-            // Xcode version pinned). A plain gradient has no dependency on
-            // that system behavior.
-            topFadeOverlay
         }
         .navigationTitle("Products")
-        .navigationBarTitleDisplayMode(.inline)
+        // A large title collapsing into the inline one as you scroll is
+        // ordinary NavigationStack behavior — the system handles the
+        // fade/blur of content passing behind the bar as part of that,
+        // reliably, the same way in a TestFlight build as it does when
+        // Xcode installs the app straight onto a device. That's exactly the
+        // transition the manual fade overlay and scrollEdgeEffectStyle were
+        // both trying (and, in TestFlight's case, failing) to fake by hand —
+        // and it also means the content no longer needs a manual top-padding
+        // fudge to clear the bar, since the large title already reserves
+        // that space itself.
+        .navigationBarTitleDisplayMode(.large)
         .toolbar {
             // Kept in the toolbar unconditionally (just disabled while there's
             // nothing to sort) rather than only inserting it once `products`
@@ -138,20 +134,6 @@ struct ProductsListView: View {
                 }
             }
         }
-    }
-
-    /// Sits above everything else in the ZStack, ignoring the top safe area,
-    /// so scrolled content visually fades into the background color before
-    /// it ever reaches the nav bar instead of passing under it unobscured.
-    private var topFadeOverlay: some View {
-        LinearGradient(
-            colors: [Color(.systemGroupedBackground), Color(.systemGroupedBackground).opacity(0)],
-            startPoint: .top,
-            endPoint: .bottom
-        )
-        .frame(height: 110)
-        .ignoresSafeArea(edges: .top)
-        .allowsHitTesting(false)
     }
 
     // MARK: - Card container
