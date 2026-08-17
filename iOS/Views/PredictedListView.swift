@@ -32,24 +32,17 @@ struct PredictedListView: View {
     )
 
     var body: some View {
-        ZStack(alignment: .top) {
-            Color(.systemGroupedBackground).ignoresSafeArea()
-            Self.headerGradient
-                .frame(height: 700)
-                .ignoresSafeArea(edges: .top)
-
+        Group {
             if isLoading {
                 ProgressView().frame(maxWidth: .infinity).padding(.vertical, 80)
             } else if let err = errorMessage {
                 ContentUnavailableView("Couldn't load forecast", systemImage: "exclamationmark.triangle", description: Text(err))
-                    .padding(.top, 60)
             } else if let response, response.items.isEmpty {
                 ContentUnavailableView(
                     "Not enough data yet",
                     systemImage: "calendar.badge.clock",
                     description: Text("Scan a few more receipts and we'll start predicting what you'll need before your next big shop.")
                 )
-                .padding(.top, 60)
             } else if let response {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
@@ -66,30 +59,30 @@ struct PredictedListView: View {
                         }
                     }
                     .padding(.horizontal, 16)
-                    // The large title reserves extra height beyond the
-                    // standard nav bar, but this ScrollView sits inside a
-                    // custom ZStack rather than being the NavigationStack's
-                    // direct content, so it isn't automatically inset to
-                    // clear that extra space the way a plain List/ScrollView
-                    // would be — without this, content renders straight
-                    // under the title instead of below it.
-                    .padding(.top, 96)
+                    .padding(.top, 8)
                     .padding(.bottom, 16)
                 }
                 .scrollContentBackground(.hidden)
             }
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        // Attached via .background rather than as a ZStack sibling in front
+        // of the ScrollView — that arrangement kept the ScrollView from being
+        // recognized as the NavigationStack's scrollable content, so the
+        // large title's extra height never got automatically reserved for it
+        // (needing a hand-tuned top-padding fudge that was never quite right,
+        // and threw off the system's own scroll-to-top-on-tab-tap since it
+        // targets the real, automatic inset). As a .background this stays a
+        // passive layer behind the content without interfering with that.
+        .background {
+            ZStack(alignment: .top) {
+                Color(.systemGroupedBackground).ignoresSafeArea()
+                Self.headerGradient
+                    .frame(height: 700)
+                    .ignoresSafeArea(edges: .top)
+            }
+        }
         .navigationTitle("Forecast")
-        // A large title collapsing into the inline one as you scroll is
-        // ordinary NavigationStack behavior — the system handles the
-        // fade/blur of content passing behind the bar as part of that,
-        // reliably, the same way in a TestFlight build as it does when
-        // Xcode installs the app straight onto a device. That's exactly the
-        // transition the manual fade overlay and scrollEdgeEffectStyle were
-        // both trying (and, in TestFlight's case, failing) to fake by hand —
-        // and it also means the content no longer needs a manual top-padding
-        // fudge to clear the bar, since the large title already reserves
-        // that space itself.
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
