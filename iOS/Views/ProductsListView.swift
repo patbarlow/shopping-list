@@ -82,6 +82,15 @@ struct ProductsListView: View {
                         }
                     }
                     .padding(.horizontal, 16)
+                    // The large title reserves extra height beyond the
+                    // standard nav bar, but this ScrollView sits inside a
+                    // custom ZStack rather than being the NavigationStack's
+                    // direct content, so it isn't automatically inset to
+                    // clear that extra space the way a plain List/ScrollView
+                    // would be — without this, content (and the search field
+                    // below) renders straight under the title instead of
+                    // below it.
+                    .padding(.top, 96)
                     .padding(.bottom, 16)
                 }
                 .scrollContentBackground(.hidden)
