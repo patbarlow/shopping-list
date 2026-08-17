@@ -1,30 +1,46 @@
 import SwiftUI
-import PhotosUI
 import PDFKit
 import VisionKit
 
 struct ReceiptScannerView: View {
     let householdId: String
-    /// When set, the source picker for this is triggered immediately instead
-    /// of showing the "choose a source" list — driven from a menu upstream.
-    var initialSource: CaptureSource? = nil
+    let initialCapture: InitialCapture
     @Environment(AppServices.self) private var services
     @Environment(\.dismiss) private var dismiss
 
-    enum CaptureSource: Equatable {
-        case documentScanner, photoLibrary, files
+    /// Content already captured by the caller (native picker triggered directly
+    /// from the toolbar menu — see ReceiptImportToolbarButton) before this view
+    /// is ever presented, so it can open straight into `.scanning` instead of
+    /// showing its own "choose a source" step as a second card on top.
+    // A struct (not a bare enum) specifically so it can carry a stable `id` —
+    // `.sheet(item:)` keys the presented view's identity off it, and giving
+    // every capture its own fresh id (even two `.photoData` in a row that
+    // would otherwise look alike) is what guarantees each presentation gets
+    // genuinely new state instead of possibly reusing a stale prior one.
+    struct InitialCapture: Identifiable {
+        let id = UUID()
+        let payload: Payload
+
+        enum Payload {
+            case images([UIImage])
+            case photoData(Data)
+            case pdfData(Data)
+        }
+
+        static func images(_ images: [UIImage]) -> InitialCapture { InitialCapture(payload: .images(images)) }
+        static func photoData(_ data: Data) -> InitialCapture { InitialCapture(payload: .photoData(data)) }
+        static func pdfData(_ data: Data) -> InitialCapture { InitialCapture(payload: .pdfData(data)) }
     }
 
     private enum Phase {
-        case capture
+        case failed
         case scanning
         case printing(ReceiptScanResponse)
         case review
         case confirming
-        case done(String)
     }
 
-    @State private var phase: Phase = .capture
+    @State private var phase: Phase = .scanning
     @State private var scanResult: ReceiptScanResponse? = nil
     @State private var editableItems: [EditableReceiptItem] = []
     @State private var errorMessage: String? = nil
@@ -34,32 +50,27 @@ struct ReceiptScannerView: View {
     @State private var pickingForItemId: String? = nil
     @State private var productPickerQuery: String = ""
 
-    @State var selectedPhoto: PhotosPickerItem? = nil
-    @State var showPhotoPicker: Bool
-    @State var showDocumentScanner: Bool
-    @State var showFilePicker: Bool
+    // Belt-and-braces: guarantees the scan request only ever fires once for
+    // this instance even if `.task` were somehow re-entered — a request that
+    // fired twice showed up as one seeing itself fail (its response arriving
+    // after this view had already moved on with the other's) right before
+    // the real one completed normally.
+    @State private var hasStartedProcessing = false
 
-    init(householdId: String, initialSource: CaptureSource? = nil) {
+    init(householdId: String, initialCapture: InitialCapture) {
         self.householdId = householdId
-        self.initialSource = initialSource
-        // Set before the first render (not in .task, which runs after it) so
-        // the picker is already on its way up and the capture list never
-        // flashes on screen first.
-        _showDocumentScanner = State(initialValue: initialSource == .documentScanner)
-        _showPhotoPicker = State(initialValue: initialSource == .photoLibrary)
-        _showFilePicker = State(initialValue: initialSource == .files)
+        self.initialCapture = initialCapture
     }
 
     var body: some View {
         NavigationStack {
             Group {
                 switch phase {
-                case .capture:              captureView
-                case .scanning:             ScanningProgressView()
-                case .printing(let result): ReceiptPrintingView(result: result) { phase = .review }
-                case .review:               reviewView
-                case .confirming:           loadingView("Saving…")
-                case .done(let msg):        doneView(msg)
+                case .failed:                failedView
+                case .scanning:               ScanningProgressView()
+                case .printing(let result):   ReceiptPrintingView(result: result) { phase = .review }
+                case .review:                 reviewView
+                case .confirming:             loadingView("Saving…")
                 }
             }
             .navigationTitle(navTitle)
@@ -75,32 +86,6 @@ struct ReceiptScannerView: View {
                 }
             }
         }
-        .onChange(of: selectedPhoto) { _, item in
-            guard let item else { return }
-            Task { await handlePhotoSelection(item) }
-        }
-        .fullScreenCover(isPresented: $showDocumentScanner) {
-            DocumentScannerCapture { images in
-                showDocumentScanner = false
-                Task { await handleScannedPages(images) }
-            } onCancel: {
-                showDocumentScanner = false
-            }
-            .ignoresSafeArea()
-        }
-        .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhoto, matching: .images)
-        .fileImporter(
-            isPresented: $showFilePicker,
-            allowedContentTypes: [.pdf],
-            allowsMultipleSelection: false
-        ) { result in
-            guard case .success(let urls) = result, let url = urls.first else { return }
-            _ = url.startAccessingSecurityScopedResource()
-            defer { url.stopAccessingSecurityScopedResource() }
-            if let data = try? Data(contentsOf: url) {
-                Task { await handlePDF(data) }
-            }
-        }
         .sheet(isPresented: $showProductPicker) {
             ProductPickerSheet(householdId: householdId, initialQuery: productPickerQuery) { result in
                 applyPickerResult(result)
@@ -108,63 +93,54 @@ struct ReceiptScannerView: View {
             }
         }
         .task {
-            // The picker matching `initialSource` is already on its way up —
-            // set in init, before the first render. A hand-off PDF (AirDrop,
-            // share sheet) takes over if present; the caller clears any
-            // stale `initialSource` before presenting that path.
-            if let pdf = services.pendingReceiptPDF {
-                services.pendingReceiptPDF = nil
-                await handlePDF(pdf)
-            }
+            guard !hasStartedProcessing else { return }
+            hasStartedProcessing = true
+            // The AI parse this kicks off can take a real while (up to the
+            // 120s request timeout) — long enough that locking the phone or
+            // swiping to another app mid-scan is a completely normal thing
+            // for someone to do while waiting. Without a background task,
+            // iOS suspends the app almost immediately and the in-flight
+            // request gets torn down, which surfaced as a plain "cancelled"
+            // error with no obvious cause. This buys it room to finish.
+            let bgTask = UIApplication.shared.beginBackgroundTask(withName: "ReceiptScan")
+            await process(initialCapture)
+            UIApplication.shared.endBackgroundTask(bgTask)
+        }
+    }
+
+    private func process(_ capture: InitialCapture) async {
+        switch capture.payload {
+        case .images(let images):  await handleScannedPages(images)
+        case .photoData(let data): await handlePhotoData(data)
+        case .pdfData(let data):   await handlePDF(data)
         }
     }
 
     private var navTitle: String {
         switch phase {
-        case .capture:    return "Scan Receipt"
+        case .failed:     return "Couldn't Read Receipt"
         case .scanning:   return "Scanning…"
         case .printing:   return scanResult?.storeName ?? "Reading Receipt…"
         case .review:     return scanResult?.storeName ?? "Match Items"
         case .confirming: return "Saving…"
-        case .done:       return "Done"
         }
     }
 
-    // MARK: - Capture (source selection)
+    // MARK: - Failure
 
-    private var captureView: some View {
-        List {
-            Section {
-                Button {
-                    showDocumentScanner = true
-                } label: {
-                    Label("Scan Receipt", systemImage: "doc.viewfinder")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-
-                PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                    Label("Photo Library", systemImage: "photo.on.rectangle")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-                .buttonStyle(.borderless)
-
-                Button {
-                    showFilePicker = true
-                } label: {
-                    Label("Files (PDF)", systemImage: "doc.text")
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                }
-            } header: {
-                Text("Choose a source")
-            }
-
-            if let error = errorMessage {
-                Section {
-                    Label(error, systemImage: "exclamationmark.triangle")
-                        .foregroundStyle(.red)
-                }
-            }
+    private var failedView: some View {
+        VStack(spacing: 16) {
+            Image(systemName: "exclamationmark.triangle")
+                .font(.system(size: 40))
+                .foregroundStyle(.red)
+            Text(errorMessage ?? "Something went wrong.")
+                .multilineTextAlignment(.center)
+                .foregroundStyle(.secondary)
+                .padding(.horizontal, 24)
+            Button("Dismiss") { dismiss() }
+                .buttonStyle(.borderedProminent)
         }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     // MARK: - Loading
@@ -272,18 +248,6 @@ struct ReceiptScannerView: View {
         .opacity(item.wrappedValue.isIncluded ? 1 : 0.4)
     }
 
-    // MARK: - Done
-
-    private func doneView(_ message: String) -> some View {
-        VStack(spacing: 20) {
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 56))
-                .foregroundStyle(.green)
-            Text(message).foregroundStyle(.secondary)
-            Button("Done") { dismiss() }.buttonStyle(.borderedProminent)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
 
     // MARK: - Picker result
 
@@ -326,10 +290,10 @@ struct ReceiptScannerView: View {
         // 2. Fall back to rasterising the PDF and reading it as an image.
         do {
             guard let image = renderPDFToImage(pdfData) else {
-                phase = .capture; errorMessage = "Couldn't read that PDF."; return
+                phase = .failed; errorMessage = "Couldn't read that PDF."; return
             }
             guard let compressed = image.compressedForUpload() else {
-                phase = .capture; errorMessage = "Image error."; return
+                phase = .failed; errorMessage = "Image error."; return
             }
             let result = try await services.api.scanReceipt(
                 householdId: householdId,
@@ -337,7 +301,7 @@ struct ReceiptScannerView: View {
             )
             applyResult(result)
         } catch {
-            phase = .capture
+            phase = .failed
             errorMessage = "Couldn't read that receipt. (\(error.localizedDescription))"
         }
     }
@@ -435,18 +399,17 @@ struct ReceiptScannerView: View {
         return UIGraphicsGetImageFromCurrentImageContext()
     }
 
-    private func handlePhotoSelection(_ item: PhotosPickerItem) async {
+    private func handlePhotoData(_ data: Data) async {
         phase = .scanning
         errorMessage = nil
         do {
-            guard let data = try await item.loadTransferable(type: Data.self),
-                  let image = UIImage(data: data),
+            guard let image = UIImage(data: data),
                   let compressed = image.compressedForUpload()
-            else { phase = .capture; errorMessage = "Couldn't load that photo."; return }
+            else { phase = .failed; errorMessage = "Couldn't load that photo."; return }
             let result = try await services.api.scanReceipt(householdId: householdId, imageBase64: compressed.base64EncodedString())
             applyResult(result)
         } catch {
-            phase = .capture
+            phase = .failed
             errorMessage = "Couldn't read that receipt. (\(error.localizedDescription))"
         }
     }
@@ -458,16 +421,16 @@ struct ReceiptScannerView: View {
         phase = .scanning
         errorMessage = nil
         guard let stitched = images.count > 1 ? stitchVertically(images) : images.first else {
-            phase = .capture; errorMessage = "Couldn't read that scan."; return
+            phase = .failed; errorMessage = "Couldn't read that scan."; return
         }
         do {
             guard let compressed = stitched.compressedForUpload() else {
-                phase = .capture; errorMessage = "Image error."; return
+                phase = .failed; errorMessage = "Image error."; return
             }
             let result = try await services.api.scanReceipt(householdId: householdId, imageBase64: compressed.base64EncodedString())
             applyResult(result)
         } catch {
-            phase = .capture
+            phase = .failed
             errorMessage = "Couldn't read that receipt. (\(error.localizedDescription))"
         }
     }
@@ -524,7 +487,7 @@ struct ReceiptScannerView: View {
                     receiptDate: result.receiptDate,
                     items: items
                 )
-                phase = .done("Tracked \(items.count) item\(items.count == 1 ? "" : "s").")
+                dismiss()
             } catch {
                 phase = .review
                 errorMessage = error.localizedDescription
@@ -538,7 +501,7 @@ struct ReceiptScannerView: View {
 /// Wraps VisionKit's document scanner — the same "Scan Documents" UI as
 /// Files/Notes: automatic edge detection in the camera, then crop/filter
 /// before finishing, optionally across multiple pages.
-private struct DocumentScannerCapture: UIViewControllerRepresentable {
+struct DocumentScannerCapture: UIViewControllerRepresentable {
     let onScan: ([UIImage]) -> Void
     let onCancel: () -> Void
 
@@ -557,25 +520,38 @@ private struct DocumentScannerCapture: UIViewControllerRepresentable {
     final class Coordinator: NSObject, VNDocumentCameraViewControllerDelegate {
         let onScan: ([UIImage]) -> Void
         let onCancel: () -> Void
+        // Delegate callbacks on this controller have been seen firing more
+        // than once for a single session (e.g. a finish followed by a stray
+        // cancel/fail as it tears down) — this makes sure only the first one
+        // is ever actually acted on.
+        private var hasFired = false
         init(onScan: @escaping ([UIImage]) -> Void, onCancel: @escaping () -> Void) {
             self.onScan = onScan
             self.onCancel = onCancel
         }
 
+        // Dismissal is left entirely to the SwiftUI `.fullScreenCover(isPresented:)`
+        // binding (via onScan/onCancel below). Also calling `controller.dismiss`
+        // here raced with that binding update and could tear down the wrong
+        // presentation — most visibly, the *parent* sheet closing itself right
+        // after a scan completed, before the review screen ever showed.
         func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFinishWith scan: VNDocumentCameraScan) {
+            guard !hasFired else { return }
+            hasFired = true
             var images: [UIImage] = []
             for i in 0..<scan.pageCount { images.append(scan.imageOfPage(at: i)) }
-            controller.dismiss(animated: true)
             onScan(images)
         }
 
         func documentCameraViewControllerDidCancel(_ controller: VNDocumentCameraViewController) {
-            controller.dismiss(animated: true)
+            guard !hasFired else { return }
+            hasFired = true
             onCancel()
         }
 
         func documentCameraViewController(_ controller: VNDocumentCameraViewController, didFailWithError error: Error) {
-            controller.dismiss(animated: true)
+            guard !hasFired else { return }
+            hasFired = true
             onCancel()
         }
     }
@@ -655,6 +631,13 @@ private struct ReceiptPrintingView: View {
                     .transition(.opacity)
                 }
             }
+            // Without this, the card sizes to fit its content — and early in
+            // the reveal (before any item rows exist) the only thing wide
+            // enough to establish a width is the dashed divider's fixed run
+            // of characters, which falls short of the screen on most
+            // devices. That's what showed as the card — and the grey behind
+            // it — not reaching the edges for the first moment of the reveal.
+            .frame(maxWidth: .infinity)
             .background(Color(.secondarySystemGroupedBackground))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .shadow(color: .black.opacity(0.08), radius: 12, y: 6)

@@ -10,8 +10,6 @@ struct ShoppingListView: View {
     let household: Household
     @Environment(AppServices.self) private var services
     @State private var showSettings = false
-    @State private var showReceiptScanner = false
-    @State private var receiptSource: ReceiptScannerView.CaptureSource? = nil
 
     // ── Inline add ─────────────────────────────────────────────────────────────
     @State private var isAdding  = false
@@ -48,6 +46,10 @@ struct ShoppingListView: View {
     // ── Reference unit price (for the subtle "expected price" hint) ────────────
     @State private var unitPricesByName: [String: (value: Double, unit: String)] = [:]
 
+    // ── Empty-state visibility (debounced — see showEmptyStateIfSettled) ───────
+    @State private var showEmptyState = false
+    @State private var emptyStateTask: Task<Void, Never>? = nil
+
     private var store: ShoppingListStore { services.shopping }
 
     private var isEditingItem: Bool { editingItemID != nil }
@@ -58,51 +60,48 @@ struct ShoppingListView: View {
         return Self.parseMultipleItems(addText)
     }
 
-    // Suggestions shown above the text field when ≥2 chars typed
-    private var suggestions: [String] {
-        guard addText.count >= 2 else { return [] }
-        let q = addText.lowercased()
-        return store.allKnownNames
-            .filter { $0.lowercased().hasPrefix(q) && $0.lowercased() != q }
-            .prefix(3)
-            .map { $0 }
-    }
-
     // MARK: - Body
 
     var body: some View {
         NavigationStack {
-            mainList
-                .overlay(alignment: .bottom) {
-                    LinearGradient(
-                        colors: [.clear, Color(.systemBackground)],
-                        startPoint: .top,
-                        endPoint: .bottom
-                    )
-                    .frame(height: 80)
-                    .padding(.bottom, -56)
-                    .allowsHitTesting(false)
+            ZStack {
+                // Drawn first (behind) so the glass add-item accessory — added
+                // below via safeAreaInset, which renders on top of whatever
+                // it's attached to — can actually blur it, instead of this
+                // sitting in front of the glass with nothing to blur.
+                if showEmptyState {
+                    emptyState
+                        // Stable regardless of the keyboard or the accessory
+                        // growing taller (extra fields, toasts) — it's a ZStack
+                        // sibling, not nested inside mainList's own safe-area
+                        // reservation, so neither moves it.
+                        .ignoresSafeArea(.keyboard, edges: .bottom)
                 }
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    addItemAccessory
-                }
-                // Applied after the accessory's safeAreaInset so the empty state
-                // centers on the true full-screen bounds, not the shrinking
-                // content area — otherwise it visibly drifts up as the add-item
-                // bar grows taller (extra fields, suggestions, toasts).
-                .overlay {
-                    if store.items.isEmpty && !store.isLoading {
-                        emptyState
+
+                mainList
+                    .overlay(alignment: .bottom) {
+                        LinearGradient(
+                            colors: [.clear, Color(.systemBackground)],
+                            startPoint: .top,
+                            endPoint: .bottom
+                        )
+                        .frame(height: 80)
+                        .padding(.bottom, -56)
+                        .allowsHitTesting(false)
                     }
-                }
-                .navigationTitle("")
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        addItemAccessory
+                    }
+            }
+            .onChange(of: store.items.isEmpty || store.isLoading) { _, _ in
+                showEmptyStateIfSettled()
+            }
+            .task { showEmptyStateIfSettled() }
+            .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { toolbarContent }
                 .sheet(isPresented: $showSettings) {
                     SettingsView(household: household).environment(services)
-                }
-                .sheet(isPresented: $showReceiptScanner) {
-                    ReceiptScannerView(householdId: household.id, initialSource: receiptSource).environment(services)
                 }
         }
         .task {
@@ -135,13 +134,6 @@ struct ShoppingListView: View {
         }
         .onOpenURL { url in
             if url.host == "quick-add" { startAdding() }
-        }
-        .onChange(of: services.pendingReceiptPDF) { _, pdf in
-            guard pdf != nil else { return }
-            // A stale source from a previous menu pick shouldn't hijack a
-            // PDF handed to us externally (AirDrop, share sheet, etc).
-            receiptSource = nil
-            showReceiptScanner = true
         }
         .onContinueUserActivity("com.patbarlow.shoppinglist.quickAdd") { _ in
             startAdding()
@@ -189,42 +181,6 @@ struct ShoppingListView: View {
                 .buttonStyle(.plain)
                 .glassEffect(in: Capsule())
                 .padding(.trailing, 12)
-                .transition(.move(edge: .bottom).combined(with: .opacity))
-            }
-
-            // Suggestions — detached glass container, floats above the input bar
-            if isAdding && !suggestions.isEmpty {
-                VStack(alignment: .leading, spacing: 0) {
-                    ForEach(Array(suggestions.enumerated()), id: \.element) { idx, suggestion in
-                        if idx > 0 { Divider().padding(.leading, 42).opacity(0.3) }
-                        Button {
-                            addText = suggestion
-                            focusedField = .newName
-                        } label: {
-                            HStack(spacing: 10) {
-                                Image(systemName: "magnifyingglass")
-                                    .font(.caption)
-                                    .foregroundStyle(.secondary)
-                                    .frame(width: 16)
-                                Text(suggestion)
-                                    .foregroundStyle(.primary)
-                                Spacer()
-                                Image(systemName: "arrow.up.left")
-                                    .font(.caption2)
-                                    .foregroundStyle(.tertiary)
-                            }
-                            .padding(.horizontal, 16)
-                            .padding(.vertical, 11)
-                            .contentShape(Rectangle())
-                        }
-                        .buttonStyle(.plain)
-                    }
-                }
-                .fixedSize(horizontal: false, vertical: true)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .glassEffect(in: RoundedRectangle(cornerRadius: 16))
-                .clipShape(RoundedRectangle(cornerRadius: 16))
-                .padding(.horizontal, 12)
                 .transition(.move(edge: .bottom).combined(with: .opacity))
             }
 
@@ -338,10 +294,12 @@ struct ShoppingListView: View {
                         }
                     }
             )
-            .animation(.spring(response: 0.25, dampingFraction: 0.82), value: isAdding)
-            .animation(.spring(response: 0.25, dampingFraction: 0.82), value: isEditingItem)
+            // Snappier and less bouncy than before — the keyboard's own rise
+            // is a plain ~250ms ease, and the old spring's overshoot tail kept
+            // visibly settling after the keyboard had already finished.
+            .animation(.spring(response: 0.22, dampingFraction: 0.95), value: isAdding)
+            .animation(.spring(response: 0.22, dampingFraction: 0.95), value: isEditingItem)
         }
-        .animation(.spring(response: 0.3, dampingFraction: 0.8), value: suggestions)
         .animation(.spring(duration: 0.35), value: store.recentlyCompleted.isEmpty)
         }
     }
@@ -349,10 +307,14 @@ struct ShoppingListView: View {
     // MARK: - List
 
     @ViewBuilder
+    // Always the ScrollView, even with zero items — the empty-state graphic is
+    // a separate overlay on top. Swapping this for a bare `Color.clear` when
+    // the list was empty used to tear down and remount the whole subtree
+    // (including its tap-to-dismiss-keyboard gesture) the moment the first
+    // item landed, which is what was yanking focus off the keyboard right
+    // after adding it.
     private var mainList: some View {
-        if store.items.isEmpty && !store.isLoading {
-            Color.clear
-        } else {
+        Group {
             ScrollView {
                 LazyVStack(spacing: 10) {
                     ForEach(store.groupedItems, id: \.category) { group in
@@ -441,13 +403,24 @@ struct ShoppingListView: View {
                 .padding(.horizontal, 16)
                 .padding(.top, 8)
             }
-            .scrollDismissesKeyboard(.interactively)
+            // Interactive dismiss was firing on its own the moment a new item
+            // animated into the list (the content-size change from an
+            // inserted row/section reads to it like a user scroll), yanking
+            // the keyboard down mid-add. Only worth having while actually
+            // browsing the list, not while the add bar is focused.
+            .scrollDismissesKeyboard(isAdding ? .never : .interactively)
+            .scrollEdgeEffectStyle(.soft, for: .top)
             .simultaneousGesture(TapGesture().onEnded {
                 guard focusedField != nil else { return }
                 focusedField = nil
             })
             .refreshable { await store.fetch() }
-            .animation(.default, value: store.items.map { $0.id + ($0.checked ? "1" : "0") })
+            // Skipped entirely while adding — animating a new row into a
+            // scroll view that's pinned right above a focused, safeAreaInset
+            // keyboard accessory is a known trigger for the accessory's
+            // layout getting briefly recomputed, which reads as the keyboard
+            // blinking down and back up.
+            .animation(isAdding ? nil : .default, value: store.items.map { $0.id + ($0.checked ? "1" : "0") })
         }
     }
 
@@ -528,31 +501,11 @@ struct ShoppingListView: View {
         ToolbarItem(placement: .navigationBarLeading) {
             Button { showSettings = true } label: {
                 Image(systemName: "gearshape")
+                    .frame(width: 22, height: 22)
             }
         }
         ToolbarItem(placement: .navigationBarTrailing) {
-            Menu {
-                Button {
-                    receiptSource = .documentScanner
-                    showReceiptScanner = true
-                } label: {
-                    Label("Scan Receipt", systemImage: "doc.viewfinder")
-                }
-                Button {
-                    receiptSource = .photoLibrary
-                    showReceiptScanner = true
-                } label: {
-                    Label("Photo Library", systemImage: "photo.on.rectangle")
-                }
-                Button {
-                    receiptSource = .files
-                    showReceiptScanner = true
-                } label: {
-                    Label("Files", systemImage: "folder")
-                }
-            } label: {
-                Image(systemName: "receipt")
-            }
+            ReceiptImportToolbarButton(householdId: household.id)
         }
     }
 
@@ -585,12 +538,47 @@ struct ShoppingListView: View {
         }
     }
 
+    /// Safety net for `isCommitting`: it should flip back off as soon as the
+    /// Return-key resign/restore round-trip (handled synchronously in
+    /// `handleFocusChange`) completes, but that round-trip only happens if
+    /// UIKit actually resigns first responder. If it doesn't, this timeout
+    /// still clears the flag so a later, genuine focus loss isn't mistaken
+    /// for one to restore.
+    private func armCommittingTimeout() {
+        Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 200_000_000)
+            isCommitting = false
+        }
+    }
+
     private func isAddField(_ f: FocusField?) -> Bool {
         f == .newName || f == .newQty || f == .newNotes
     }
 
     private func isEditField(_ f: FocusField?) -> Bool {
         f == .editName || f == .editQty || f == .editNotes
+    }
+
+    // MARK: - Empty state visibility
+
+    /// A brief real reload (tab reappearing, a realtime reconnect refetch)
+    /// flips `isLoading`/`items` a couple of times in quick succession, and
+    /// each flip used to show/hide the empty-state graphic immediately —
+    /// visible as a flash. Hiding is instant (nothing to lose by reacting
+    /// fast), but showing only happens once the empty condition has actually
+    /// held for a moment.
+    private func showEmptyStateIfSettled() {
+        emptyStateTask?.cancel()
+        let isEmptyNow = store.items.isEmpty && !store.isLoading
+        guard isEmptyNow else {
+            showEmptyState = false
+            return
+        }
+        emptyStateTask = Task { @MainActor in
+            try? await Task.sleep(nanoseconds: 250_000_000)
+            guard !Task.isCancelled else { return }
+            showEmptyState = store.items.isEmpty && !store.isLoading
+        }
     }
 
     // MARK: - Actions
@@ -605,10 +593,9 @@ struct ShoppingListView: View {
         }
         addText = ""; addQty = ""; addNotes = ""
         isAdding = true
-        // Small delay for keyboard animation sync
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.1) {
-            focusedField = .newName
-        }
+        // Focus in the same transaction as the card expanding, not after, so the
+        // keyboard and the card animate up together instead of the keyboard lagging.
+        focusedField = .newName
     }
 
     private func commitAdd(refocus: Bool = true) {
@@ -624,7 +611,7 @@ struct ShoppingListView: View {
             showDuplicateToast(for: trimmed)
             isCommitting = true
             addText = ""; addQty = ""; addNotes = ""
-            Task { @MainActor in focusedField = .newName; isCommitting = false }
+            armCommittingTimeout()
             return
         }
 
@@ -635,11 +622,14 @@ struct ShoppingListView: View {
         addText = ""; addQty = ""; addNotes = ""
 
         if refocus {
-            // Keep focus on name field for rapid entry
-            Task { @MainActor in
-                focusedField = .newName
-                isCommitting = false
-            }
+            // Leave focusedField untouched — it's already .newName. The Return
+            // key still makes UIKit resign first responder underneath us a
+            // moment later, which fires handleFocusChange; while isCommitting
+            // is true that handler restores focus synchronously, in the same
+            // callback, so the keyboard never actually animates down. Doing it
+            // here instead, a run-loop turn later via Task, was landing after
+            // that dismiss had already started — a visible close/reopen blip.
+            armCommittingTimeout()
         } else {
             isAdding = false
             focusedField = nil

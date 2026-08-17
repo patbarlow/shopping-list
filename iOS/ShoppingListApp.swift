@@ -33,12 +33,14 @@ SentrySDK.start { options in
         }
     }
     @State private var services = AppServices()
+    @State private var receiptImportCoordinator = ReceiptImportCoordinator()
     @Environment(\.scenePhase) private var scenePhase
 
     var body: some Scene {
         WindowGroup {
             ContentView()
                 .environment(services)
+                .environment(receiptImportCoordinator)
                 .task {
                     // Register Siri / Action button shortcuts
                     ShoppingListShortcuts.updateAppShortcutParameters()

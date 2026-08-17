@@ -87,9 +87,12 @@ struct SpendTrendsView: View {
                                 tripLog
                             }
                         }
-                        .padding(16)
+                        .padding(.horizontal, 16)
+                        .padding(.top, 32)
+                        .padding(.bottom, 16)
                     }
                     .scrollContentBackground(.hidden)
+                    .scrollEdgeEffectStyle(.soft, for: .top)
                 }
             }
             .navigationTitle("Insights")
@@ -99,6 +102,7 @@ struct SpendTrendsView: View {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button { showSettings = true } label: {
                         Image(systemName: "gearshape")
+                            .frame(width: 22, height: 22)
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -106,7 +110,11 @@ struct SpendTrendsView: View {
                         ProductsListView(householdId: householdId).environment(services)
                     } label: {
                         Image(systemName: "basket")
+                            .frame(width: 22, height: 22)
                     }
+                }
+                ToolbarItem(placement: .navigationBarTrailing) {
+                    ReceiptImportToolbarButton(householdId: householdId)
                 }
             }
             .sheet(isPresented: $showSettings) {
@@ -269,28 +277,12 @@ struct SpendTrendsView: View {
     // MARK: - Range picker
 
     private var rangePicker: some View {
-        HStack(spacing: 4) {
+        Picker("Range", selection: $range.animation(.snappy(duration: 0.25))) {
             ForEach(TrendRange.allCases) { r in
-                rangePickerButton(r)
+                Text(r.rawValue).tag(r)
             }
         }
-        .padding(4)
-        .background(Color.black.opacity(0.06), in: Capsule())
-    }
-
-    private func rangePickerButton(_ r: TrendRange) -> some View {
-        let isSelected = range == r
-        let textColor: Color = isSelected ? .primary : .secondary
-        return Button {
-            withAnimation(.snappy(duration: 0.25)) { range = r }
-        } label: {
-            Text(r.rawValue)
-                .font(.subheadline.weight(.semibold))
-                .foregroundStyle(textColor)
-                .frame(maxWidth: .infinity)
-                .padding(.vertical, 8)
-                .background(Capsule().fill(Color.white).opacity(isSelected ? 1 : 0))
-        }
+        .pickerStyle(.segmented)
     }
 
     // MARK: - Stat cards
@@ -389,20 +381,22 @@ struct SpendTrendsView: View {
         .frame(height: 220)
         .chartOverlay { proxy in
             GeometryReader { geometry in
+                // A plain, discrete tap — it doesn't compete with the parent
+                // ScrollView's own pan gesture the way a drag-based overlay
+                // did, so a normal swipe still scrolls the page; only an
+                // actual tap on a bar selects it (tapping the selected bar
+                // again, or missing all bars, clears the selection).
                 Rectangle().fill(.clear).contentShape(Rectangle())
                     .gesture(
-                        DragGesture(minimumDistance: 0)
-                            .onChanged { value in
+                        SpatialTapGesture()
+                            .onEnded { value in
                                 let plotFrame = geometry[proxy.plotAreaFrame]
                                 let x = value.location.x - plotFrame.origin.x
-                                guard x >= 0, x <= plotFrame.width, let key: String = proxy.value(atX: x) else { return }
-                                if key != selectedDayKey {
-                                    UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                let key: String? = (x >= 0 && x <= plotFrame.width) ? proxy.value(atX: x) : nil
+                                UIImpactFeedbackGenerator(style: .light).impactOccurred()
+                                withAnimation(.easeOut(duration: 0.2)) {
+                                    selectedDayKey = (key == selectedDayKey) ? nil : key
                                 }
-                                selectedDayKey = key
-                            }
-                            .onEnded { _ in
-                                withAnimation(.easeOut(duration: 0.2)) { selectedDayKey = nil }
                             }
                     )
             }
@@ -430,7 +424,7 @@ struct SpendTrendsView: View {
                 x: .value("Spend", row.total),
                 y: .value("Category", row.category)
             )
-            .foregroundStyle(.tint)
+            .foregroundStyle(Self.storePalette[0])
             .cornerRadius(4)
             .annotation(position: .trailing, spacing: 6) {
                 Text(currencyShort(row.total))

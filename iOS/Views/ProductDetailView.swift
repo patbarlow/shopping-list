@@ -151,8 +151,15 @@ struct ProductDetailView: View {
     private func purchaseRow(_ purchase: ProductPurchase) -> some View {
         HStack(spacing: 10) {
             VStack(alignment: .leading, spacing: 2) {
-                Text(purchase.variant?.isEmpty == false ? purchase.variant! : (detail?.product.name ?? fallbackName))
-                    .font(.subheadline)
+                HStack(spacing: 6) {
+                    Text(purchase.variant?.isEmpty == false ? purchase.variant! : (detail?.product.name ?? fallbackName))
+                        .font(.subheadline)
+                    if let qty = quantityLabel(purchase) {
+                        Text(qty)
+                            .font(.caption.weight(.semibold))
+                            .foregroundStyle(.secondary)
+                    }
+                }
                 if let store = purchase.storeName, !store.isEmpty {
                     Text(store).font(.caption2).foregroundStyle(.tertiary)
                 }
@@ -162,12 +169,33 @@ struct ProductDetailView: View {
                 if let price = purchase.pricePaid {
                     Text(currency(price)).font(.subheadline.weight(.semibold))
                 }
+                // A multi-pack's total price reads as a single-item price
+                // unless the per-item cost is spelled out too — this is what
+                // was missing whenever a purchase covered more than one.
+                if let each = perItemPrice(purchase) {
+                    Text("\(currency(each)) each").font(.caption2).foregroundStyle(.secondary)
+                }
                 if let unitPrice = purchase.unitPrice, let unit = purchase.unitPriceUnit {
                     unitPriceText(unitPrice, unit)
                 }
             }
         }
         .padding(.vertical, 10)
+    }
+
+    /// The receipt's raw quantity as a compact badge — "×2" for a whole-unit
+    /// count, "1.017 kg" for a loose-weight buy. Nil for a plain single item.
+    private func quantityLabel(_ purchase: ProductPurchase) -> String? {
+        guard let raw = purchase.quantity, let q = Double(raw), q != 1 else { return nil }
+        return q == q.rounded() ? "×\(Int(q))" : String(format: "%g kg", q)
+    }
+
+    /// Only meaningful for a whole-unit count (a loose weight has no
+    /// "per item" to speak of) — the total price paid, divided out.
+    private func perItemPrice(_ purchase: ProductPurchase) -> Double? {
+        guard let raw = purchase.quantity, let q = Double(raw), q == q.rounded(), q > 1,
+              let total = purchase.pricePaid else { return nil }
+        return total / q
     }
 
     // MARK: - Formatting
