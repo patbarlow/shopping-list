@@ -70,8 +70,16 @@ struct PredictedListView: View {
                     .padding(.bottom, 16)
                 }
                 .scrollContentBackground(.hidden)
-                .scrollEdgeEffectStyle(.soft, for: .top)
             }
+
+            // Fades scrolled content out before it reaches the nav bar — done
+            // by hand rather than via scrollEdgeEffectStyle, which turned out
+            // not to render reliably in TestFlight builds (works when Xcode
+            // installs the app straight to a device, not once it's gone
+            // through Xcode Cloud/App Store distribution, even with the same
+            // Xcode version pinned). A plain gradient has no dependency on
+            // that system behavior.
+            topFadeOverlay
         }
         .navigationTitle("Forecast")
         .navigationBarTitleDisplayMode(.inline)
@@ -100,6 +108,20 @@ struct PredictedListView: View {
             }
             isLoading = false
         }
+    }
+
+    /// Sits above everything else in the ZStack, ignoring the top safe area,
+    /// so scrolled content visually fades into the background color before
+    /// it ever reaches the nav bar instead of passing under it unobscured.
+    private var topFadeOverlay: some View {
+        LinearGradient(
+            colors: [Color(.systemGroupedBackground), Color(.systemGroupedBackground).opacity(0)],
+            startPoint: .top,
+            endPoint: .bottom
+        )
+        .frame(height: 110)
+        .ignoresSafeArea(edges: .top)
+        .allowsHitTesting(false)
     }
 
     // MARK: - Sections
