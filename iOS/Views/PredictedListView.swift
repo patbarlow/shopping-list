@@ -4,15 +4,18 @@ import SwiftUI
 /// product's typical shopping-trip cadence and your shopping frequency setting,
 /// with an estimated cost. Items can be added straight onto the shopping list.
 struct PredictedListView: View {
-    let householdId: String
-    let shoppingFrequency: ShoppingFrequency
+    let household: Household
     @Environment(AppServices.self) private var services
+
+    private var householdId: String { household.id }
+    private var shoppingFrequency: ShoppingFrequency { household.shoppingFrequency }
 
     @State private var response: PredictedListResponse? = nil
     @State private var isLoading = true
     @State private var errorMessage: String? = nil
     /// Names already on the shopping list (lowercased) — shown as ticked.
     @State private var onListNames: Set<String> = []
+    @State private var showSettings = false
 
     /// A coral/salmon wash — same treatment as Spend Trends' mint, in the warm
     /// tone that distinguishes "what's coming up" from "what happened."
@@ -62,14 +65,31 @@ struct PredictedListView: View {
                             card { rows(upcoming) }
                         }
                     }
-                    .padding(16)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 32)
+                    .padding(.bottom, 16)
                 }
                 .scrollContentBackground(.hidden)
+                .scrollEdgeEffectStyle(.soft, for: .top)
             }
         }
         .navigationTitle("Forecast")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
+        .toolbar {
+            ToolbarItem(placement: .navigationBarLeading) {
+                Button { showSettings = true } label: {
+                    Image(systemName: "gearshape")
+                        .frame(width: 22, height: 22)
+                }
+            }
+            ToolbarItem(placement: .navigationBarTrailing) {
+                ReceiptImportToolbarButton(householdId: householdId)
+            }
+        }
+        .sheet(isPresented: $showSettings) {
+            SettingsView(household: household).environment(services)
+        }
         .task {
             do {
                 async let predicted = services.api.fetchPredictedList(householdId: householdId)

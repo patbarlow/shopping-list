@@ -81,26 +81,37 @@ struct ProductsListView: View {
                             }
                         }
                     }
-                    .padding(16)
+                    .padding(.horizontal, 16)
+                    .padding(.top, 32)
+                    .padding(.bottom, 16)
                 }
                 .scrollContentBackground(.hidden)
-                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .automatic))
+                .scrollEdgeEffectStyle(.soft, for: .top)
+                // .automatic only reveals the field on a pull-down gesture, which
+                // this page's custom ZStack header/scroll-edge styling was
+                // swallowing before it could fully open. Always-visible sidesteps
+                // that gesture entirely.
+                .searchable(text: $searchText, placement: .navigationBarDrawer(displayMode: .always))
             }
         }
         .navigationTitle("Products")
         .navigationBarTitleDisplayMode(.inline)
         .toolbarBackground(.hidden, for: .navigationBar)
         .toolbar {
-            if !products.isEmpty {
-                ToolbarItem(placement: .primaryAction) {
-                    Menu {
-                        Picker("Sort", selection: $sort) {
-                            ForEach(Sort.allCases) { Text($0.rawValue).tag($0) }
-                        }
-                    } label: {
-                        Image(systemName: "arrow.up.arrow.down")
+            // Kept in the toolbar unconditionally (just disabled while there's
+            // nothing to sort) rather than only inserting it once `products`
+            // loads — otherwise there's no button here yet when the push
+            // transition starts, so the Insights buttons have nothing to morph
+            // into and just vanish instead of animating across.
+            ToolbarItem(placement: .primaryAction) {
+                Menu {
+                    Picker("Sort", selection: $sort) {
+                        ForEach(Sort.allCases) { Text($0.rawValue).tag($0) }
                     }
+                } label: {
+                    Image(systemName: "arrow.up.arrow.down")
                 }
+                .disabled(products.isEmpty)
             }
         }
         .task {

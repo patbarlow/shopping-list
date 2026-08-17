@@ -56,6 +56,7 @@
 		CB63AF989EFD6BAFE481A032 /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = AB030919B866882F6197616A /* Sentry */; };
 		CDA3928406BC48D0C5022A6F /* Insights.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79DB2369B34A78C39BAA22A9 /* Insights.swift */; };
 		D0790C24EDD13DEF551637F5 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8D66242D110DC11081834249 /* ContentView.swift */; };
+		A2CBC9AAF65F4AE8BBA8A1E8 /* ReceiptImportToolbarButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = F592BB83436446AF912BC99C /* ReceiptImportToolbarButton.swift */; };
 		D24ACFBE02D2890078E1C101 /* QuickAddIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EC68D8CDFA6582CFFEE3468 /* QuickAddIntent.swift */; };
 		D5535070061E155E337D72F5 /* ProductsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D92A6A07E4C83E87B03CB539 /* ProductsListView.swift */; };
 		D6B230430BCA6A21F9320D47 /* ShoppingItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B06687513055194F342B4B7 /* ShoppingItem.swift */; };
@@ -90,6 +91,7 @@
 		7A479A9C18E0C1534C48FC1B /* AppServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppServices.swift; sourceTree = "<group>"; };
 		85497421D6E5CB97F590B0D9 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		8D66242D110DC11081834249 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		F592BB83436446AF912BC99C /* ReceiptImportToolbarButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptImportToolbarButton.swift; sourceTree = "<group>"; };
 		8FFBEEBE4BE9C0570F7393EF /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		93583231B106C19E6541BDB4 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
 		97B1734E7407EC373454F34A /* SentryHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SentryHelpers.swift; sourceTree = "<group>"; };
@@ -236,6 +238,7 @@
 				211B897E937C23B444C3DFAC /* PredictedListView.swift */,
 				4B0284364C2BFC974B6B5E75 /* ProductDetailView.swift */,
 				D92A6A07E4C83E87B03CB539 /* ProductsListView.swift */,
+				F592BB83436446AF912BC99C /* ReceiptImportToolbarButton.swift */,
 				BE7C88D1E1D959B22BB226D5 /* ReceiptScannerView.swift */,
 				27F52EE5B204F9DF2F7C3D48 /* TripReceiptView.swift */,
 				A1A666E10637E9465B6733A2 /* RecipeHubView.swift */,
@@ -429,6 +432,7 @@
 				D5535070061E155E337D72F5 /* ProductsListView.swift in Sources */,
 				D24ACFBE02D2890078E1C101 /* QuickAddIntent.swift in Sources */,
 				F9842BDA56D48EBDEF84E491 /* RealtimeService.swift in Sources */,
+				A2CBC9AAF65F4AE8BBA8A1E8 /* ReceiptImportToolbarButton.swift in Sources */,
 				C9BB9CA8700E2772ACE687BF /* ReceiptScannerView.swift in Sources */,
 				CF75656337DECA0080382530 /* TripReceiptView.swift in Sources */,
 				A691F172E240170C6737917F /* Recipe.swift in Sources */,
@@ -577,7 +581,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.7.0;
+				MARKETING_VERSION = 1.7.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.patbarlow.shoppinglist;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -658,7 +662,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.7.0;
+				MARKETING_VERSION = 1.7.1;
 				PRODUCT_BUNDLE_IDENTIFIER = com.patbarlow.shoppinglist;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
