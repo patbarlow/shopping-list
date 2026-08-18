@@ -1,0 +1,9 @@
+name = "trolley-web"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+# After the first `wrangler deploy`, attach the custom domain from the
+# Cloudflare dashboard: Workers & Pages → trolley-web → Settings →
+# Domains & Routes → Add Custom Domain → trolley.speaking.computer
+# (speaking.computer's zone already lives in the same Cloudflare account,
+# so this is just attaching the domain — no separate DNS record needed).
