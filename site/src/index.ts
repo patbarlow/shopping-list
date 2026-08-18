@@ -15,6 +15,7 @@ function page(title: string, body: string): string {
     --fg: #1a1a1a;
     --muted: #6b6b6b;
     --accent: #1f7a5c;
+    --button-bg: #1f7a5c;
     --border: #e5e5e5;
     --card: #f7f7f5;
   }
@@ -24,6 +25,7 @@ function page(title: string, body: string): string {
       --fg: #f0efe9;
       --muted: #a2a29a;
       --accent: #6fd6ab;
+      --button-bg: #1f7a5c;
       --border: #2a2b23;
       --card: #1c1d16;
     }
@@ -93,7 +95,7 @@ function page(title: string, body: string): string {
     color: var(--fg);
     font-size: 14px;
   }
-  .links a.primary { background: var(--accent); border-color: var(--accent); color: #06231a; font-weight: 600; }
+  .links a.primary { background: var(--button-bg); border-color: var(--button-bg); color: #ffffff; font-weight: 600; }
   footer {
     max-width: 720px;
     margin: 0 auto;
@@ -114,7 +116,7 @@ function page(title: string, body: string): string {
 <main>
 ${body}
 </main>
-<footer>© 2026 Trolley, part of <a href="https://speaking.computer">speaking.computer</a></footer>
+<footer>© 2026 <a href="https://speaking.computer">Speaking Computer</a></footer>
 </body>
 </html>`;
 }
