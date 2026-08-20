@@ -525,7 +525,18 @@ app.get("/predictions", async (c) => {
   }
 
   const todayMs = Date.parse(new Date().toISOString().slice(0, 10));
-  const horizonEnd = todayMs + horizonDays * 86_400_000;
+
+  // "Weekly" is anchored to a Monday–Sunday calendar week (through Sunday)
+  // rather than a rolling 7 days, so a weekend shopper always sees the full
+  // week ahead regardless of which day they happen to check the forecast.
+  let horizonEnd: number;
+  if ((household?.shopping_frequency ?? "weekly") === "weekly") {
+    const isoWeekday = new Date(todayMs).getUTCDay() || 7; // Sun(0) -> 7
+    const daysUntilSunday = 7 - isoWeekday;
+    horizonEnd = todayMs + daysUntilSunday * 86_400_000;
+  } else {
+    horizonEnd = todayMs + horizonDays * 86_400_000;
+  }
 
   const items: {
     product_id: string;
