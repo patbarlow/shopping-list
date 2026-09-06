@@ -64,6 +64,15 @@ final class ReceiptPrinter {
         totalAmount = amount
     }
 
+    /// Show the reviewed rows on the paper: the product each line will be saved
+    /// as, at its edited price and quantity, with excluded lines struck out.
+    /// Called once matching has run, and again whenever the edit sheet closes.
+    /// Only meaningful once every line has printed — it replaces, not queues.
+    func sync(with items: [EditableReceiptItem]) {
+        guard pending.isEmpty else { return }
+        lines = items.map(ReceiptPrintedLine.init(reviewed:))
+    }
+
     /// Wait for the queue to drain, print the total, and let it settle before
     /// the caller moves on to matching.
     func finish() async {

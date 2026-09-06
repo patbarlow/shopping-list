@@ -10,7 +10,7 @@ struct ReceiptScannerView: View {
 
     /// Content already captured by the caller (native picker triggered directly
     /// from the toolbar menu — see ReceiptImportToolbarButton) before this view
-    /// is ever presented, so it can open straight into `.scanning` instead of
+    /// is ever presented, so it can open straight into printing instead of
     /// showing its own "choose a source" step as a second card on top.
     // A struct (not a bare enum) specifically so it can carry a stable `id` —
     // `.sheet(item:)` keys the presented view's identity off it, and giving
@@ -32,15 +32,6 @@ struct ReceiptScannerView: View {
         static func pdfData(_ data: Data) -> InitialCapture { InitialCapture(payload: .pdfData(data)) }
     }
 
-    private enum Phase {
-        case failed
-        /// The receipt is printing onto the screen — this covers the whole scan,
-        /// from "paper feeding" through each line arriving to the total.
-        case printing
-        case review
-        case confirming
-    }
-
     /// Where the scan is reading from, kept so a failed stream can be retried
     /// through the one-shot endpoint with the same input.
     private enum ScanSource {
@@ -55,16 +46,12 @@ struct ReceiptScannerView: View {
         }
     }
 
-    @State private var phase: Phase = .printing
+    @State private var stage: ReceiptPrintingView.Stage = .printing
+    @State private var failureMessage: String? = nil
     @State private var printer = ReceiptPrinter()
     @State private var scanResult: ReceiptScanResponse? = nil
     @State private var editableItems: [EditableReceiptItem] = []
-    @State private var errorMessage: String? = nil
-
-    // Product picker sheet state
-    @State private var showProductPicker = false
-    @State private var pickingForItemId: String? = nil
-    @State private var productPickerQuery: String = ""
+    @State private var showEditSheet = false
 
     // Belt-and-braces: guarantees the scan request only ever fires once for
     // this instance even if `.task` were somehow re-entered — a request that
@@ -81,11 +68,17 @@ struct ReceiptScannerView: View {
     var body: some View {
         NavigationStack {
             Group {
-                switch phase {
-                case .failed:     failedView
-                case .printing:   ReceiptPrintingView(printer: printer)
-                case .review:     reviewView
-                case .confirming: loadingView("Saving…")
+                if let failureMessage {
+                    failedView(failureMessage)
+                } else {
+                    ReceiptPrintingView(
+                        printer: printer,
+                        stage: stage,
+                        includedCount: includedCount,
+                        includedTotal: includedTotal,
+                        onEdit: { showEditSheet = true },
+                        onTearOff: { confirmReceipt() }
+                    )
                 }
             }
             .navigationTitle(navTitle)
@@ -93,19 +86,26 @@ struct ReceiptScannerView: View {
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
                     Button("Cancel") { dismiss() }
-                }
-                if case .review = phase {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Save") { confirmReceipt() }.bold()
-                    }
+                        .disabled(stage == .saving)
                 }
             }
         }
-        .sheet(isPresented: $showProductPicker) {
-            ProductPickerSheet(householdId: householdId, initialQuery: productPickerQuery) { result in
-                applyPickerResult(result)
-                showProductPicker = false
-            }
+        // Saving is the one point where backing out would leave the receipt
+        // half-imported, so the sheet holds still until it lands.
+        .interactiveDismissDisabled(stage == .saving)
+        .sheet(isPresented: $showEditSheet) {
+            ReceiptEditSheet(
+                items: $editableItems,
+                storeName: scanResult?.storeName,
+                receiptTotal: scanResult?.totalAmount,
+                printedItemCount: scanResult?.itemCount,
+                needsReview: scanResult?.needsReview == true,
+                householdId: householdId
+            )
+        }
+        // However the sheet was closed, the paper reprints with what changed.
+        .onChange(of: showEditSheet) { _, isShowing in
+            if !isShowing { printer.sync(with: editableItems) }
         }
         .task {
             guard !hasStartedProcessing else { return }
@@ -132,22 +132,26 @@ struct ReceiptScannerView: View {
     }
 
     private var navTitle: String {
-        switch phase {
-        case .failed:     return "Couldn't Read Receipt"
-        case .printing:   return printer.storeName ?? "Reading Receipt…"
-        case .review:     return scanResult?.storeName ?? "Match Items"
-        case .confirming: return "Saving…"
-        }
+        if failureMessage != nil { return "Couldn't Read Receipt" }
+        return printer.storeName ?? "Receipt"
+    }
+
+    private var includedCount: Int { editableItems.filter(\.isIncluded).count }
+
+    private var includedTotal: Double? {
+        let included = editableItems.filter(\.isIncluded)
+        guard !included.isEmpty else { return nil }
+        return included.reduce(0) { $0 + (Double($1.priceText.replacingOccurrences(of: ",", with: ".")) ?? 0) }
     }
 
     // MARK: - Failure
 
-    private var failedView: some View {
+    private func failedView(_ message: String) -> some View {
         VStack(spacing: 16) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 40))
                 .foregroundStyle(.red)
-            Text(errorMessage ?? "Something went wrong.")
+            Text(message)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 24)
@@ -155,194 +159,6 @@ struct ReceiptScannerView: View {
                 .buttonStyle(.borderedProminent)
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: - Loading
-
-    private func loadingView(_ message: String) -> some View {
-        VStack(spacing: 20) {
-            ProgressView().scaleEffect(1.4)
-            Text(message).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
-    // MARK: - Review
-
-    private var includedCount: Int { editableItems.filter(\.isIncluded).count }
-
-    /// Units, not rows — a "×2" line counts twice, the way a receipt's own
-    /// "8 Items" footer counts. A weighed line is one item whatever it weighs.
-    private var scannedUnitCount: Int {
-        editableItems.reduce(0) { total, item in
-            guard let q = item.quantity, q > 0, q == q.rounded() else { return total + 1 }
-            return total + Int(q)
-        }
-    }
-    private var newCount: Int { editableItems.filter { $0.isIncluded && $0.productId == nil }.count }
-
-    private var reviewView: some View {
-        List {
-            if let result = scanResult, result.totalAmount != nil || result.storeName != nil {
-                Section {
-                    if let store = result.storeName {
-                        LabeledContent("Store", value: store)
-                    }
-                    if let total = result.totalAmount {
-                        LabeledContent("Total", value: String(format: "$%.2f", total))
-                    }
-                    if let printed = result.itemCount, printed != scannedUnitCount {
-                        LabeledContent("Items on receipt", value: "\(printed)")
-                            .foregroundStyle(.orange)
-                    }
-                } footer: {
-                    if result.needsReview == true {
-                        Label("This receipt's numbers didn't add up. Check the quantities before saving — tap one to change it.",
-                              systemImage: "exclamationmark.triangle.fill")
-                            .foregroundStyle(.orange)
-                    }
-                }
-            }
-
-            Section {
-                ForEach($editableItems) { $item in
-                    itemRow(item: $item)
-                }
-            } header: {
-                Text("^[\(includedCount) item](inflect: true)")
-            } footer: {
-                Text(newCount > 0
-                     ? "Tap a name to change the match. \(newCount) will be added as new products."
-                     : "Tap a name to link it to a different product.")
-            }
-        }
-    }
-
-    /// When the receipt's own numbers didn't reconcile, every row gets its
-    /// quantity control so a miscounted multi-buy can be moved to the right line.
-    private var showsAllQuantityControls: Bool { scanResult?.needsReview == true }
-
-    @ViewBuilder
-    private func itemRow(item: Binding<EditableReceiptItem>) -> some View {
-        HStack(spacing: 12) {
-            Toggle("", isOn: item.isIncluded).labelsHidden()
-
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    if item.wrappedValue.productId == nil {
-                        // New product: name is editable inline.
-                        TextField("Product name", text: item.productName)
-                            .font(.body.bold())
-                            .textInputAutocapitalization(.words)
-                        Text("NEW")
-                            .font(.caption2).bold()
-                            .padding(.horizontal, 5).padding(.vertical, 1)
-                            .background(.green.opacity(0.18), in: Capsule())
-                            .foregroundStyle(.green)
-                    } else {
-                        // Linked to an existing product.
-                        Text(item.wrappedValue.productName)
-                            .font(.body.bold())
-                            .foregroundStyle(.primary)
-                        Image(systemName: "link")
-                            .font(.caption2)
-                            .foregroundStyle(.blue)
-                    }
-
-                    // Search / relink to a different (or existing) product.
-                    Button {
-                        pickingForItemId = item.wrappedValue.id
-                        productPickerQuery = item.wrappedValue.productName
-                        showProductPicker = true
-                    } label: {
-                        Image(systemName: "magnifyingglass")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.borderless)
-                }
-
-                HStack(spacing: 4) {
-                    quantityControl(item: item)
-                    Text(item.wrappedValue.description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-
-                if item.wrappedValue.needsReview {
-                    Label("Quantity didn't match the printed price — check this line.", systemImage: "exclamationmark.triangle.fill")
-                        .font(.caption2)
-                        .foregroundStyle(.orange)
-                }
-            }
-
-            Spacer(minLength: 4)
-
-            HStack(spacing: 2) {
-                Text("$").foregroundStyle(.secondary)
-                TextField("0.00", text: item.priceText)
-                    .keyboardType(.decimalPad)
-                    .multilineTextAlignment(.trailing)
-                    .frame(width: 56)
-            }
-        }
-        .opacity(item.wrappedValue.isIncluded ? 1 : 0.4)
-    }
-
-
-    /// The detected quantity, shown with the unit price it multiplies out from
-    /// ("×2 @ $1.69") so a multi-buy stapled onto the wrong product is visible
-    /// against the line's price. Unit counts are tappable to correct.
-    @ViewBuilder
-    private func quantityControl(item: Binding<EditableReceiptItem>) -> some View {
-        if item.wrappedValue.isUnitCount,
-           item.wrappedValue.quantityDetail != nil || item.wrappedValue.needsReview || showsAllQuantityControls {
-            Menu {
-                ForEach(1...9, id: \.self) { n in
-                    Button("×\(n)") { setQuantity(Double(n), on: item) }
-                }
-            } label: {
-                Text(item.wrappedValue.quantityDetail ?? "×1")
-                    .font(.caption)
-                    .foregroundStyle(item.wrappedValue.needsReview ? Color.orange : Color.secondary)
-            }
-            .buttonStyle(.borderless)
-        } else if let detail = item.wrappedValue.quantityDetail {
-            Text(detail).font(.caption).foregroundStyle(.secondary)
-        }
-    }
-
-    /// A corrected count re-derives the unit price from what was paid, so the
-    /// $/100g baseline the server computes stays consistent with the line.
-    private func setQuantity(_ quantity: Double, on item: Binding<EditableReceiptItem>) {
-        item.wrappedValue.quantity = quantity
-        let paid = Double(item.wrappedValue.priceText.replacingOccurrences(of: ",", with: "."))
-        item.wrappedValue.unitPrice = paid.map { $0 / quantity }
-        item.wrappedValue.needsReview = false
-    }
-
-    // MARK: - Picker result
-
-    private func applyPickerResult(_ result: ProductPickerResult) {
-        guard let itemId = pickingForItemId,
-              let idx = editableItems.firstIndex(where: { $0.id == itemId }) else {
-            pickingForItemId = nil
-            return
-        }
-        switch result {
-        case .existing(let id, let name):
-            editableItems[idx].productId = id
-            editableItems[idx].productName = name
-            editableItems[idx].isNew = false
-        case .create(let name):
-            editableItems[idx].productId = nil
-            editableItems[idx].productName = name
-            editableItems[idx].isNew = true
-        }
-        // A manual choice no longer maps to the auto-detected list entry.
-        editableItems[idx].purchaseHistoryId = nil
-        editableItems[idx].isIncluded = true
-        pickingForItemId = nil
     }
 
     // MARK: - Image handling
@@ -500,8 +316,8 @@ struct ReceiptScannerView: View {
         // Fresh paper: a retry (a PDF's text layer failing, then its image) must
         // not print onto whatever the previous attempt left behind.
         printer = ReceiptPrinter()
-        phase = .printing
-        errorMessage = nil
+        stage = .printing
+        failureMessage = nil
 
         do {
             var matched: ReceiptScanResponse?
@@ -567,17 +383,18 @@ struct ReceiptScannerView: View {
         }
     }
 
-    /// Let the paper finish printing, then hand off to matching.
+    /// Let the paper finish printing, then show what each line will be saved as
+    /// and leave the receipt sitting there to be read, edited, or torn off.
     private func present(_ result: ReceiptScanResponse) async {
         scanResult = result
         editableItems = result.items.map { EditableReceiptItem(from: $0) }
         await printer.finish()
-        phase = .review
+        printer.sync(with: editableItems)
+        stage = .printed
     }
 
     private func fail(_ message: String) {
-        phase = .failed
-        errorMessage = message
+        failureMessage = message
     }
 
     private func stitchVertically(_ images: [UIImage]) -> UIImage? {
@@ -593,9 +410,10 @@ struct ReceiptScannerView: View {
 
     // MARK: - Confirm
 
+    /// Tearing the receipt off is what saves it.
     private func confirmReceipt() {
-        guard case .review = phase, let result = scanResult else { return }
-        phase = .confirming
+        guard stage == .printed, let result = scanResult else { return }
+        stage = .saving
 
         let items: [[String: Any]] = editableItems
             .filter(\.isIncluded)
@@ -628,8 +446,8 @@ struct ReceiptScannerView: View {
                 )
                 dismiss()
             } catch {
-                phase = .review
-                errorMessage = error.localizedDescription
+                // The paper is already gone, so there's nothing to go back to.
+                fail("Couldn't save that receipt. (\(error.localizedDescription))")
             }
         }
     }
@@ -693,192 +511,6 @@ struct DocumentScannerCapture: UIViewControllerRepresentable {
             hasFired = true
             onCancel()
         }
-    }
-}
-
-// MARK: - Receipt printing
-
-/// A torn-off strip of receipt paper: zigzag along the top and bottom edges,
-/// the way a thermal printer's cutter leaves it.
-private struct TornEdge: Shape {
-    var tooth: CGFloat = 9
-    var depth: CGFloat = 5
-
-    func path(in rect: CGRect) -> Path {
-        var path = Path()
-        // Teeth are sized off the width alone, so they stay put while the paper
-        // grows — deriving them from the height would make them crawl.
-        let count = max(2, Int((rect.width / tooth).rounded()))
-        let step = rect.width / CGFloat(count)
-
-        path.move(to: CGPoint(x: rect.minX, y: rect.minY + depth))
-        for i in 0 ..< count {
-            let x = rect.minX + CGFloat(i) * step
-            path.addLine(to: CGPoint(x: x + step / 2, y: rect.minY))
-            path.addLine(to: CGPoint(x: x + step, y: rect.minY + depth))
-        }
-        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - depth))
-        for i in 0 ..< count {
-            let x = rect.maxX - CGFloat(i) * step
-            path.addLine(to: CGPoint(x: x - step / 2, y: rect.maxY))
-            path.addLine(to: CGPoint(x: x - step, y: rect.maxY - depth))
-        }
-        path.closeSubpath()
-        return path
-    }
-}
-
-/// The scan, printing. The paper feeds up from the bottom of the screen and each
-/// product lands on it as the scan reads it — the store header first, then a line
-/// per item, then the total. Same monospaced, dashed-rule language as
-/// TripReceiptView, so a receipt being read and a receipt already saved look
-/// like the same object.
-private struct ReceiptPrintingView: View {
-    let printer: ReceiptPrinter
-
-    private let paperWidth: CGFloat = 340
-
-    var body: some View {
-        ZStack(alignment: .bottom) {
-            Color(.systemGroupedBackground).ignoresSafeArea()
-
-            // Anchored to the bottom, so the paper grows upward out of the slot:
-            // each new line lands at the bottom edge and pushes the rest up, and
-            // once the receipt is taller than the screen the top scrolls away.
-            ScrollView {
-                paper
-                    .frame(maxWidth: paperWidth)
-                    .frame(maxWidth: .infinity)
-                    .padding(.horizontal, 24)
-            }
-            .defaultScrollAnchor(.bottom)
-            .scrollBounceBehavior(.basedOnSize)
-            .scrollIndicators(.hidden)
-            .safeAreaPadding(.bottom, 8)
-
-            printerSlot
-        }
-        // Printer chatter: one tick as each line lands.
-        .sensoryFeedback(.impact(weight: .light, intensity: 0.4), trigger: printer.lines.count)
-        .animation(.spring(duration: 0.32), value: printer.lines.count)
-        .animation(.spring(duration: 0.32), value: printer.totalPrinted)
-        .animation(.easeInOut(duration: 0.25), value: printer.storeName)
-    }
-
-    /// The lip the paper feeds out of, pinned to the bottom edge.
-    private var printerSlot: some View {
-        Capsule()
-            .fill(.tertiary)
-            .frame(width: 54, height: 4)
-            .padding(.bottom, 6)
-            .allowsHitTesting(false)
-    }
-
-    private var paper: some View {
-        VStack(spacing: 0) {
-            header
-            if !printer.lines.isEmpty {
-                dashedDivider
-                lineItems
-            }
-            if printer.totalPrinted {
-                dashedDivider
-                total
-            }
-        }
-        .background {
-            Color(.secondarySystemGroupedBackground)
-                .clipShape(TornEdge())
-                .shadow(color: .black.opacity(0.12), radius: 14, y: -2)
-        }
-    }
-
-    @ViewBuilder
-    private var header: some View {
-        VStack(spacing: 4) {
-            if let store = printer.storeName {
-                Text(store)
-                    .font(.system(.headline, design: .monospaced).weight(.bold))
-                    .multilineTextAlignment(.center)
-                    .transition(.opacity)
-                if let date = printer.dateText {
-                    Text(date)
-                        .font(.system(.caption, design: .monospaced))
-                        .foregroundStyle(.secondary)
-                        .transition(.opacity)
-                }
-            } else {
-                // Before the first record arrives there's nothing to print yet,
-                // so the paper feeds blank rather than faking progress.
-                Text("Reading the receipt…")
-                    .font(.system(.footnote, design: .monospaced))
-                    .foregroundStyle(.secondary)
-                    .padding(.vertical, 6)
-            }
-        }
-        .padding(.top, 26)
-        .padding(.bottom, 12)
-        .padding(.horizontal, 16)
-    }
-
-    private var lineItems: some View {
-        VStack(spacing: 0) {
-            ForEach(Array(printer.lines.enumerated()), id: \.offset) { _, line in
-                HStack(alignment: .top, spacing: 10) {
-                    VStack(alignment: .leading, spacing: 2) {
-                        Text(line.description)
-                            .font(.system(.footnote, design: .monospaced))
-                            .frame(maxWidth: .infinity, alignment: .leading)
-                        if let qty = line.quantityText, let unit = line.unitPrice {
-                            Text(String(format: "  %@ @ $%.2f", qty, unit))
-                                .font(.system(.caption2, design: .monospaced))
-                                .foregroundStyle(.secondary)
-                        }
-                    }
-                    if let price = line.totalPrice {
-                        Text(price, format: .currency(code: "AUD"))
-                            .font(.system(.footnote, design: .monospaced))
-                            .monospacedDigit()
-                    }
-                }
-                .padding(.vertical, 6)
-                // Each line arrives at the bottom edge, as if fed out of the slot.
-                .transition(.asymmetric(
-                    insertion: .move(edge: .bottom).combined(with: .opacity),
-                    removal: .opacity
-                ))
-            }
-        }
-        .padding(.horizontal, 16)
-    }
-
-    private var total: some View {
-        HStack {
-            Text("TOTAL").font(.system(.subheadline, design: .monospaced).weight(.bold))
-            Spacer()
-            if let amount = printer.totalAmount {
-                Text(amount, format: .currency(code: "AUD"))
-                    .font(.system(.subheadline, design: .monospaced).weight(.bold))
-                    .monospacedDigit()
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.top, 14)
-        .padding(.bottom, 26)
-        .transition(.opacity)
-    }
-
-    private var dashedDivider: some View {
-        HStack(spacing: 4) {
-            ForEach(0..<44, id: \.self) { _ in
-                Rectangle().frame(width: 3, height: 1)
-            }
-        }
-        .foregroundStyle(.tertiary)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
-        .fixedSize(horizontal: false, vertical: true)
-        .clipped()
     }
 }
 

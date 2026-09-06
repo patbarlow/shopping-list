@@ -232,13 +232,23 @@ struct ReceiptScanItem: Decodable, Identifiable {
 
 // MARK: - Streaming scan
 
-/// One line as the scan reads it off the receipt, before product matching.
-/// This is what prints onto the screen while the scan is still running.
+/// One line on the printed receipt.
+///
+/// It starts as the raw line the scan read (description, quantity, price) and
+/// prints that way while the scan is still running. Once matching has run, and
+/// again after any edits, the product it will be saved as is filled in and the
+/// paper shows both: what the receipt said, and what it's about to become.
 struct ReceiptPrintedLine: Decodable, Equatable {
     let description: String
-    let quantity: Double?
-    let unitPrice: Double?
-    let totalPrice: Double?
+    var quantity: Double?
+    var unitPrice: Double?
+    var totalPrice: Double?
+
+    // Filled in once the line has been matched to a product (not decoded).
+    var productName: String? = nil
+    var isNew: Bool = false
+    var isIncluded: Bool = true
+    var needsReview: Bool = false
 
     enum CodingKeys: String, CodingKey {
         case description, quantity
@@ -251,6 +261,19 @@ struct ReceiptPrintedLine: Decodable, Equatable {
         self.quantity    = quantity
         self.unitPrice   = unitPrice
         self.totalPrice  = totalPrice
+    }
+
+    /// The paper's version of a reviewed row: what it will be saved as, at the
+    /// price and quantity it will be saved with.
+    init(reviewed item: EditableReceiptItem) {
+        self.description = item.description
+        self.quantity    = item.quantity
+        self.unitPrice   = item.unitPrice
+        self.totalPrice  = Double(item.priceText.replacingOccurrences(of: ",", with: "."))
+        self.productName = item.productName
+        self.isNew       = item.productId == nil
+        self.isIncluded  = item.isIncluded
+        self.needsReview = item.needsReview
     }
 
     /// "×2" / "1.017 kg", matching how the receipt itself prints a modifier.
