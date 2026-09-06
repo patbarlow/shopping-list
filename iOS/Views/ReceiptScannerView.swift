@@ -34,13 +34,29 @@ struct ReceiptScannerView: View {
 
     private enum Phase {
         case failed
-        case scanning
-        case printing(ReceiptScanResponse)
+        /// The receipt is printing onto the screen — this covers the whole scan,
+        /// from "paper feeding" through each line arriving to the total.
+        case printing
         case review
         case confirming
     }
 
-    @State private var phase: Phase = .scanning
+    /// Where the scan is reading from, kept so a failed stream can be retried
+    /// through the one-shot endpoint with the same input.
+    private enum ScanSource {
+        case text(String)
+        case image(String) // base64 JPEG
+
+        var requestBody: [String: Any] {
+            switch self {
+            case .text(let text):    return ["receipt_text": text]
+            case .image(let base64): return ["image_base64": base64, "media_type": "image/jpeg"]
+            }
+        }
+    }
+
+    @State private var phase: Phase = .printing
+    @State private var printer = ReceiptPrinter()
     @State private var scanResult: ReceiptScanResponse? = nil
     @State private var editableItems: [EditableReceiptItem] = []
     @State private var errorMessage: String? = nil
@@ -66,11 +82,10 @@ struct ReceiptScannerView: View {
         NavigationStack {
             Group {
                 switch phase {
-                case .failed:                failedView
-                case .scanning:               ScanningProgressView()
-                case .printing(let result):   ReceiptPrintingView(result: result) { phase = .review }
-                case .review:                 reviewView
-                case .confirming:             loadingView("Saving…")
+                case .failed:     failedView
+                case .printing:   ReceiptPrintingView(printer: printer)
+                case .review:     reviewView
+                case .confirming: loadingView("Saving…")
                 }
             }
             .navigationTitle(navTitle)
@@ -119,8 +134,7 @@ struct ReceiptScannerView: View {
     private var navTitle: String {
         switch phase {
         case .failed:     return "Couldn't Read Receipt"
-        case .scanning:   return "Scanning…"
-        case .printing:   return scanResult?.storeName ?? "Reading Receipt…"
+        case .printing:   return printer.storeName ?? "Reading Receipt…"
         case .review:     return scanResult?.storeName ?? "Match Items"
         case .confirming: return "Saving…"
         }
@@ -334,38 +348,48 @@ struct ReceiptScannerView: View {
     // MARK: - Image handling
 
     private func handlePDF(_ pdfData: Data) async {
-        phase = .scanning
-        errorMessage = nil
-
         // 1. Prefer the PDF's text layer — most accurate for digital eReceipts.
-        //    If extraction is garbled or the server can't parse it, fall through to image OCR.
-        if let text = extractReceiptText(pdfData),
-           let result = try? await services.api.scanReceipt(householdId: householdId, receiptText: text) {
-            applyResult(result)
+        //    If extraction is garbled or the server can't parse it, fall through
+        //    to image OCR.
+        if let text = extractReceiptText(pdfData), await scan(.text(text)) {
             return
         }
 
         // 2. Fall back to rasterising the PDF and reading it as an image.
-        do {
-            guard let image = renderPDFToImage(pdfData) else {
-                phase = .failed; errorMessage = "Couldn't read that PDF."; return
-            }
-            guard let compressed = image.compressedForUpload() else {
-                phase = .failed; errorMessage = "Image error."; return
-            }
-            let result = try await services.api.scanReceipt(
-                householdId: householdId,
-                imageBase64: compressed.base64EncodedString()
-            )
-            applyResult(result)
-        } catch {
-            phase = .failed
-            errorMessage = "Couldn't read that receipt. (\(error.localizedDescription))"
+        guard let image = renderPDFToImage(pdfData) else {
+            fail("Couldn't read that PDF.")
+            return
         }
+        await scanImage(image)
     }
 
-    /// Pull the embedded text layer from a PDF, returning it only if it looks like
-    /// genuine receipt text (enough readable characters and at least one price/number).
+    private func handlePhotoData(_ data: Data) async {
+        guard let image = UIImage(data: data) else {
+            fail("Couldn't load that photo.")
+            return
+        }
+        await scanImage(image)
+    }
+
+    /// The document scanner can return more than one page (a long receipt
+    /// scanned in sections) — stitch them into one tall image, same as the
+    /// multi-page PDF path above.
+    private func handleScannedPages(_ images: [UIImage]) async {
+        guard let stitched = images.count > 1 ? stitchVertically(images) : images.first else {
+            fail("Couldn't read that scan.")
+            return
+        }
+        await scanImage(stitched)
+    }
+
+    private func scanImage(_ image: UIImage) async {
+        guard let compressed = image.compressedForUpload() else {
+            fail("Image error.")
+            return
+        }
+        _ = await scan(.image(compressed.base64EncodedString()))
+    }
+
     private func extractReceiptText(_ data: Data) -> String? {
         guard let doc = PDFDocument(data: data) else { return nil }
         var text = ""
@@ -459,40 +483,101 @@ struct ReceiptScannerView: View {
         return UIGraphicsGetImageFromCurrentImageContext()
     }
 
-    private func handlePhotoData(_ data: Data) async {
-        phase = .scanning
+    // MARK: - Scanning
+
+    /// Read the receipt, printing it onto the screen as it arrives.
+    ///
+    /// The streaming endpoint delivers the store header, then a line per product
+    /// as the model reads it, then the checked lines, then the matched result.
+    /// If the stream can't be opened or dies mid-receipt we fall back to the
+    /// one-shot scan and print its result instead — the paper looks the same
+    /// either way, it just fills in at the end.
+    ///
+    /// Returns false if the receipt couldn't be read at all, so the PDF path can
+    /// try again as an image.
+    @discardableResult
+    private func scan(_ source: ScanSource) async -> Bool {
+        // Fresh paper: a retry (a PDF's text layer failing, then its image) must
+        // not print onto whatever the previous attempt left behind.
+        printer = ReceiptPrinter()
+        phase = .printing
         errorMessage = nil
+
         do {
-            guard let image = UIImage(data: data),
-                  let compressed = image.compressedForUpload()
-            else { phase = .failed; errorMessage = "Couldn't load that photo."; return }
-            let result = try await services.api.scanReceipt(householdId: householdId, imageBase64: compressed.base64EncodedString())
-            applyResult(result)
+            var matched: ReceiptScanResponse?
+            let events = services.api.scanReceiptStream(householdId: householdId, body: source.requestBody)
+            for try await event in events {
+                switch event {
+                case .store(let name, let date):     printer.setStore(name: name, date: date)
+                case .item(let line):                printer.print(line)
+                case .totals(let amount, _):         printer.setTotal(amount)
+                case .revised(let lines, _):         printer.revise(with: lines)
+                case .matched(let result):           matched = result
+                case .failed(let error):             throw APIError.serverError(error)
+                }
+            }
+            guard let matched else { throw APIError.serverError(Self.unreadable) }
+            await present(matched)
+            return true
+        } catch let error as APIError where error == .serverError(Self.unreadable) {
+            // The receipt was read end to end and there was nothing in it —
+            // running the same input through the one-shot scan would only pay
+            // for the same answer twice.
+            fail("Couldn't find any items on that receipt.")
+            return false
         } catch {
-            phase = .failed
-            errorMessage = "Couldn't read that receipt. (\(error.localizedDescription))"
+            return await scanWithoutStreaming(source)
         }
     }
 
-    /// The document scanner can return more than one page (a long receipt
-    /// scanned in sections) — stitch them into one tall image, same as the
-    /// multi-page PDF path below.
-    private func handleScannedPages(_ images: [UIImage]) async {
-        phase = .scanning
-        errorMessage = nil
-        guard let stitched = images.count > 1 ? stitchVertically(images) : images.first else {
-            phase = .failed; errorMessage = "Couldn't read that scan."; return
-        }
+    /// The server's "I read it and found no items" error, as opposed to a
+    /// transport failure worth retrying.
+    private static let unreadable = "could_not_parse"
+
+    /// The pre-streaming path, kept as the fallback. Whatever printed before the
+    /// stream failed is discarded and reprinted from the finished result, so the
+    /// paper can't end up showing a half-read receipt.
+    private func scanWithoutStreaming(_ source: ScanSource) async -> Bool {
         do {
-            guard let compressed = stitched.compressedForUpload() else {
-                phase = .failed; errorMessage = "Image error."; return
+            let result: ReceiptScanResponse
+            switch source {
+            case .text(let text):
+                result = try await services.api.scanReceipt(householdId: householdId, receiptText: text)
+            case .image(let base64):
+                result = try await services.api.scanReceipt(householdId: householdId, imageBase64: base64)
             }
-            let result = try await services.api.scanReceipt(householdId: householdId, imageBase64: compressed.base64EncodedString())
-            applyResult(result)
+            printer = ReceiptPrinter()
+            printer.setStore(name: result.storeName, date: result.receiptDate)
+            printer.setTotal(result.totalAmount)
+            for item in result.items {
+                printer.print(ReceiptPrintedLine(
+                    description: item.description,
+                    quantity: item.quantity,
+                    unitPrice: item.unitPrice,
+                    totalPrice: item.totalPrice
+                ))
+            }
+            await present(result)
+            return true
         } catch {
-            phase = .failed
-            errorMessage = "Couldn't read that receipt. (\(error.localizedDescription))"
+            // Both paths failed: this error is the informative one, since a 422
+            // here means the receipt genuinely couldn't be read.
+            fail("Couldn't read that receipt. (\(error.localizedDescription))")
+            return false
         }
+    }
+
+    /// Let the paper finish printing, then hand off to matching.
+    private func present(_ result: ReceiptScanResponse) async {
+        scanResult = result
+        editableItems = result.items.map { EditableReceiptItem(from: $0) }
+        await printer.finish()
+        phase = .review
+    }
+
+    private func fail(_ message: String) {
+        phase = .failed
+        errorMessage = message
     }
 
     private func stitchVertically(_ images: [UIImage]) -> UIImage? {
@@ -504,12 +589,6 @@ struct ReceiptScannerView: View {
         var y: CGFloat = 0
         for img in images { img.draw(at: CGPoint(x: 0, y: y)); y += img.size.height }
         return UIGraphicsGetImageFromCurrentImageContext()
-    }
-
-    private func applyResult(_ result: ReceiptScanResponse) {
-        scanResult = result
-        editableItems = result.items.map { EditableReceiptItem(from: $0) }
-        phase = .printing(result)
     }
 
     // MARK: - Confirm
@@ -617,94 +696,176 @@ struct DocumentScannerCapture: UIViewControllerRepresentable {
     }
 }
 
-// MARK: - Receipt printing reveal
+// MARK: - Receipt printing
 
-/// The scan result already arrived in one response; this plays it onto the
-/// screen the way a receipt prints — store, then date, then each line item,
-/// then the total — before handing off to item matching. Same visual
-/// language as TripReceiptView (monospaced, dashed rules) so a scanned
-/// receipt and a saved one look like the same object.
+/// A torn-off strip of receipt paper: zigzag along the top and bottom edges,
+/// the way a thermal printer's cutter leaves it.
+private struct TornEdge: Shape {
+    var tooth: CGFloat = 9
+    var depth: CGFloat = 5
+
+    func path(in rect: CGRect) -> Path {
+        var path = Path()
+        // Teeth are sized off the width alone, so they stay put while the paper
+        // grows — deriving them from the height would make them crawl.
+        let count = max(2, Int((rect.width / tooth).rounded()))
+        let step = rect.width / CGFloat(count)
+
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY + depth))
+        for i in 0 ..< count {
+            let x = rect.minX + CGFloat(i) * step
+            path.addLine(to: CGPoint(x: x + step / 2, y: rect.minY))
+            path.addLine(to: CGPoint(x: x + step, y: rect.minY + depth))
+        }
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY - depth))
+        for i in 0 ..< count {
+            let x = rect.maxX - CGFloat(i) * step
+            path.addLine(to: CGPoint(x: x - step / 2, y: rect.maxY))
+            path.addLine(to: CGPoint(x: x - step, y: rect.maxY - depth))
+        }
+        path.closeSubpath()
+        return path
+    }
+}
+
+/// The scan, printing. The paper feeds up from the bottom of the screen and each
+/// product lands on it as the scan reads it — the store header first, then a line
+/// per item, then the total. Same monospaced, dashed-rule language as
+/// TripReceiptView, so a receipt being read and a receipt already saved look
+/// like the same object.
 private struct ReceiptPrintingView: View {
-    let result: ReceiptScanResponse
-    let onFinished: () -> Void
+    let printer: ReceiptPrinter
 
-    /// 0 = nothing shown, 1 = store, 2 = + date, 3+i = + item i, then total.
-    @State private var revealedLines = 0
-    @State private var revealedTotal = false
+    private let paperWidth: CGFloat = 340
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                VStack(spacing: 4) {
-                    if revealedLines >= 1 {
-                        Text(result.storeName ?? "Receipt")
-                            .font(.system(.headline, design: .monospaced).weight(.bold))
-                            .multilineTextAlignment(.center)
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                    }
-                    if revealedLines >= 2, let date = displayDate {
-                        Text(date)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .transition(.opacity)
-                    }
-                }
-                .padding(.top, 22)
-                .padding(.bottom, 14)
-                .padding(.horizontal, 16)
-                .frame(minHeight: 66)
+        ZStack(alignment: .bottom) {
+            Color(.systemGroupedBackground).ignoresSafeArea()
 
-                dashedDivider
-
-                VStack(spacing: 0) {
-                    ForEach(Array(result.items.enumerated()), id: \.offset) { i, item in
-                        if revealedLines >= 3 + i {
-                            HStack(alignment: .top, spacing: 10) {
-                                Text(item.description)
-                                    .font(.system(.footnote, design: .monospaced))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                if let price = item.totalPrice {
-                                    Text(price, format: .currency(code: "AUD"))
-                                        .font(.system(.footnote, design: .monospaced))
-                                }
-                            }
-                            .padding(.vertical, 6)
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                        }
-                    }
-                }
-                .padding(.horizontal, 16)
-
-                if revealedTotal {
-                    dashedDivider
-                    HStack {
-                        Text("TOTAL").font(.system(.subheadline, design: .monospaced).weight(.bold))
-                        Spacer()
-                        if let total = result.totalAmount {
-                            Text(total, format: .currency(code: "AUD"))
-                                .font(.system(.subheadline, design: .monospaced).weight(.bold))
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 14)
-                    .padding(.bottom, 20)
-                    .transition(.opacity)
-                }
+            // Anchored to the bottom, so the paper grows upward out of the slot:
+            // each new line lands at the bottom edge and pushes the rest up, and
+            // once the receipt is taller than the screen the top scrolls away.
+            ScrollView {
+                paper
+                    .frame(maxWidth: paperWidth)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 24)
             }
-            // Without this, the card sizes to fit its content — and early in
-            // the reveal (before any item rows exist) the only thing wide
-            // enough to establish a width is the dashed divider's fixed run
-            // of characters, which falls short of the screen on most
-            // devices. That's what showed as the card — and the grey behind
-            // it — not reaching the edges for the first moment of the reveal.
-            .frame(maxWidth: .infinity)
-            .background(Color(.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .shadow(color: .black.opacity(0.08), radius: 12, y: 6)
-            .padding(20)
+            .defaultScrollAnchor(.bottom)
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollIndicators(.hidden)
+            .safeAreaPadding(.bottom, 8)
+
+            printerSlot
         }
-        .background(Color(.systemGroupedBackground))
-        .task { await runReveal() }
+        // Printer chatter: one tick as each line lands.
+        .sensoryFeedback(.impact(weight: .light, intensity: 0.4), trigger: printer.lines.count)
+        .animation(.spring(duration: 0.32), value: printer.lines.count)
+        .animation(.spring(duration: 0.32), value: printer.totalPrinted)
+        .animation(.easeInOut(duration: 0.25), value: printer.storeName)
+    }
+
+    /// The lip the paper feeds out of, pinned to the bottom edge.
+    private var printerSlot: some View {
+        Capsule()
+            .fill(.tertiary)
+            .frame(width: 54, height: 4)
+            .padding(.bottom, 6)
+            .allowsHitTesting(false)
+    }
+
+    private var paper: some View {
+        VStack(spacing: 0) {
+            header
+            if !printer.lines.isEmpty {
+                dashedDivider
+                lineItems
+            }
+            if printer.totalPrinted {
+                dashedDivider
+                total
+            }
+        }
+        .background {
+            Color(.secondarySystemGroupedBackground)
+                .clipShape(TornEdge())
+                .shadow(color: .black.opacity(0.12), radius: 14, y: -2)
+        }
+    }
+
+    @ViewBuilder
+    private var header: some View {
+        VStack(spacing: 4) {
+            if let store = printer.storeName {
+                Text(store)
+                    .font(.system(.headline, design: .monospaced).weight(.bold))
+                    .multilineTextAlignment(.center)
+                    .transition(.opacity)
+                if let date = printer.dateText {
+                    Text(date)
+                        .font(.system(.caption, design: .monospaced))
+                        .foregroundStyle(.secondary)
+                        .transition(.opacity)
+                }
+            } else {
+                // Before the first record arrives there's nothing to print yet,
+                // so the paper feeds blank rather than faking progress.
+                Text("Reading the receipt…")
+                    .font(.system(.footnote, design: .monospaced))
+                    .foregroundStyle(.secondary)
+                    .padding(.vertical, 6)
+            }
+        }
+        .padding(.top, 26)
+        .padding(.bottom, 12)
+        .padding(.horizontal, 16)
+    }
+
+    private var lineItems: some View {
+        VStack(spacing: 0) {
+            ForEach(Array(printer.lines.enumerated()), id: \.offset) { _, line in
+                HStack(alignment: .top, spacing: 10) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text(line.description)
+                            .font(.system(.footnote, design: .monospaced))
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                        if let qty = line.quantityText, let unit = line.unitPrice {
+                            Text(String(format: "  %@ @ $%.2f", qty, unit))
+                                .font(.system(.caption2, design: .monospaced))
+                                .foregroundStyle(.secondary)
+                        }
+                    }
+                    if let price = line.totalPrice {
+                        Text(price, format: .currency(code: "AUD"))
+                            .font(.system(.footnote, design: .monospaced))
+                            .monospacedDigit()
+                    }
+                }
+                .padding(.vertical, 6)
+                // Each line arrives at the bottom edge, as if fed out of the slot.
+                .transition(.asymmetric(
+                    insertion: .move(edge: .bottom).combined(with: .opacity),
+                    removal: .opacity
+                ))
+            }
+        }
+        .padding(.horizontal, 16)
+    }
+
+    private var total: some View {
+        HStack {
+            Text("TOTAL").font(.system(.subheadline, design: .monospaced).weight(.bold))
+            Spacer()
+            if let amount = printer.totalAmount {
+                Text(amount, format: .currency(code: "AUD"))
+                    .font(.system(.subheadline, design: .monospaced).weight(.bold))
+                    .monospacedDigit()
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.top, 14)
+        .padding(.bottom, 26)
+        .transition(.opacity)
     }
 
     private var dashedDivider: some View {
@@ -718,92 +879,6 @@ private struct ReceiptPrintingView: View {
         .padding(.vertical, 6)
         .fixedSize(horizontal: false, vertical: true)
         .clipped()
-    }
-
-    private var displayDate: String? {
-        guard let raw = result.receiptDate else { return nil }
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        guard let d = f.date(from: String(raw.prefix(10))) else { return nil }
-        f.dateStyle = .full
-        f.timeStyle = .none
-        return f.string(from: d)
-    }
-
-    private func runReveal() async {
-        func pause(_ delay: Duration) async { try? await Task.sleep(for: delay) }
-
-        await pause(.milliseconds(300))
-        withAnimation(.spring(duration: 0.35)) { revealedLines = 1 }
-        await pause(.milliseconds(350))
-        withAnimation(.spring(duration: 0.35)) { revealedLines = 2 }
-        await pause(.milliseconds(300))
-        for i in 0 ..< result.items.count {
-            withAnimation(.spring(duration: 0.3)) { revealedLines = 3 + i }
-            await pause(.milliseconds(90))
-        }
-        await pause(.milliseconds(250))
-        withAnimation(.spring(duration: 0.35)) { revealedTotal = true }
-        await pause(.milliseconds(700))
-        onFinished()
-    }
-}
-
-// MARK: - Scanning progress
-
-/// Animated, staged indicator shown while a receipt is being read & matched.
-/// The stages mirror the real pipeline; they advance on a timer since the work
-/// happens in a single server round-trip.
-private struct ScanningProgressView: View {
-    private struct Stage { let icon: String; let label: String }
-    private let stages: [Stage] = [
-        Stage(icon: "doc.text.viewfinder", label: "Reading the receipt…"),
-        Stage(icon: "list.bullet.rectangle", label: "Pulling out the items…"),
-        Stage(icon: "wand.and.stars", label: "Matching to your products…"),
-        Stage(icon: "sparkles", label: "Tidying up the names…"),
-    ]
-    @State private var index = 0
-
-    var body: some View {
-        VStack(spacing: 24) {
-            ZStack {
-                Circle()
-                    .fill(Color.accentColor.opacity(0.12))
-                    .frame(width: 96, height: 96)
-                Image(systemName: stages[index].icon)
-                    .font(.system(size: 38))
-                    .foregroundStyle(Color.accentColor)
-                    .contentTransition(.symbolEffect(.replace))
-                    .symbolEffect(.variableColor.iterative, options: .repeating)
-            }
-
-            Text(stages[index].label)
-                .font(.headline)
-                .foregroundStyle(.primary)
-                .contentTransition(.opacity)
-                .animation(.easeInOut, value: index)
-
-            HStack(spacing: 6) {
-                ForEach(stages.indices, id: \.self) { i in
-                    Capsule()
-                        .fill(i <= index ? Color.accentColor : Color.secondary.opacity(0.25))
-                        .frame(width: i == index ? 18 : 6, height: 6)
-                        .animation(.spring(duration: 0.3), value: index)
-                }
-            }
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task {
-            // Advance through the stages, easing off near the end so we don't claim
-            // completion before the response actually arrives.
-            while !Task.isCancelled {
-                let delay: Duration = index >= stages.count - 2 ? .milliseconds(1800) : .milliseconds(1100)
-                try? await Task.sleep(for: delay)
-                if Task.isCancelled { return }
-                if index < stages.count - 1 { withAnimation { index += 1 } }
-                else { return }
-            }
-        }
     }
 }
 

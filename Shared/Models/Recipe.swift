@@ -230,6 +230,108 @@ struct ReceiptScanItem: Decodable, Identifiable {
     }
 }
 
+// MARK: - Streaming scan
+
+/// One line as the scan reads it off the receipt, before product matching.
+/// This is what prints onto the screen while the scan is still running.
+struct ReceiptPrintedLine: Decodable, Equatable {
+    let description: String
+    let quantity: Double?
+    let unitPrice: Double?
+    let totalPrice: Double?
+
+    enum CodingKeys: String, CodingKey {
+        case description, quantity
+        case unitPrice  = "unit_price"
+        case totalPrice = "total_price"
+    }
+
+    init(description: String, quantity: Double?, unitPrice: Double?, totalPrice: Double?) {
+        self.description = description
+        self.quantity    = quantity
+        self.unitPrice   = unitPrice
+        self.totalPrice  = totalPrice
+    }
+
+    /// "×2" / "1.017 kg", matching how the receipt itself prints a modifier.
+    var quantityText: String? {
+        guard let q = quantity, q != 1 else { return nil }
+        return q == q.rounded() ? "×\(Int(q))" : String(format: "%g kg", q)
+    }
+}
+
+/// The scan, delivered as it happens: the store header, then each product as it
+/// is read, then the checked lines, then the finished match proposal.
+enum ReceiptScanEvent {
+    case store(name: String?, date: String?)
+    case item(ReceiptPrintedLine)
+    case totals(amount: Double?, itemCount: Int?)
+    /// The line items after the arithmetic checks — may correct what was printed.
+    case revised(lines: [ReceiptPrintedLine], needsReview: Bool)
+    case matched(ReceiptScanResponse)
+    case failed(String)
+}
+
+private struct StoreEventPayload: Decodable {
+    let storeName: String?
+    let receiptDate: String?
+    enum CodingKeys: String, CodingKey {
+        case storeName   = "store_name"
+        case receiptDate = "receipt_date"
+    }
+}
+
+private struct TotalsEventPayload: Decodable {
+    let totalAmount: Double?
+    let itemCount: Int?
+    enum CodingKeys: String, CodingKey {
+        case totalAmount = "total_amount"
+        case itemCount   = "item_count"
+    }
+}
+
+private struct RevisedEventPayload: Decodable {
+    let lineItems: [ReceiptPrintedLine]
+    let needsReview: Bool?
+    enum CodingKeys: String, CodingKey {
+        case lineItems   = "line_items"
+        case needsReview = "needs_review"
+    }
+}
+
+private struct FailedEventPayload: Decodable {
+    let error: String?
+}
+
+extension ReceiptScanEvent {
+    /// Decode one server-sent event. Unknown event names are ignored so the
+    /// server can add events without breaking an older build.
+    static func decode(event: String, data: Data, using decoder: JSONDecoder) -> ReceiptScanEvent? {
+        switch event {
+        case "store":
+            guard let p = try? decoder.decode(StoreEventPayload.self, from: data) else { return nil }
+            return .store(name: p.storeName, date: p.receiptDate)
+        case "item":
+            guard let line = try? decoder.decode(ReceiptPrintedLine.self, from: data) else { return nil }
+            return .item(line)
+        case "totals":
+            guard let p = try? decoder.decode(TotalsEventPayload.self, from: data) else { return nil }
+            return .totals(amount: p.totalAmount, itemCount: p.itemCount)
+        case "revised":
+            guard let p = try? decoder.decode(RevisedEventPayload.self, from: data) else { return nil }
+            return .revised(lines: p.lineItems, needsReview: p.needsReview ?? false)
+        case "matched":
+            guard let r = try? decoder.decode(ReceiptScanResponse.self, from: data) else { return nil }
+            return .matched(r)
+        case "failed":
+            let p = try? decoder.decode(FailedEventPayload.self, from: data)
+            return .failed(p?.error ?? "could_not_parse")
+        default:
+            return nil
+        }
+    }
+}
+
 // Mutable working copy for the receipt review screen — one row per scanned line.
 struct EditableReceiptItem: Identifiable {
     let id: String
