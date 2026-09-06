@@ -156,6 +156,15 @@ struct ReceiptScannerView: View {
     // MARK: - Review
 
     private var includedCount: Int { editableItems.filter(\.isIncluded).count }
+
+    /// Units, not rows — a "×2" line counts twice, the way a receipt's own
+    /// "8 Items" footer counts. A weighed line is one item whatever it weighs.
+    private var scannedUnitCount: Int {
+        editableItems.reduce(0) { total, item in
+            guard let q = item.quantity, q > 0, q == q.rounded() else { return total + 1 }
+            return total + Int(q)
+        }
+    }
     private var newCount: Int { editableItems.filter { $0.isIncluded && $0.productId == nil }.count }
 
     private var reviewView: some View {
@@ -167,6 +176,16 @@ struct ReceiptScannerView: View {
                     }
                     if let total = result.totalAmount {
                         LabeledContent("Total", value: String(format: "$%.2f", total))
+                    }
+                    if let printed = result.itemCount, printed != scannedUnitCount {
+                        LabeledContent("Items on receipt", value: "\(printed)")
+                            .foregroundStyle(.orange)
+                    }
+                } footer: {
+                    if result.needsReview == true {
+                        Label("This receipt's numbers didn't add up. Check the quantities before saving — tap one to change it.",
+                              systemImage: "exclamationmark.triangle.fill")
+                            .foregroundStyle(.orange)
                     }
                 }
             }
@@ -184,6 +203,10 @@ struct ReceiptScannerView: View {
             }
         }
     }
+
+    /// When the receipt's own numbers didn't reconcile, every row gets its
+    /// quantity control so a miscounted multi-buy can be moved to the right line.
+    private var showsAllQuantityControls: Bool { scanResult?.needsReview == true }
 
     @ViewBuilder
     private func itemRow(item: Binding<EditableReceiptItem>) -> some View {
@@ -226,12 +249,16 @@ struct ReceiptScannerView: View {
                 }
 
                 HStack(spacing: 4) {
-                    if let qty = item.wrappedValue.quantityText {
-                        Text(qty).font(.caption).foregroundStyle(.secondary)
-                    }
+                    quantityControl(item: item)
                     Text(item.wrappedValue.description)
                         .font(.caption)
                         .foregroundStyle(.secondary)
+                }
+
+                if item.wrappedValue.needsReview {
+                    Label("Quantity didn't match the printed price — check this line.", systemImage: "exclamationmark.triangle.fill")
+                        .font(.caption2)
+                        .foregroundStyle(.orange)
                 }
             }
 
@@ -248,6 +275,37 @@ struct ReceiptScannerView: View {
         .opacity(item.wrappedValue.isIncluded ? 1 : 0.4)
     }
 
+
+    /// The detected quantity, shown with the unit price it multiplies out from
+    /// ("×2 @ $1.69") so a multi-buy stapled onto the wrong product is visible
+    /// against the line's price. Unit counts are tappable to correct.
+    @ViewBuilder
+    private func quantityControl(item: Binding<EditableReceiptItem>) -> some View {
+        if item.wrappedValue.isUnitCount,
+           item.wrappedValue.quantityDetail != nil || item.wrappedValue.needsReview || showsAllQuantityControls {
+            Menu {
+                ForEach(1...9, id: \.self) { n in
+                    Button("×\(n)") { setQuantity(Double(n), on: item) }
+                }
+            } label: {
+                Text(item.wrappedValue.quantityDetail ?? "×1")
+                    .font(.caption)
+                    .foregroundStyle(item.wrappedValue.needsReview ? Color.orange : Color.secondary)
+            }
+            .buttonStyle(.borderless)
+        } else if let detail = item.wrappedValue.quantityDetail {
+            Text(detail).font(.caption).foregroundStyle(.secondary)
+        }
+    }
+
+    /// A corrected count re-derives the unit price from what was paid, so the
+    /// $/100g baseline the server computes stays consistent with the line.
+    private func setQuantity(_ quantity: Double, on item: Binding<EditableReceiptItem>) {
+        item.wrappedValue.quantity = quantity
+        let paid = Double(item.wrappedValue.priceText.replacingOccurrences(of: ",", with: "."))
+        item.wrappedValue.unitPrice = paid.map { $0 / quantity }
+        item.wrappedValue.needsReview = false
+    }
 
     // MARK: - Picker result
 

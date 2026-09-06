@@ -174,6 +174,8 @@ app.post("/scan", async (c) => {
       product_name: productName,
       is_new: productId === null,
       purchase_history_id: productId ? phByProductId.get(productId) ?? null : null,
+      // The printed numbers for this line didn't reconcile — ask for a human look.
+      needs_review: lineItem.needs_review === true,
     };
   });
 
@@ -181,6 +183,8 @@ app.post("/scan", async (c) => {
     store_name: receipt.store_name,
     total_amount: receipt.total_amount,
     receipt_date: receipt.receipt_date ?? null,
+    item_count: receipt.item_count ?? null,
+    needs_review: receipt.needs_review === true,
     items,
   });
 });

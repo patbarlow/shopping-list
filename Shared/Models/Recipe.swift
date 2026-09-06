@@ -182,12 +182,19 @@ struct ReceiptScanResponse: Decodable {
     let storeName: String?
     let totalAmount: Double?
     let receiptDate: String?
+    /// The "N Items" tally printed on the receipt, when it prints one.
+    let itemCount: Int?
+    /// The receipt's own arithmetic didn't reconcile (quantities, item tally or
+    /// line totals) — the review screen opens up quantity editing when it's set.
+    let needsReview: Bool?
     let items: [ReceiptScanItem]
 
     enum CodingKeys: String, CodingKey {
         case storeName   = "store_name"
         case totalAmount = "total_amount"
         case receiptDate = "receipt_date"
+        case itemCount   = "item_count"
+        case needsReview = "needs_review"
         case items
     }
 }
@@ -205,6 +212,9 @@ struct ReceiptScanItem: Decodable, Identifiable {
     let productName: String       // existing name, or a clean simple name for the new product
     let isNew: Bool
     let purchaseHistoryId: String? // non-nil → backfill this already-listed purchase
+    /// The server couldn't reconcile this line's printed numbers (a quantity
+    /// that multiplied out to nothing on the receipt) — worth a human look.
+    let needsReview: Bool?
 
     enum CodingKeys: String, CodingKey {
         case description, quantity
@@ -216,6 +226,7 @@ struct ReceiptScanItem: Decodable, Identifiable {
         case productName        = "product_name"
         case isNew              = "is_new"
         case purchaseHistoryId  = "purchase_history_id"
+        case needsReview        = "needs_review"
     }
 }
 
@@ -223,7 +234,10 @@ struct ReceiptScanItem: Decodable, Identifiable {
 struct EditableReceiptItem: Identifiable {
     let id: String
     let description: String
-    let quantity: Double?
+    /// Editable: the scan can staple a multi-buy onto the wrong product, and
+    /// the quantity divides the price when computing $/100g baselines.
+    var quantity: Double?
+    var needsReview: Bool
     var priceText: String
     var isIncluded: Bool = true
 
@@ -233,8 +247,8 @@ struct EditableReceiptItem: Identifiable {
     var isNew: Bool
     var purchaseHistoryId: String?
 
-    // Carried through unedited to /confirm for the $/100g-style unit price baseline.
-    let unitPrice: Double?
+    // Carried through to /confirm for the $/100g-style unit price baseline.
+    var unitPrice: Double?
     let sizeValue: Double?
     let sizeUnit: String?
 
@@ -242,6 +256,7 @@ struct EditableReceiptItem: Identifiable {
         self.id                = item.description
         self.description       = item.description
         self.quantity          = item.quantity
+        self.needsReview       = item.needsReview ?? false
         let price              = item.totalPrice ?? item.unitPrice
         self.priceText         = price.map { String(format: "%.2f", $0) } ?? ""
         self.productId         = item.productId
@@ -258,6 +273,21 @@ struct EditableReceiptItem: Identifiable {
         // Whole numbers are unit counts ("×2"); fractional quantities are loose
         // weights, which receipts print in kg ("1.017 kg").
         return q == q.rounded() ? "×\(Int(q))" : String(format: "%g kg", q)
+    }
+
+    /// Unit counts can be corrected in the review screen; a weighed quantity
+    /// (1.017 kg) is only meaningful as printed, so it stays read-only.
+    var isUnitCount: Bool {
+        guard let q = quantity else { return true }
+        return q == q.rounded() && q >= 1 && q < 100
+    }
+
+    /// "×2 @ $1.69" — showing the arithmetic is what makes a wrong multi-buy
+    /// obvious at a glance next to the line's price.
+    var quantityDetail: String? {
+        guard let text = quantityText else { return nil }
+        guard let unit = unitPrice, unit > 0 else { return text }
+        return String(format: "%@ @ $%.2f", text, unit)
     }
 }
 
