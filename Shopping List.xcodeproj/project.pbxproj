@@ -44,10 +44,12 @@
 		9EB1EF4FBDB51E3AE699592C /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7462B86AD882C4C18C4DF1DF /* APIService.swift */; };
 		A1DF69D966DC26AD8E323C0E /* RecipeImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 062C0A12F70785A98F6A0CA8 /* RecipeImportView.swift */; };
 		A691F172E240170C6737917F /* Recipe.swift in Sources */ = {isa = PBXBuildFile; fileRef = D23ADCBB565D2A872DBAB12E /* Recipe.swift */; };
+		AE39702576F6EFE419DA5E1C /* ReceiptPrinter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C7AFEFFD687487D45E0EF4E /* ReceiptPrinter.swift */; };
 		A7D5D6BA419F4B8D3C3852DE /* Insights.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79DB2369B34A78C39BAA22A9 /* Insights.swift */; };
 		BB854FA51974F86190EEB55E /* SentryHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97B1734E7407EC373454F34A /* SentryHelpers.swift */; };
 		BC032B773815D22A3A604589 /* ShoppingListStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AF17166DF5B1CFFFE31976C /* ShoppingListStore.swift */; };
 		BCBD961F5DE1628DBF9343C1 /* Recipe.swift in Sources */ = {isa = PBXBuildFile; fileRef = D23ADCBB565D2A872DBAB12E /* Recipe.swift */; };
+		FDFE90A4E489C261C83A2D8A /* ReceiptPrinter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C7AFEFFD687487D45E0EF4E /* ReceiptPrinter.swift */; };
 		C2066F40B513F05484129B77 /* Config.plist in Resources */ = {isa = PBXBuildFile; fileRef = 51AC4475E61BFC0BEDF456BE /* Config.plist */; };
 		C353F7364DD8CD159053DFD2 /* ShoppingListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 073DB8A85B43FA938555C6E5 /* ShoppingListView.swift */; };
 		C949EB6936EACF8E22E8CE3F /* Household.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBEC057EB44C2C3C2778B9C3 /* Household.swift */; };
@@ -103,6 +105,7 @@
 		BE7C88D1E1D959B22BB226D5 /* ReceiptScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptScannerView.swift; sourceTree = "<group>"; };
 		27F52EE5B204F9DF2F7C3D48 /* TripReceiptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripReceiptView.swift; sourceTree = "<group>"; };
 		C64433691FD9E88F95570581 /* ShoppingItemEntity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingItemEntity.swift; sourceTree = "<group>"; };
+		6C7AFEFFD687487D45E0EF4E /* ReceiptPrinter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptPrinter.swift; sourceTree = "<group>"; };
 		D23ADCBB565D2A872DBAB12E /* Recipe.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Recipe.swift; sourceTree = "<group>"; };
 		D92A6A07E4C83E87B03CB539 /* ProductsListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProductsListView.swift; sourceTree = "<group>"; };
 		DF8B3203E96D1AB11A946F05 /* MenuBarView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MenuBarView.swift; sourceTree = "<group>"; };
@@ -264,6 +267,7 @@
 				663DBFAB12E403F8ABFC8AA5 /* History.swift */,
 				EBEC057EB44C2C3C2778B9C3 /* Household.swift */,
 				79DB2369B34A78C39BAA22A9 /* Insights.swift */,
+				6C7AFEFFD687487D45E0EF4E /* ReceiptPrinter.swift */,
 				D23ADCBB565D2A872DBAB12E /* Recipe.swift */,
 				1B06687513055194F342B4B7 /* ShoppingItem.swift */,
 			);
@@ -435,6 +439,7 @@
 				A2CBC9AAF65F4AE8BBA8A1E8 /* ReceiptImportToolbarButton.swift in Sources */,
 				C9BB9CA8700E2772ACE687BF /* ReceiptScannerView.swift in Sources */,
 				CF75656337DECA0080382530 /* TripReceiptView.swift in Sources */,
+				AE39702576F6EFE419DA5E1C /* ReceiptPrinter.swift in Sources */,
 				A691F172E240170C6737917F /* Recipe.swift in Sources */,
 				92C77C8200BFCAEBBCD05158 /* RecipeHubView.swift in Sources */,
 				2CB334C874C3D08D8D49DBD8 /* RecipeImportView.swift in Sources */,
@@ -465,6 +470,7 @@
 				97184F439951502A053845E6 /* MenuBarView.swift in Sources */,
 				84F91FFA458ACB2F5CD27AA0 /* QuickAddIntent.swift in Sources */,
 				3006F1C130CE6774B3CFB412 /* RealtimeService.swift in Sources */,
+				FDFE90A4E489C261C83A2D8A /* ReceiptPrinter.swift in Sources */,
 				BCBD961F5DE1628DBF9343C1 /* Recipe.swift in Sources */,
 				A1DF69D966DC26AD8E323C0E /* RecipeImportView.swift in Sources */,
 				BB854FA51974F86190EEB55E /* SentryHelpers.swift in Sources */,
