@@ -1,4 +1,6 @@
 import type { Env } from "./env";
+import { ReceiptAssembler, type ReceiptRecord } from "./receipt-stream";
+import { anthropicTextDeltas } from "./sse";
 import {
   foldDiscountLines,
   itemCountMismatch,
@@ -372,9 +374,18 @@ export interface ParsedReceipt {
   needs_review?: boolean;
 }
 
+// Newline-delimited JSON: one complete record per line, so a product can be
+// shown the moment it is read instead of after the whole receipt is parsed.
+const RECEIPT_OUTPUT_SHAPE =
+  `Reply with newline-delimited JSON — one complete JSON object per line, and nothing else. No array brackets, no code fences, no commentary.\n` +
+  `Line 1, the header: {"type":"receipt","store_name":"...","receipt_date":"2026-06-20"}\n` +
+  `Then ONE line per purchased product, in the order they are printed on the receipt:\n` +
+  `{"type":"item","description":"...","quantity":1,"unit_price":2.50,"total_price":2.50,"size_value":175,"size_unit":"g"}\n` +
+  `Last line, the totals: {"type":"totals","total_amount":12.34,"item_count":8}\n` +
+  `These lines are shown to the shopper as they arrive, so emit each product as soon as you have it and never re-print or amend a product you have already emitted. Before emitting a product, read the line printed BELOW it: if that is a quantity, weight or discount line belonging to it, fold it in first (see the rules below) and emit the finished product once.\n`;
+
 const RECEIPT_RULES =
-  `Return ONLY valid JSON:\n` +
-  `{"store_name":"...","total_amount":12.34,"receipt_date":"2026-06-20","item_count":8,"line_items":[{"description":"...","quantity":1,"unit_price":2.50,"total_price":2.50,"size_value":175,"size_unit":"g"}]}\n` +
+  RECEIPT_OUTPUT_SHAPE +
   `Rules:\n` +
   `- Transcribe EXACTLY what is on the receipt. Never invent, guess, or "correct" a product, size, brand or price. If a value is unclear, use null — do NOT fill it in from what is typical.\n` +
   `- "description" is the raw product text exactly as printed, including the size/volume if shown (e.g. "WW FUL CRM MILK 2L" stays 2L, not 3L).\n` +
@@ -401,33 +412,122 @@ const RECEIPT_RULES =
   `- Include EVERY product line that is actually printed, and ONLY lines that are actually printed.\n` +
   `- "item_count" is the item tally the receipt prints near the total — "8 Items" on its own line, or the bare number printed before SUBTOTAL ("30 SUBTOTAL" means 30). Use null if it prints none. It counts units, not lines, so a "Qty 2" line contributes 2 — use it to check you attached quantities to the right products.`;
 
-function parseReceiptJson(text: string): ParsedReceipt | null {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end === -1 || end < start) return null;
-  let parsed: ParsedReceipt;
-  try {
-    parsed = JSON.parse(text.slice(start, end + 1)) as ParsedReceipt;
-  } catch {
-    return null;
-  }
-  if (!parsed || !Array.isArray(parsed.line_items)) return null;
+/** What the model is being shown: a PDF's text layer, or a photo of the paper. */
+export type ReceiptInput = { text: string } | { imageBase64: string; mediaType: string };
 
-  // Don't take the model's word for which product a multi-buy or by-weight line
-  // belongs to — the receipt prints the numbers needed to check it. Reconcile
-  // first (it checks quantity x unit_price against the printed total), then fold
-  // any discount row the model left standing into the items it covers.
-  const lineItems = foldDiscountLines(reconcileReceiptLines(parsed.line_items));
-  const itemCount = typeof parsed.item_count === "number" ? parsed.item_count : null;
+function receiptMessages(input: ReceiptInput): { role: "user"; content: string | object[] }[] {
+  if ("text" in input) {
+    return [
+      {
+        role: "user",
+        content:
+          `This is the exact text extracted from a supermarket receipt. Extract every purchased product.\n` +
+          `${RECEIPT_RULES}\n\n` +
+          `Receipt text:\n${input.text.slice(0, 12000)}`,
+      },
+    ];
+  }
+  return [
+    {
+      role: "user",
+      content: [
+        {
+          type: "image",
+          source: { type: "base64", media_type: input.mediaType, data: input.imageBase64 },
+        },
+        {
+          type: "text",
+          text: `Extract every purchased product from this supermarket receipt image.\n${RECEIPT_RULES}`,
+        },
+      ],
+    },
+  ];
+}
+
+/**
+ * Finish an assembled receipt: check the model's work against the receipt's own
+ * arithmetic. Reconcile first (quantity x unit_price against each printed
+ * total), then fold any discount row left standing into the items it covers.
+ */
+function finishReceipt(assembler: ReceiptAssembler): ParsedReceipt | null {
+  const built = assembler.build();
+  if (!built || built.line_items.length === 0) return null;
+
+  const lineItems = foldDiscountLines(reconcileReceiptLines(built.line_items));
   return {
-    ...parsed,
-    item_count: itemCount,
+    store_name: built.header.store_name,
+    receipt_date: built.header.receipt_date,
+    total_amount: built.totals.total_amount,
+    item_count: built.totals.item_count,
     line_items: lineItems,
     needs_review:
       lineItems.some((i) => i.needs_review) ||
-      itemCountMismatch(lineItems, itemCount) ||
-      totalsMismatch(lineItems, parsed.total_amount ?? null),
+      itemCountMismatch(lineItems, built.totals.item_count) ||
+      totalsMismatch(lineItems, built.totals.total_amount),
   };
+}
+
+/**
+ * Read the receipt, handing back each record as the model emits it and the
+ * finished (checked) receipt at the end. The scanner prints the item records
+ * onto the screen as they arrive; the review step uses the finished receipt,
+ * which may have corrected some of what was printed.
+ */
+export async function* streamReceipt(
+  env: Env,
+  input: ReceiptInput,
+): AsyncGenerator<ReceiptRecord | { type: "done"; receipt: ParsedReceipt | null }> {
+  const assembler = new ReceiptAssembler();
+
+  if (!env.ANTHROPIC_API_KEY) {
+    yield { type: "done", receipt: null };
+    return;
+  }
+
+  let body: ReadableStream<Uint8Array> | null = null;
+  try {
+    const res = await fetch(ANTHROPIC_URL, {
+      method: "POST",
+      headers: ANTHROPIC_HEADERS(env.ANTHROPIC_API_KEY),
+      body: JSON.stringify({
+        model: SONNET,
+        max_tokens: 3000,
+        stream: true,
+        messages: receiptMessages(input),
+      }),
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (res.ok) body = res.body;
+  } catch {
+    body = null;
+  }
+  if (!body) {
+    yield { type: "done", receipt: null };
+    return;
+  }
+
+  let interrupted = false;
+  try {
+    for await (const text of anthropicTextDeltas(body)) {
+      for (const record of assembler.push(text)) yield record;
+    }
+    for (const record of assembler.finish()) yield record;
+  } catch {
+    // A dropped connection mid-receipt: finish with whatever arrived rather
+    // than losing it, but the result is a receipt missing its tail.
+    interrupted = true;
+  }
+
+  const receipt = finishReceipt(assembler);
+  if (receipt && interrupted) receipt.needs_review = true;
+  yield { type: "done", receipt };
+}
+
+function parseReceiptJson(text: string): ParsedReceipt | null {
+  const assembler = new ReceiptAssembler();
+  assembler.push(text);
+  assembler.finish();
+  return finishReceipt(assembler);
 }
 
 /**
@@ -435,20 +535,7 @@ function parseReceiptJson(text: string): ParsedReceipt | null {
  * a rasterised PDF — there is nothing to misread, so the model cannot invent items.
  */
 export async function parseReceiptFromText(env: Env, receiptText: string): Promise<ParsedReceipt | null> {
-  const reply = await callClaude(
-    env,
-    [
-      {
-        role: "user",
-        content:
-          `This is the exact text extracted from a supermarket receipt. Extract every purchased product.\n` +
-          `${RECEIPT_RULES}\n\n` +
-          `Receipt text:\n${receiptText.slice(0, 12000)}`,
-      },
-    ],
-    3000,
-    SONNET,
-  );
+  const reply = await callClaude(env, receiptMessages({ text: receiptText }), 3000, SONNET);
   return reply ? parseReceiptJson(reply) : null;
 }
 
@@ -457,39 +544,8 @@ export async function parseReceiptFromImage(
   imageBase64: string,
   mediaType: string = "image/jpeg",
 ): Promise<ParsedReceipt | null> {
-  if (!env.ANTHROPIC_API_KEY) return null;
-  try {
-    const res = await fetch(ANTHROPIC_URL, {
-      method: "POST",
-      headers: ANTHROPIC_HEADERS(env.ANTHROPIC_API_KEY),
-      body: JSON.stringify({
-        model: SONNET,
-        max_tokens: 3000,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "image",
-                source: { type: "base64", media_type: mediaType, data: imageBase64 },
-              },
-              {
-                type: "text",
-                text: `Extract every purchased product from this supermarket receipt image.\n${RECEIPT_RULES}`,
-              },
-            ],
-          },
-        ],
-      }),
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!res.ok) return null;
-    const json = await res.json<{ content?: { text?: string }[] }>();
-    const text = (json.content?.[0]?.text ?? "").trim();
-    return parseReceiptJson(text);
-  } catch {
-    return null;
-  }
+  const reply = await callClaude(env, receiptMessages({ imageBase64, mediaType }), 3000, SONNET);
+  return reply ? parseReceiptJson(reply) : null;
 }
 
 export interface ResolvedReceiptItem {
