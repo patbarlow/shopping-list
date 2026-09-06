@@ -1,8 +1,16 @@
 import { Hono } from "hono";
+import { streamSSE } from "hono/streaming";
 import type { Env } from "../env";
 import { requireAuth, type AuthVariables } from "../middleware/auth";
 import { nowISO } from "../db";
-import { parseReceiptFromImage, parseReceiptFromText, resolveReceiptItems } from "../ai";
+import {
+  parseReceiptFromImage,
+  parseReceiptFromText,
+  resolveReceiptItems,
+  streamReceipt,
+  type ParsedReceipt,
+  type ReceiptInput,
+} from "../ai";
 import { upsertProduct } from "./items";
 
 const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
@@ -83,29 +91,36 @@ app.get("/products", async (c) => {
   return c.json({ products: results });
 });
 
-// POST /v1/receipts/scan
-app.post("/scan", async (c) => {
-  const user = c.var.user;
-  const body = await c.req
-    .json<{ household_id?: string; image_base64?: string; media_type?: string; receipt_text?: string }>()
-    .catch(() => ({} as Record<string, never>));
+/** One receipt line with the action the review screen should propose for it. */
+interface MatchedItem {
+  description: string;
+  quantity: number | null;
+  unit_price: number | null;
+  total_price: number | null;
+  size_value: number | null;
+  size_unit: string | null;
+  product_id: string | null;
+  product_name: string;
+  is_new: boolean;
+  purchase_history_id: string | null;
+  needs_review: boolean;
+}
 
-  if (!body.household_id || (!body.image_base64 && !body.receipt_text?.trim())) {
-    return c.json({ error: "missing_fields" }, 400);
-  }
-  if (!(await assertMember(c.env, body.household_id, user.id))) return c.json({ error: "forbidden" }, 403);
-
-  // Prefer the PDF's text layer when present — nothing to misread, so no invented items.
-  const receipt = body.receipt_text?.trim()
-    ? await parseReceiptFromText(c.env, body.receipt_text)
-    : await parseReceiptFromImage(c.env, body.image_base64!, body.media_type);
-  if (!receipt || receipt.line_items.length === 0) return c.json({ error: "could_not_parse" }, 422);
-
-  const descriptions = receipt.line_items.map((i) => i.description);
+/**
+ * Resolve every parsed line to a product: aliases we've matched before first
+ * (free), then one AI call for the rest. Shared by the one-shot and streaming
+ * scans so both propose exactly the same actions.
+ */
+async function matchReceiptItems(
+  env: Env,
+  householdId: string,
+  lineItems: ParsedReceipt["line_items"],
+): Promise<MatchedItem[]> {
+  const descriptions = lineItems.map((i) => i.description);
   const normalizedDescs = descriptions.map(normalizeReceiptDescription);
 
   // Stage 1 — alias lookup (zero AI cost): descriptions we've matched before resolve instantly.
-  const aliasMap = await lookupAliases(c.env.DB, body.household_id, normalizedDescs);
+  const aliasMap = await lookupAliases(env.DB, householdId, normalizedDescs);
   const aliasResolved = new Map<string, { product_id: string; product_name: string }>();
   const needsResolve: string[] = [];
   for (let i = 0; i < descriptions.length; i++) {
@@ -115,7 +130,7 @@ app.post("/scan", async (c) => {
   }
 
   // The full product catalogue (recency-ordered) is the pool we match against.
-  const { results: productPool } = await c.env.DB
+  const { results: productPool } = await env.DB
     .prepare(
       `SELECT p.id, p.name, MAX(ph.purchased_at) AS last_purchased_at
        FROM products p
@@ -125,20 +140,20 @@ app.post("/scan", async (c) => {
        ORDER BY last_purchased_at DESC NULLS LAST, p.name ASC
        LIMIT 200`,
     )
-    .bind(body.household_id, body.household_id)
+    .bind(householdId, householdId)
     .all<{ id: string; name: string; last_purchased_at: string | null }>();
   const nameToProductId = new Map(productPool.map((p) => [p.name.toLowerCase(), p.id]));
 
   // Unpriced purchase_history rows are "things ticked off the list but not yet priced".
   // If a matched product has one, we offer to backfill its price instead of inserting a duplicate.
-  const { results: unpricedHistory } = await c.env.DB
+  const { results: unpricedHistory } = await env.DB
     .prepare(
       `SELECT ph.id, ph.product_id
        FROM purchase_history ph
        WHERE ph.household_id = ? AND ph.price_paid IS NULL
        ORDER BY ph.purchased_at DESC`,
     )
-    .bind(body.household_id)
+    .bind(householdId)
     .all<{ id: string; product_id: string }>();
   const phByProductId = new Map<string, string>();
   for (const ph of unpricedHistory) {
@@ -146,10 +161,9 @@ app.post("/scan", async (c) => {
   }
 
   // Resolve everything not already pinned by an alias: existing-match + clean name in one call.
-  const resolved = await resolveReceiptItems(c.env, needsResolve, productPool.map((p) => p.name));
+  const resolved = await resolveReceiptItems(env, needsResolve, productPool.map((p) => p.name));
 
-  // Assemble one proposed action per receipt line.
-  const items = receipt.line_items.map((lineItem) => {
+  return lineItems.map((lineItem) => {
     const aliasHit = aliasResolved.get(lineItem.description);
     let productId: string | null = aliasHit?.product_id ?? null;
     let productName: string = aliasHit?.product_name ?? "";
@@ -174,14 +188,119 @@ app.post("/scan", async (c) => {
       product_name: productName,
       is_new: productId === null,
       purchase_history_id: productId ? phByProductId.get(productId) ?? null : null,
+      // The printed numbers for this line didn't reconcile — ask for a human look.
+      needs_review: lineItem.needs_review === true,
     };
   });
+}
 
-  return c.json({
+function scanBody(receipt: ParsedReceipt, items: MatchedItem[]) {
+  return {
     store_name: receipt.store_name,
     total_amount: receipt.total_amount,
     receipt_date: receipt.receipt_date ?? null,
+    item_count: receipt.item_count ?? null,
+    needs_review: receipt.needs_review === true,
     items,
+  };
+}
+
+type ScanRequest = {
+  household_id?: string;
+  image_base64?: string;
+  media_type?: string;
+  receipt_text?: string;
+};
+
+/** The scan input a request is asking for, or null if it isn't usable. */
+function scanInput(body: ScanRequest): ReceiptInput | null {
+  if (body.receipt_text?.trim()) return { text: body.receipt_text };
+  if (body.image_base64) {
+    return { imageBase64: body.image_base64, mediaType: body.media_type ?? "image/jpeg" };
+  }
+  return null;
+}
+
+// POST /v1/receipts/scan
+app.post("/scan", async (c) => {
+  const user = c.var.user;
+  const body = await c.req.json<ScanRequest>().catch(() => ({} as ScanRequest));
+
+  const input = scanInput(body);
+  if (!body.household_id || !input) return c.json({ error: "missing_fields" }, 400);
+  if (!(await assertMember(c.env, body.household_id, user.id))) return c.json({ error: "forbidden" }, 403);
+
+  // Prefer the PDF's text layer when present — nothing to misread, so no invented items.
+  const receipt = "text" in input
+    ? await parseReceiptFromText(c.env, input.text)
+    : await parseReceiptFromImage(c.env, input.imageBase64, input.mediaType);
+  if (!receipt || receipt.line_items.length === 0) return c.json({ error: "could_not_parse" }, 422);
+
+  const items = await matchReceiptItems(c.env, body.household_id, receipt.line_items);
+  return c.json(scanBody(receipt, items));
+});
+
+// POST /v1/receipts/scan/stream — the same scan, delivered as it is read.
+//
+// The scanner prints each product onto the screen the moment the model emits
+// it, so this streams three kinds of event: the store header, then one per
+// product as parsed, then the finished scan once the arithmetic checks and
+// product matching have run. What was printed can differ from what is finally
+// proposed (a multi-buy gets re-anchored, a discount folded), so the client
+// takes its review list from "matched", never from the printed lines.
+app.post("/scan/stream", async (c) => {
+  const user = c.var.user;
+  const body = await c.req.json<ScanRequest>().catch(() => ({} as ScanRequest));
+
+  const input = scanInput(body);
+  if (!body.household_id || !input) return c.json({ error: "missing_fields" }, 400);
+  const householdId = body.household_id;
+  if (!(await assertMember(c.env, householdId, user.id))) return c.json({ error: "forbidden" }, 403);
+
+  return streamSSE(c, async (stream) => {
+    const send = (event: string, data: unknown) =>
+      stream.writeSSE({ event, data: JSON.stringify(data) });
+
+    let index = 0;
+    let receipt: ParsedReceipt | null = null;
+
+    for await (const record of streamReceipt(c.env, input)) {
+      switch (record.type) {
+        case "receipt":
+          await send("store", { store_name: record.store_name, receipt_date: record.receipt_date });
+          break;
+        case "item":
+          await send("item", { index: index++, ...record.item });
+          break;
+        case "totals":
+          await send("totals", { total_amount: record.total_amount, item_count: record.item_count });
+          break;
+        case "done":
+          receipt = record.receipt;
+          break;
+      }
+    }
+
+    if (!receipt || receipt.line_items.length === 0) {
+      await send("failed", { error: "could_not_parse" });
+      return;
+    }
+
+    // The checked line items, which may correct lines already printed.
+    await send("revised", {
+      total_amount: receipt.total_amount,
+      item_count: receipt.item_count,
+      needs_review: receipt.needs_review === true,
+      line_items: receipt.line_items,
+    });
+
+    const items = await matchReceiptItems(c.env, householdId, receipt.line_items);
+    await send("matched", scanBody(receipt, items));
+  }, async (err, stream) => {
+    // The client falls back to the one-shot scan on a broken stream, so all this
+    // has to do is close the door rather than hang.
+    await stream.writeSSE({ event: "failed", data: JSON.stringify({ error: "stream_failed" }) });
+    console.error("receipt scan stream failed", err);
   });
 });
 

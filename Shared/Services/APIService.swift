@@ -143,6 +143,73 @@ final class APIService {
         return try await post("/v1/receipts/scan", body: body, timeout: receiptScanTimeout)
     }
 
+    /// The same scan, delivered as it is read: the store header, then a line per
+    /// product as the model emits it, then the finished match proposal. The
+    /// scanner prints the lines while they arrive instead of waiting on the lot.
+    ///
+    /// Throws before yielding anything if the stream can't be opened, so the
+    /// caller can fall back to the one-shot `scanReceipt`.
+    func scanReceiptStream(householdId: String, body extra: [String: Any]) -> AsyncThrowingStream<ReceiptScanEvent, Error> {
+        var body = extra
+        body["household_id"] = householdId
+
+        // Built here, on the main actor, so the request the stream sends is
+        // plain Data by the time the work moves off it.
+        let request: URLRequest? = {
+            guard let url = URL(string: baseURL + "/v1/receipts/scan/stream"),
+                  let httpBody = try? JSONSerialization.data(withJSONObject: body)
+            else { return nil }
+            var req = URLRequest(url: url)
+            req.httpMethod = "POST"
+            req.timeoutInterval = receiptScanTimeout
+            req.setValue("application/json", forHTTPHeaderField: "Content-Type")
+            req.setValue("text/event-stream", forHTTPHeaderField: "Accept")
+            if let token = authToken { req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization") }
+            req.httpBody = httpBody
+            return req
+        }()
+
+        return AsyncThrowingStream { continuation in
+            let task = Task { [session] in
+                // The work runs off the main actor, so it gets its own decoder
+                // rather than sharing this instance's.
+                let decoder = JSONDecoder()
+                do {
+                    guard let req = request else { throw APIError.badURL }
+
+                    let (bytes, response) = try await session.bytes(for: req)
+                    if let http = response as? HTTPURLResponse {
+                        if http.statusCode == 401 { throw APIError.unauthorized }
+                        if http.statusCode >= 400 { throw APIError.serverError("HTTP \(http.statusCode)") }
+                    }
+
+                    // Server-sent events: "event: <name>", "data: <json>", blank line.
+                    var eventName = ""
+                    var payload = ""
+                    for try await line in bytes.lines {
+                        if line.isEmpty {
+                            if !eventName.isEmpty, let data = payload.data(using: .utf8),
+                               let event = ReceiptScanEvent.decode(event: eventName, data: data, using: decoder) {
+                                continuation.yield(event)
+                            }
+                            eventName = ""
+                            payload = ""
+                        } else if line.hasPrefix("event:") {
+                            eventName = line.dropFirst(6).trimmingCharacters(in: .whitespaces)
+                        } else if line.hasPrefix("data:") {
+                            // A payload split over several data: lines is rejoined.
+                            payload += line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+                        }
+                    }
+                    continuation.finish()
+                } catch {
+                    continuation.finish(throwing: error)
+                }
+            }
+            continuation.onTermination = { _ in task.cancel() }
+        }
+    }
+
     func confirmReceipt(
         householdId: String,
         storeName: String?,
