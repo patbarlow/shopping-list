@@ -379,7 +379,9 @@ struct ReceiptScannerView: View {
         let readableSet = CharacterSet.alphanumerics
             .union(.punctuationCharacters)
             .union(.whitespacesAndNewlines)
-            .union(CharacterSet(charactersIn: "$€£¢"))
+            // Receipts flag lines with symbols that aren't Unicode punctuation
+            // ("^" promotional, "*"), so count those as readable too.
+            .union(CharacterSet(charactersIn: "$€£¢^*+×"))
         let readable = trimmed.unicodeScalars.filter { readableSet.contains($0) }.count
         guard Double(readable) / Double(trimmed.unicodeScalars.count) >= 0.85 else { return nil }
         return trimmed

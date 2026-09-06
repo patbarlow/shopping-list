@@ -1,5 +1,6 @@
 import type { Env } from "./env";
 import {
+  foldDiscountLines,
   itemCountMismatch,
   reconcileReceiptLines,
   totalsMismatch,
@@ -388,14 +389,17 @@ const RECEIPT_RULES =
   `    402848 Brie French 125g    3.49 A\n` +
   `  2 x 1.69 = 3.38, which is the Milk Almond total, so the quantity belongs to Milk Almond (quantity 2, unit_price 1.69, total_price 3.38). Chips and Brie stay quantity 1 at their own printed totals. Attaching the "Qty 2" to Brie would be WRONG: 2 x 1.69 is not 3.49.\n` +
   `- Every line you return must satisfy quantity x unit_price = total_price. For a single unit that is 1 x total_price. If no quantity line applies to a product, its quantity is 1 — do not carry a neighbouring product's quantity or unit price over to it.\n` +
+  `- Leading markers on a description are receipt flags, not part of the product name — strip a leading "^" (promotional price), "#" (taxable), "*" or any combination: "^#TTN Hydrate & Nourish Shampoo 500ml" -> "TTN Hydrate & Nourish Shampoo 500ml".\n` +
+  `- A product line can print with NO price when its quantity line below carries the money: "^Lurpak Spreadable Slightly Salted 250g" then " Qty 2 @ $5.20 each  10.40" is ONE item — Lurpak, quantity 2, unit_price 5.20, total_price 10.40.\n` +
   `- ALDI: a leading numeric item code (e.g. "399060 Milk Almond UHT 1L") is NOT part of the description — drop it. A single trailing letter after a price (e.g. "3.38 A") is a tax marker, not part of the price.\n` +
   `- "size_value"/"size_unit" are the PACKAGE size printed on the line, e.g. "175G" -> size_value:175, size_unit:"g"; "2L" -> size_value:2, size_unit:"L"; "6X250ML" -> size_value:1500, size_unit:"mL" (total volume of the multipack). Use null for both if no package size is shown, or if the item is sold loose by weight (its "unit_price" already gives the per-kg rate).\n` +
   `- receipt_date must be ISO format (YYYY-MM-DD) or null.\n` +
-  `- EXCLUDE non-product rows: subtotal, total, tax/GST, rounding, change, tender/EFTPOS/cash, loyalty/points, savings, and store header/footer text.\n` +
-  `- A discount line that reduces the price of the item above it should be folded into that item's total_price, not listed separately.\n` +
+  `- EXCLUDE non-product rows: subtotal, total, tax/GST, rounding, change, tender/EFTPOS/cash, loyalty/points, savings, marker legends ("^Promotional Price", "#Taxable Items"), card/terminal blocks, and store header/footer text (including advertised offers printed after the transaction — those were not bought).\n` +
+  `- "total_amount" is the receipt's TOTAL for the goods, NOT the amount tendered on the card after a loyalty redemption. A receipt showing "TOTAL $160.10" and "REWARDS SAVINGS $10.00" with a card purchase of $150.10 has total_amount 160.10 — the line items must add up to it.\n` +
+  `- A discount line reduces the price of the item(s) ABOVE it and is folded into their total_price, never listed as its own item. "BUY 2 for $12.90 -4.60" or "ANY 2 for $6.00 -1.00" covers the TWO items above it (whatever number it names): split the reduction across them in proportion to their prices, e.g. two $8.75 drinks with "BUY 2 for $12.90 -4.60" become $6.45 each — do not put the whole -4.60 on one of them.\n` +
   `- Some receipts print a product across TWO lines: the name alone on one line, then a continuation line below it with the weight/quantity, unit rate and price (e.g. "Potato Sweet Gold" followed by "1.017 kg NET @ $3.90/kg  3.97", or a name followed by "Qty 2 @ $2.40 each  4.80"). Merge each such pair into ONE line item — do not emit the name and its continuation as two separate items.\n` +
   `- Include EVERY product line that is actually printed, and ONLY lines that are actually printed.\n` +
-  `- "item_count" is the item tally the receipt prints near the total (e.g. "8 Items"), or null if it prints none. It counts units, not lines, so a "Qty 2" line contributes 2 — use it to check you attached quantities to the right products.`;
+  `- "item_count" is the item tally the receipt prints near the total — "8 Items" on its own line, or the bare number printed before SUBTOTAL ("30 SUBTOTAL" means 30). Use null if it prints none. It counts units, not lines, so a "Qty 2" line contributes 2 — use it to check you attached quantities to the right products.`;
 
 function parseReceiptJson(text: string): ParsedReceipt | null {
   const start = text.indexOf("{");
@@ -410,8 +414,10 @@ function parseReceiptJson(text: string): ParsedReceipt | null {
   if (!parsed || !Array.isArray(parsed.line_items)) return null;
 
   // Don't take the model's word for which product a multi-buy or by-weight line
-  // belongs to — the receipt prints the numbers needed to check it.
-  const lineItems = reconcileReceiptLines(parsed.line_items);
+  // belongs to — the receipt prints the numbers needed to check it. Reconcile
+  // first (it checks quantity x unit_price against the printed total), then fold
+  // any discount row the model left standing into the items it covers.
+  const lineItems = foldDiscountLines(reconcileReceiptLines(parsed.line_items));
   const itemCount = typeof parsed.item_count === "number" ? parsed.item_count : null;
   return {
     ...parsed,

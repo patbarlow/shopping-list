@@ -86,6 +86,68 @@ export function reconcileReceiptLines(items: ReceiptLineItem[]): ReceiptLineItem
   return out;
 }
 
+/** How many items above a discount row it applies to: "BUY 2 for $12.90" -> 2. */
+function discountSpan(description: string): number {
+  const match = /\b(?:buy|any|mix)\s+(\d+)\b/i.exec(description);
+  const n = match ? Number(match[1]) : 1;
+  return Number.isFinite(n) && n >= 1 && n <= 12 ? n : 1;
+}
+
+function roundCents(value: number): number {
+  return Math.round(value * 100) / 100;
+}
+
+/**
+ * Fold a multi-buy discount row ("BUY 2 for $12.90  -4.60") into the items it
+ * discounts, and drop the row. Woolworths prints these under the *pair* of
+ * products they cover, so putting the whole reduction on the line above would
+ * leave one product looking half price and the other full price; the money is
+ * split across the covered items in proportion to what they cost.
+ *
+ * A discount that names no items above it is kept as-is and flagged, so a
+ * receipt is never quietly reduced by money we couldn't attribute.
+ */
+export function foldDiscountLines(items: ReceiptLineItem[]): ReceiptLineItem[] {
+  const out = items.map((i) => ({ ...i }));
+  const kept = out.map(() => true);
+
+  for (let i = 0; i < out.length; i++) {
+    const discount = out[i];
+    if (discount.total_price == null || discount.total_price >= 0) continue;
+
+    // Walk back over the items this row covers, newest first.
+    const targets: number[] = [];
+    for (let j = i - 1; j >= 0 && targets.length < discountSpan(discount.description); j--) {
+      const candidate = out[j];
+      if (!kept[j] || candidate.total_price == null || candidate.total_price <= 0) continue;
+      targets.unshift(j);
+    }
+    const covered = targets.reduce((sum, j) => sum + (out[j].total_price ?? 0), 0);
+    if (targets.length === 0 || covered <= 0) {
+      discount.needs_review = true;
+      continue;
+    }
+
+    // Proportional split, with the rounding remainder landing on the last item.
+    let remaining = discount.total_price;
+    targets.forEach((j, index) => {
+      const target = out[j];
+      const share = index === targets.length - 1
+        ? roundCents(remaining)
+        : roundCents(discount.total_price! * ((target.total_price ?? 0) / covered));
+      remaining = roundCents(remaining - share);
+      target.total_price = roundCents((target.total_price ?? 0) + share);
+      if (target.unit_price != null) {
+        const per = target.quantity != null && target.quantity > 0 ? target.quantity : 1;
+        target.unit_price = roundCents(target.total_price / per);
+      }
+    });
+    kept[i] = false;
+  }
+
+  return out.filter((_, i) => kept[i]);
+}
+
 /**
  * The number of units a receipt's "N Items" footer should count for this line:
  * whole quantities are unit counts, fractional ones are a single weighed item.
