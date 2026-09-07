@@ -1,0 +1,8 @@
+name = "trolley-web"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+workers_dev = false
+
+routes = [
+  { pattern = "trolley.speaking.computer", custom_domain = true },
+]

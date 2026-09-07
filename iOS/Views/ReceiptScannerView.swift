@@ -52,6 +52,9 @@ struct ReceiptScannerView: View {
     @State private var scanResult: ReceiptScanResponse? = nil
     @State private var editableItems: [EditableReceiptItem] = []
     @State private var showEditSheet = false
+    @State private var hasEditedReceipt = false
+    @State private var saveError: String?
+    @State private var showSaveError = false
 
     // Belt-and-braces: guarantees the scan request only ever fires once for
     // this instance even if `.task` were somehow re-entered — a request that
@@ -71,13 +74,14 @@ struct ReceiptScannerView: View {
                 if let failureMessage {
                     failedView(failureMessage)
                 } else {
-                    ReceiptPrintingView(
+                    ReceiptPrinterView(
+                        result: scanResult,
+                        items: paperItems,
                         printer: printer,
-                        stage: stage,
-                        includedCount: includedCount,
-                        includedTotal: includedTotal,
+                        isReady: stage == .printed,
+                        isSaving: stage == .saving,
                         onEdit: { showEditSheet = true },
-                        onTearOff: { confirmReceipt() }
+                        onTear: confirmReceipt
                     )
                 }
             }
@@ -94,18 +98,23 @@ struct ReceiptScannerView: View {
         // half-imported, so the sheet holds still until it lands.
         .interactiveDismissDisabled(stage == .saving)
         .sheet(isPresented: $showEditSheet) {
-            ReceiptEditSheet(
-                items: $editableItems,
-                storeName: scanResult?.storeName,
-                receiptTotal: scanResult?.totalAmount,
-                printedItemCount: scanResult?.itemCount,
-                needsReview: scanResult?.needsReview == true,
-                householdId: householdId
-            )
+            NavigationStack {
+                ReceiptEditorView(items: $editableItems, householdId: householdId)
+                    .navigationTitle("Review items")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showEditSheet = false }.bold()
+                        }
+                    }
+            }
         }
+        .alert("Receipt wasn’t saved", isPresented: $showSaveError) {
+            Button("OK", role: .cancel) {}
+        } message: { Text(saveError ?? "Please try confirming again.") }
         // However the sheet was closed, the paper reprints with what changed.
         .onChange(of: showEditSheet) { _, isShowing in
-            if !isShowing { printer.sync(with: editableItems) }
+            if !isShowing { hasEditedReceipt = true; printer.sync(with: editableItems) }
         }
         .task {
             guard !hasStartedProcessing else { return }
@@ -134,6 +143,19 @@ struct ReceiptScannerView: View {
     private var navTitle: String {
         if failureMessage != nil { return "Couldn't Read Receipt" }
         return printer.storeName ?? "Receipt"
+    }
+
+    private var paperItems: [EditableReceiptItem] {
+        if hasEditedReceipt { return editableItems }
+        return printer.lines.map { line in
+            EditableReceiptItem(from: ReceiptScanItem(
+                description: line.description, quantity: line.quantity,
+                unitPrice: line.unitPrice, totalPrice: line.totalPrice,
+                sizeValue: nil, sizeUnit: nil, productId: nil,
+                productName: line.description, isNew: false,
+                purchaseHistoryId: nil, needsReview: line.needsReview
+            ))
+        }
     }
 
     private var includedCount: Int { editableItems.filter(\.isIncluded).count }
@@ -447,7 +469,9 @@ struct ReceiptScannerView: View {
                 dismiss()
             } catch {
                 // The paper is already gone, so there's nothing to go back to.
-                fail("Couldn't save that receipt. (\(error.localizedDescription))")
+                stage = .printed
+                saveError = error.localizedDescription
+                showSaveError = true
             }
         }
     }
@@ -510,6 +534,456 @@ struct DocumentScannerCapture: UIViewControllerRepresentable {
             guard !hasFired else { return }
             hasFired = true
             onCancel()
+        }
+    }
+}
+
+
+// MARK: - Receipt editor
+
+private struct ReceiptEditorView: View {
+    @Binding var items: [EditableReceiptItem]
+    let householdId: String
+
+    var body: some View {
+        List {
+            Section {
+                ForEach($items) { $item in
+                    HStack(spacing: 12) {
+                        Button {
+                            item.isIncluded.toggle()
+                            UISelectionFeedbackGenerator().selectionChanged()
+                        } label: {
+                            Image(systemName: item.isIncluded ? "checkmark.circle.fill" : "circle")
+                                .font(.title3)
+                                .foregroundStyle(item.isIncluded ? Color.accentColor : Color.secondary)
+                                .frame(width: 32, height: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(item.isIncluded ? "Ignore" : "Include") \(item.description)")
+
+                        NavigationLink {
+                            ReceiptProductChoice(item: $item, householdId: householdId)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(alignment: .top, spacing: 10) {
+                                    Text(item.description).font(.subheadline)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    Text(item.priceText.isEmpty ? "—" : "$" + item.priceText)
+                                        .font(.subheadline.monospacedDigit())
+                                        .fixedSize()
+                                }
+                                if item.needsReview && item.isIncluded {
+                                    Text("Check quantity or price").font(.caption).foregroundStyle(.orange)
+                                }
+                                Text(!item.isIncluded ? "Ignored" : item.productId == nil ? "New product · \(item.productName)" : "Matched to \(item.productName)")
+                                    .font(.caption).foregroundStyle(.secondary)
+                                    .lineLimit(1)
+                            }
+                            .opacity(item.isIncluded ? 1 : 0.45)
+                        }
+                    }
+                    .padding(.vertical, 3)
+                }
+            } header: {
+                Text("\(items.filter(\.isIncluded).count) of \(items.count) items included")
+            }
+        }
+        .listStyle(.insetGrouped)
+    }
+}
+
+private struct ReceiptProductChoice: View {
+    @Binding var item: EditableReceiptItem
+    let householdId: String
+    @Environment(AppServices.self) private var services
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+    @State private var results: [ProductSearchResult] = []
+    @State private var loading = false
+    @State private var searchFailed = false
+    @State private var creating = false
+    @State private var newName = ""
+    @State private var adjusting = false
+    @State private var quantity = ""
+    @State private var price = ""
+    @State private var invalidDetails = false
+
+    var body: some View {
+        List {
+            Section("On the receipt") {
+                Text(item.description).font(.system(.subheadline, design: .monospaced))
+                HStack {
+                    Text(item.productName)
+                    Spacer()
+                    Image(systemName: "checkmark").foregroundStyle(Color.accentColor)
+                }
+            }
+            Section(query.isEmpty ? "Suggested products" : "Search results") {
+                if loading { ProgressView() }
+                if searchFailed {
+                    Text("Couldn’t search products. Try another search.").foregroundStyle(.secondary)
+                } else if !loading && results.isEmpty {
+                    Text("No matching products. Search by another name or create a new product.")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
+                ForEach(results) { product in
+                    Button {
+                        item.productId = product.id
+                        item.productName = product.name
+                        item.isNew = false
+                        item.purchaseHistoryId = nil
+                        item.isIncluded = true
+                        dismiss()
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(product.name).foregroundStyle(.primary)
+                                Text(product.category).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if product.id == item.productId {
+                                Image(systemName: "checkmark").foregroundStyle(Color.accentColor)
+                            }
+                        }
+                    }
+                }
+            }
+            Section {
+                Button("Create new product…", systemImage: "plus.circle") {
+                    newName = item.productName
+                    creating = true
+                }
+            }
+            Section {
+                Button("Adjust quantity or price", systemImage: "slider.horizontal.3") {
+                    quantity = item.quantity.map { String($0) } ?? ""
+                    price = item.priceText
+                    adjusting = true
+                }
+                .font(.subheadline)
+            }
+        }
+        .navigationTitle("Choose product")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $query, prompt: "Search all your products")
+        .task(id: query) {
+            loading = true
+            searchFailed = false
+            do {
+                try await Task.sleep(for: .milliseconds(200))
+                let search = query.isEmpty ? item.productName : query
+                let found = try await services.api.searchProducts(householdId: householdId, query: search)
+                guard !Task.isCancelled else { return }
+                results = found
+                loading = false
+            } catch {
+                guard !Task.isCancelled else { return }
+                results = []
+                loading = false
+                searchFailed = true
+            }
+        }
+        .alert("New product", isPresented: $creating) {
+            TextField("Product name", text: $newName)
+            Button("Cancel", role: .cancel) {}
+            Button("Use new product") {
+                let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !name.isEmpty else { return }
+                item.productId = nil
+                item.productName = name
+                item.isNew = true
+                item.purchaseHistoryId = nil
+                item.isIncluded = true
+                dismiss()
+            }
+            .disabled(newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        } message: {
+            Text("This product will be created when you confirm the receipt.")
+        }
+        .alert("Adjust receipt line", isPresented: $adjusting) {
+            TextField("Quantity", text: $quantity).keyboardType(.decimalPad)
+            TextField("Line price", text: $price).keyboardType(.decimalPad)
+            Button("Cancel", role: .cancel) {}
+            Button("Apply") {
+                let qty = Double(quantity.replacingOccurrences(of: ",", with: "."))
+                let amount = Double(price.replacingOccurrences(of: ",", with: "."))
+                guard (quantity.isEmpty || (qty != nil && qty!.isFinite && qty! > 0)),
+                      (price.isEmpty || (amount != nil && amount!.isFinite)) else {
+                    invalidDetails = true
+                    return
+                }
+                item.quantity = qty
+                item.priceText = amount.map { String(format: "%.2f", $0) } ?? ""
+                // Original per-unit price is stale after a manual correction.
+                item.unitPrice = nil
+                item.needsReview = false
+            }
+        }
+        .alert("Check quantity and price", isPresented: $invalidDetails) {
+            Button("OK", role: .cancel) {}
+        } message: { Text("Use a positive quantity and a valid price, or leave them blank.") }
+    }
+}
+
+// MARK: - Thermal receipt printer
+
+/// Paper feeds upwards from the slot; the complete assembly scrolls together.
+/// The viewport, paper and printer
+/// all derive their widths from the same bounded geometry, regardless of content.
+private struct ReceiptPrinterView: View {
+    let result: ReceiptScanResponse?
+    let items: [EditableReceiptItem]
+    let printer: ReceiptPrinter
+    let isReady: Bool
+    let isSaving: Bool
+    let onEdit: () -> Void
+    let onTear: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    private var printed: Int { printer.totalPrinted ? lineCount : printer.lines.count + (printer.storeName == nil ? 0 : 1) }
+    @State private var tearing = false
+    @State private var detached = false
+    @State private var feedHaptic = UIImpactFeedbackGenerator(style: .light)
+    private let paper = Color.white
+    private let ink = Color.black
+    private var included: [EditableReceiptItem] { items.filter(\.isIncluded) }
+    private var canTear: Bool { isReady && !included.isEmpty && !tearing && !detached }
+    private var lineCount: Int { items.count + 2 }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let machineWidth = min(max(geometry.size.width - 32, 0), 370)
+            let paperWidth = max(machineWidth - 48, 0)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        Spacer(minLength: 24)
+                        receipt(width: paperWidth)
+                            .rotationEffect(.degrees(reduceMotion || !tearing || detached ? 0 : -3), anchor: .bottomLeading)
+                            .offset(y: detached ? (reduceMotion ? 0 : -geometry.size.height - 200) : tearing ? -12 : 0)
+                            .opacity(detached ? 0 : 1)
+                            .zIndex(2)
+                        printer(width: machineWidth, paperWidth: paperWidth)
+                            .padding(.top, -8)
+                        Color.clear.frame(height: 104).id("feed")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: geometry.size.height, alignment: .bottom)
+                }
+                .scrollEdgeEffectStyle(.soft, for: .all)
+                .scrollIndicators(.hidden)
+                .scrollDisabled(tearing || isSaving)
+                .defaultScrollAnchor(.bottom)
+                .onChange(of: printed) {
+                    withAnimation(reduceMotion ? nil : .linear(duration: 0.18)) {
+                        proxy.scrollTo("feed", anchor: .bottom)
+                    }
+                }
+                .overlay(alignment: .bottom) {
+                    HStack(spacing: 12) {
+                        if isReady && !tearing {
+                            Button(action: onEdit) {
+                                Label("Edit", systemImage: "slider.horizontal.3")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.glass)
+                            Button {
+                                proxy.scrollTo("feed", anchor: .bottom)
+                                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                                    tearing = true
+                                }
+                            } label: {
+                                Label("Confirm", systemImage: "checkmark")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.glassProminent)
+                            .disabled(!canTear)
+                        } else if !tearing && !isSaving {
+                            ProgressView().controlSize(.small)
+                            Text(result == nil ? "Reading receipt…" : "Printing…")
+                                .font(.subheadline).foregroundStyle(.secondary)
+                        }
+                    }
+                    .controlSize(.large)
+                    .frame(maxWidth: 370)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 16)
+                }
+            }
+        }
+        .background { Color(.systemGroupedBackground).ignoresSafeArea() }
+        .task(id: tearing) {
+            guard tearing else { return }
+            do {
+                UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                try await Task.sleep(for: .milliseconds(180))
+                withAnimation(reduceMotion ? .linear(duration: 0.15) : .easeIn(duration: 0.5)) {
+                    detached = true
+                }
+                try await Task.sleep(for: .milliseconds(reduceMotion ? 150 : 500))
+                guard !Task.isCancelled else { return }
+                onTear()
+            } catch { }
+        }
+        .onChange(of: printer.lines.count) { old, new in
+            guard new > old else { return }
+            feedHaptic.impactOccurred(intensity: 0.35)
+            feedHaptic.prepare()
+        }
+        .onChange(of: isSaving) { _, saving in
+            if !saving { detached = false; tearing = false }
+        }
+    }
+
+    private var displayDate: String? {
+        guard let raw = result?.receiptDate else { return printer.dateText }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let date = formatter.date(from: String(raw.prefix(10))) else { return raw }
+        return date.formatted(.dateTime.weekday(.wide).day().month(.wide).year())
+    }
+
+    private func receipt(width: CGFloat) -> some View {
+        let priceWidth = min(width * 0.42, UIFont.preferredFont(forTextStyle: .footnote).pointSize * 0.62 * 8)
+        return VStack(spacing: 0) {
+            if printed > 0 {
+                VStack(spacing: 4) {
+                    Text(printer.storeName ?? "Your receipt")
+                        .font(.system(.headline, design: .monospaced).bold())
+                        .multilineTextAlignment(.center)
+                    if let date = displayDate {
+                        Text(date)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(ink.opacity(0.45))
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, 22)
+                .padding(.bottom, 14)
+                rule
+            }
+            ForEach(Array(included.enumerated()), id: \.offset) { index, item in
+                if isReady || isSaving || printed > index + 1 {
+                    HStack(alignment: .top, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(item.productName).fixedSize(horizontal: false, vertical: true)
+                            if let quantity = item.quantityText {
+                                Text(quantity).font(.system(.caption2, design: .monospaced))
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(item.priceText.isEmpty ? "—" : "$" + item.priceText)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(width: priceWidth, alignment: .trailing)
+                    }
+                    .font(.system(.footnote, design: .monospaced))
+                    .padding(.vertical, 6)
+                    .transition(.identity)
+                }
+            }
+            if printed >= lineCount {
+                rule
+                HStack {
+                    Text("ITEMS TOTAL")
+                    Spacer(minLength: 4)
+                    Text(included.reduce(0) { $0 + (Double($1.priceText.replacingOccurrences(of: ",", with: ".")) ?? 0) }, format: .currency(code: "AUD"))
+                }
+                .font(.system(.subheadline, design: .monospaced).bold())
+                .padding(.top, 14)
+                .padding(.bottom, 6)
+                if let total = result?.totalAmount {
+                    Text("Original receipt: \(total, format: .currency(code: "AUD"))")
+                        .font(.system(.caption2, design: .monospaced))
+                        .padding(.bottom, 12)
+                }
+                Text(included.isEmpty ? "No items selected · Edit to add them back" : "\(included.count) items selected")
+                    .font(.system(.caption2, design: .monospaced))
+                    .multilineTextAlignment(.center)
+                    .padding(.bottom, 22)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+        .frame(width: width, alignment: .top)
+        .foregroundStyle(ink)
+        .background(paper)
+        .clipShape(ReceiptPaperEdge(torn: tearing))
+        .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: -2)
+    }
+
+    private var rule: some View {
+        UnevenReceiptRule()
+            .stroke(ink.opacity(0.20), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+            .frame(height: 1)
+            .padding(.vertical, 6)
+            .accessibilityHidden(true)
+    }
+
+    private func printer(width: CGFloat, paperWidth: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            Capsule().fill(.black.opacity(0.8))
+                .frame(width: paperWidth + 16, height: 12)
+                .overlay { Capsule().stroke(.white.opacity(0.15), lineWidth: 1) }
+                .padding(.top, 4)
+            HStack(spacing: 7) {
+                Circle().fill(isReady ? Color.green : Color.orange).frame(width: 5, height: 5)
+                    .shadow(color: (isReady ? Color.green : Color.orange).opacity(0.5), radius: 4)
+                Text(isSaving || tearing ? "" : isReady ? "Ready" : "Processing")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.6))
+                Spacer()
+                ForEach(0..<5) { _ in
+                    Capsule().fill(.black.opacity(0.35)).frame(width: 2, height: 12)
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 8)
+            .padding(.bottom, 20)
+        }
+        .frame(width: width)
+        .background {
+            RoundedRectangle(cornerRadius: 24)
+                .fill(LinearGradient(colors: [Color(white: 0.29), Color(white: 0.16)], startPoint: .top, endPoint: .bottom))
+                .overlay { RoundedRectangle(cornerRadius: 24).strokeBorder(.white.opacity(0.16), lineWidth: 1) }
+                .shadow(color: .black.opacity(0.2), radius: 12, y: 8)
+        }
+    }
+
+}
+
+/// Actual cut paper silhouette, rather than a printed dashed rule.
+private struct ReceiptPaperEdge: Shape {
+    var torn: Bool
+    func path(in rect: CGRect) -> Path {
+        let teeth = max(1, Int(rect.width / 9))
+        let step = rect.width / CGFloat(teeth)
+        let depth: CGFloat = 4
+        return Path { path in
+            path.move(to: CGPoint(x: 0, y: depth))
+            for tooth in 0..<teeth {
+                let x = CGFloat(tooth) * step
+                path.addLine(to: CGPoint(x: x + step / 2, y: 0))
+                path.addLine(to: CGPoint(x: x + step, y: depth))
+            }
+            path.addLine(to: CGPoint(x: rect.width, y: rect.height - (torn ? depth : 0)))
+            for tooth in (0..<teeth).reversed() {
+                let x = CGFloat(tooth) * step
+                path.addLine(to: CGPoint(x: x + step / 2, y: rect.height))
+                path.addLine(to: CGPoint(x: x, y: rect.height - (torn ? depth : 0)))
+            }
+            path.closeSubpath()
+        }
+    }
+}
+
+private struct UnevenReceiptRule: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { path in
+            path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
         }
     }
 }

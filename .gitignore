@@ -13,6 +13,10 @@ worker/node_modules/
 worker/.dev.vars
 worker/.wrangler/
 
+# Site (trolley.speaking.computer)
+site/node_modules/
+site/.wrangler/
+
 # Migration script
 scripts/node_modules/
 

@@ -4,6 +4,7 @@ import { requireAuth, type AuthVariables } from "../middleware/auth";
 import { nowISO, type ShoppingItem, type Product } from "../db";
 import { categorise, findMatchingProduct } from "../ai";
 import { notifyHomeAssistant } from "../ha";
+import { errorCode, logError } from "../log";
 
 const app = new Hono<{ Bindings: Env; Variables: AuthVariables }>();
 
@@ -28,7 +29,7 @@ async function broadcastToHousehold(
       new Request("http://do/broadcast", { method: "POST", body: message }),
     );
   } catch (e) {
-    console.error("[broadcast] failed:", e);
+    logError("household_broadcast_failed", { errorCode: errorCode(e) });
   }
 }
 

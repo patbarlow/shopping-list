@@ -2,6 +2,17 @@ name = "shopping-list-api"
 main = "src/index.ts"
 compatibility_date = "2024-12-01"
 
+[observability]
+enabled = true
+
+  [observability.logs]
+  invocation_logs = true
+  head_sampling_rate = 1
+
+  [observability.traces]
+  enabled = true
+  head_sampling_rate = 0.05
+
 [[d1_databases]]
 binding = "DB"
 database_name = "shopping-list"

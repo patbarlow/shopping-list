@@ -378,7 +378,7 @@ struct EditableReceiptItem: Identifiable {
     let sizeUnit: String?
 
     init(from item: ReceiptScanItem) {
-        self.id                = item.description
+        self.id                = UUID().uuidString
         self.description       = item.description
         self.quantity          = item.quantity
         self.needsReview       = item.needsReview ?? false
