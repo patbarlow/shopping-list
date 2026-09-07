@@ -9,6 +9,7 @@ import realtimeRoutes from "./routes/realtime";
 import recipesRoutes from "./routes/recipes";
 import receiptsRoutes from "./routes/receipts";
 import insightsRoutes from "./routes/insights";
+import { errorCode, logError } from "./log";
 
 export { HouseholdRoom } from "./room";
 
@@ -27,8 +28,12 @@ app.route("/v1/receipts", receiptsRoutes);
 app.route("/v1/insights", insightsRoutes);
 
 app.onError((err, c) => {
-  console.error("Unhandled error:", err);
-  return c.json({ error: "internal_error", detail: err.message }, 500);
+  logError("request_failed", {
+    method: c.req.method,
+    path: new URL(c.req.url).pathname,
+    errorCode: errorCode(err),
+  });
+  return c.json({ error: "internal_error" }, 500);
 });
 
 export default app;

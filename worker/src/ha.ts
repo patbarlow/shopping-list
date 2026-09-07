@@ -1,5 +1,6 @@
 import type { Env } from "./env";
 import type { ShoppingItem } from "./db";
+import { errorCode, logError } from "./log";
 
 // SQLite stores booleans as 0/1 integers; convert to JSON boolean for HA (mirrors items.ts toResponse).
 function toResponse(item: ShoppingItem): object {
@@ -26,6 +27,6 @@ export async function notifyHomeAssistant(
       body: JSON.stringify({ action, item: toResponse(item) }),
     });
   } catch (e) {
-    console.error("[ha-webhook] failed:", e);
+    logError("home_assistant_webhook_failed", { errorCode: errorCode(e) });
   }
 }

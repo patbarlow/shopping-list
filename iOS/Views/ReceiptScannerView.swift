@@ -35,7 +35,7 @@ struct ReceiptScannerView: View {
     private enum Phase {
         case failed
         case scanning
-        case printing(ReceiptScanResponse)
+        case printing
         case review
         case confirming
     }
@@ -46,6 +46,8 @@ struct ReceiptScannerView: View {
     @State private var errorMessage: String? = nil
 
     // Product picker sheet state
+    @State private var showEditor = false
+    @State private var showSaveError = false
     @State private var showProductPicker = false
     @State private var pickingForItemId: String? = nil
     @State private var productPickerQuery: String = ""
@@ -67,30 +69,45 @@ struct ReceiptScannerView: View {
             Group {
                 switch phase {
                 case .failed:                failedView
-                case .scanning:               ScanningProgressView()
-                case .printing(let result):   ReceiptPrintingView(result: result) { phase = .review }
-                case .review:                 reviewView
-                case .confirming:             loadingView("Saving…")
+                default:
+                    ReceiptPrinterView(
+                        result: scanResult,
+                        items: editableItems,
+                        isReady: isReady,
+                        isSaving: isSaving,
+                        onFinished: { phase = .review },
+                        onEdit: { showEditor = true },
+                        onTear: confirmReceipt
+                    )
                 }
             }
             .navigationTitle(navTitle)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }
+                    Button("Cancel") { dismiss() }.disabled(isSaving)
                 }
-                if case .review = phase {
-                    ToolbarItem(placement: .confirmationAction) {
-                        Button("Save") { confirmReceipt() }.bold()
-                    }
-                }
+
             }
         }
-        .sheet(isPresented: $showProductPicker) {
-            ProductPickerSheet(householdId: householdId, initialQuery: productPickerQuery) { result in
-                applyPickerResult(result)
-                showProductPicker = false
+        .interactiveDismissDisabled(isSaving)
+        .sheet(isPresented: $showEditor) {
+            NavigationStack {
+                reviewView
+                    .navigationTitle("Review items")
+                    .navigationBarTitleDisplayMode(.inline)
+                    .toolbar {
+                        ToolbarItem(placement: .confirmationAction) {
+                            Button("Done") { showEditor = false }.bold()
+                        }
+                    }
             }
+        }
+
+        .alert("Receipt wasn’t saved", isPresented: $showSaveError) {
+            Button("OK", role: .cancel) {}
+        } message: {
+            Text(errorMessage ?? "Please try confirming the receipt again.")
         }
         .task {
             guard !hasStartedProcessing else { return }
@@ -114,6 +131,16 @@ struct ReceiptScannerView: View {
         case .photoData(let data): await handlePhotoData(data)
         case .pdfData(let data):   await handlePDF(data)
         }
+    }
+
+    private var isReady: Bool {
+        if case .review = phase { return true }
+        return false
+    }
+
+    private var isSaving: Bool {
+        if case .confirming = phase { return true }
+        return false
     }
 
     private var navTitle: String {
@@ -143,134 +170,13 @@ struct ReceiptScannerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Loading
-
-    private func loadingView(_ message: String) -> some View {
-        VStack(spacing: 20) {
-            ProgressView().scaleEffect(1.4)
-            Text(message).foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
     // MARK: - Review
 
     private var includedCount: Int { editableItems.filter(\.isIncluded).count }
     private var newCount: Int { editableItems.filter { $0.isIncluded && $0.productId == nil }.count }
 
     private var reviewView: some View {
-        List {
-            if let result = scanResult, result.totalAmount != nil || result.storeName != nil {
-                Section {
-                    if let store = result.storeName {
-                        LabeledContent("Store", value: store)
-                    }
-                    if let total = result.totalAmount {
-                        LabeledContent("Total", value: String(format: "$%.2f", total))
-                    }
-                }
-            }
-
-            Section {
-                ForEach($editableItems) { $item in
-                    itemRow(item: $item)
-                }
-            } header: {
-                Text("^[\(includedCount) item](inflect: true)")
-            } footer: {
-                Text(newCount > 0
-                     ? "Tap a name to change the match. \(newCount) will be added as new products."
-                     : "Tap a name to link it to a different product.")
-            }
-        }
-    }
-
-    @ViewBuilder
-    private func itemRow(item: Binding<EditableReceiptItem>) -> some View {
-        HStack(spacing: 12) {
-            Toggle("", isOn: item.isIncluded).labelsHidden()
-
-            VStack(alignment: .leading, spacing: 3) {
-                HStack(spacing: 6) {
-                    if item.wrappedValue.productId == nil {
-                        // New product: name is editable inline.
-                        TextField("Product name", text: item.productName)
-                            .font(.body.bold())
-                            .textInputAutocapitalization(.words)
-                        Text("NEW")
-                            .font(.caption2).bold()
-                            .padding(.horizontal, 5).padding(.vertical, 1)
-                            .background(.green.opacity(0.18), in: Capsule())
-                            .foregroundStyle(.green)
-                    } else {
-                        // Linked to an existing product.
-                        Text(item.wrappedValue.productName)
-                            .font(.body.bold())
-                            .foregroundStyle(.primary)
-                        Image(systemName: "link")
-                            .font(.caption2)
-                            .foregroundStyle(.blue)
-                    }
-
-                    // Search / relink to a different (or existing) product.
-                    Button {
-                        pickingForItemId = item.wrappedValue.id
-                        productPickerQuery = item.wrappedValue.productName
-                        showProductPicker = true
-                    } label: {
-                        Image(systemName: "magnifyingglass")
-                            .font(.caption)
-                            .foregroundStyle(.secondary)
-                    }
-                    .buttonStyle(.borderless)
-                }
-
-                HStack(spacing: 4) {
-                    if let qty = item.wrappedValue.quantityText {
-                        Text(qty).font(.caption).foregroundStyle(.secondary)
-                    }
-                    Text(item.wrappedValue.description)
-                        .font(.caption)
-                        .foregroundStyle(.secondary)
-                }
-            }
-
-            Spacer(minLength: 4)
-
-            HStack(spacing: 2) {
-                Text("$").foregroundStyle(.secondary)
-                TextField("0.00", text: item.priceText)
-                    .keyboardType(.decimalPad)
-                    .multilineTextAlignment(.trailing)
-                    .frame(width: 56)
-            }
-        }
-        .opacity(item.wrappedValue.isIncluded ? 1 : 0.4)
-    }
-
-
-    // MARK: - Picker result
-
-    private func applyPickerResult(_ result: ProductPickerResult) {
-        guard let itemId = pickingForItemId,
-              let idx = editableItems.firstIndex(where: { $0.id == itemId }) else {
-            pickingForItemId = nil
-            return
-        }
-        switch result {
-        case .existing(let id, let name):
-            editableItems[idx].productId = id
-            editableItems[idx].productName = name
-            editableItems[idx].isNew = false
-        case .create(let name):
-            editableItems[idx].productId = nil
-            editableItems[idx].productName = name
-            editableItems[idx].isNew = true
-        }
-        // A manual choice no longer maps to the auto-detected list entry.
-        editableItems[idx].purchaseHistoryId = nil
-        editableItems[idx].isIncluded = true
-        pickingForItemId = nil
+        ReceiptEditorView(items: $editableItems, householdId: householdId)
     }
 
     // MARK: - Image handling
@@ -449,7 +355,7 @@ struct ReceiptScannerView: View {
     private func applyResult(_ result: ReceiptScanResponse) {
         scanResult = result
         editableItems = result.items.map { EditableReceiptItem(from: $0) }
-        phase = .printing(result)
+        phase = .printing
     }
 
     // MARK: - Confirm
@@ -491,6 +397,7 @@ struct ReceiptScannerView: View {
             } catch {
                 phase = .review
                 errorMessage = error.localizedDescription
+                showSaveError = true
             }
         }
     }
@@ -557,192 +464,461 @@ struct DocumentScannerCapture: UIViewControllerRepresentable {
     }
 }
 
-// MARK: - Receipt printing reveal
+// MARK: - Receipt editor
 
-/// The scan result already arrived in one response; this plays it onto the
-/// screen the way a receipt prints — store, then date, then each line item,
-/// then the total — before handing off to item matching. Same visual
-/// language as TripReceiptView (monospaced, dashed rules) so a scanned
-/// receipt and a saved one look like the same object.
-private struct ReceiptPrintingView: View {
-    let result: ReceiptScanResponse
-    let onFinished: () -> Void
-
-    /// 0 = nothing shown, 1 = store, 2 = + date, 3+i = + item i, then total.
-    @State private var revealedLines = 0
-    @State private var revealedTotal = false
+private struct ReceiptEditorView: View {
+    @Binding var items: [EditableReceiptItem]
+    let householdId: String
 
     var body: some View {
-        ScrollView {
-            VStack(spacing: 0) {
-                VStack(spacing: 4) {
-                    if revealedLines >= 1 {
-                        Text(result.storeName ?? "Receipt")
-                            .font(.system(.headline, design: .monospaced).weight(.bold))
-                            .multilineTextAlignment(.center)
-                            .transition(.opacity.combined(with: .move(edge: .top)))
-                    }
-                    if revealedLines >= 2, let date = displayDate {
-                        Text(date)
-                            .font(.system(.caption, design: .monospaced))
-                            .foregroundStyle(.secondary)
-                            .transition(.opacity)
-                    }
-                }
-                .padding(.top, 22)
-                .padding(.bottom, 14)
-                .padding(.horizontal, 16)
-                .frame(minHeight: 66)
+        List {
+            Section {
+                ForEach($items) { $item in
+                    HStack(spacing: 12) {
+                        Button {
+                            item.isIncluded.toggle()
+                            UISelectionFeedbackGenerator().selectionChanged()
+                        } label: {
+                            Image(systemName: item.isIncluded ? "checkmark.circle.fill" : "circle")
+                                .font(.title3)
+                                .foregroundStyle(item.isIncluded ? Color.accentColor : Color.secondary)
+                                .frame(width: 32, height: 44)
+                        }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel("\(item.isIncluded ? "Ignore" : "Include") \(item.description)")
 
-                dashedDivider
-
-                VStack(spacing: 0) {
-                    ForEach(Array(result.items.enumerated()), id: \.offset) { i, item in
-                        if revealedLines >= 3 + i {
-                            HStack(alignment: .top, spacing: 10) {
-                                Text(item.description)
-                                    .font(.system(.footnote, design: .monospaced))
-                                    .frame(maxWidth: .infinity, alignment: .leading)
-                                if let price = item.totalPrice {
-                                    Text(price, format: .currency(code: "AUD"))
-                                        .font(.system(.footnote, design: .monospaced))
+                        NavigationLink {
+                            ReceiptProductChoice(item: $item, householdId: householdId)
+                        } label: {
+                            VStack(alignment: .leading, spacing: 4) {
+                                HStack(alignment: .top, spacing: 10) {
+                                    Text(item.description).font(.subheadline)
+                                        .frame(maxWidth: .infinity, alignment: .leading)
+                                    Text(item.priceText.isEmpty ? "—" : "$" + item.priceText)
+                                        .font(.subheadline.monospacedDigit())
+                                        .fixedSize()
                                 }
+                                Text(!item.isIncluded ? "Ignored" : item.productId == nil ? "New product · \(item.productName)" : "Matched to \(item.productName)")
+                                    .font(.caption).foregroundStyle(.secondary)
+                                    .lineLimit(1)
                             }
-                            .padding(.vertical, 6)
-                            .transition(.opacity.combined(with: .move(edge: .top)))
+                            .opacity(item.isIncluded ? 1 : 0.45)
                         }
                     }
+                    .padding(.vertical, 3)
                 }
-                .padding(.horizontal, 16)
-
-                if revealedTotal {
-                    dashedDivider
-                    HStack {
-                        Text("TOTAL").font(.system(.subheadline, design: .monospaced).weight(.bold))
-                        Spacer()
-                        if let total = result.totalAmount {
-                            Text(total, format: .currency(code: "AUD"))
-                                .font(.system(.subheadline, design: .monospaced).weight(.bold))
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 14)
-                    .padding(.bottom, 20)
-                    .transition(.opacity)
-                }
-            }
-            // Without this, the card sizes to fit its content — and early in
-            // the reveal (before any item rows exist) the only thing wide
-            // enough to establish a width is the dashed divider's fixed run
-            // of characters, which falls short of the screen on most
-            // devices. That's what showed as the card — and the grey behind
-            // it — not reaching the edges for the first moment of the reveal.
-            .frame(maxWidth: .infinity)
-            .background(Color(.secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-            .shadow(color: .black.opacity(0.08), radius: 12, y: 6)
-            .padding(20)
-        }
-        .background(Color(.systemGroupedBackground))
-        .task { await runReveal() }
-    }
-
-    private var dashedDivider: some View {
-        HStack(spacing: 4) {
-            ForEach(0..<44, id: \.self) { _ in
-                Rectangle().frame(width: 3, height: 1)
+            } header: {
+                Text("\(items.filter(\.isIncluded).count) of \(items.count) items included")
             }
         }
-        .foregroundStyle(.tertiary)
-        .padding(.horizontal, 16)
-        .padding(.vertical, 6)
-        .fixedSize(horizontal: false, vertical: true)
-        .clipped()
-    }
-
-    private var displayDate: String? {
-        guard let raw = result.receiptDate else { return nil }
-        let f = DateFormatter()
-        f.dateFormat = "yyyy-MM-dd"
-        guard let d = f.date(from: String(raw.prefix(10))) else { return nil }
-        f.dateStyle = .full
-        f.timeStyle = .none
-        return f.string(from: d)
-    }
-
-    private func runReveal() async {
-        func pause(_ delay: Duration) async { try? await Task.sleep(for: delay) }
-
-        await pause(.milliseconds(300))
-        withAnimation(.spring(duration: 0.35)) { revealedLines = 1 }
-        await pause(.milliseconds(350))
-        withAnimation(.spring(duration: 0.35)) { revealedLines = 2 }
-        await pause(.milliseconds(300))
-        for i in 0 ..< result.items.count {
-            withAnimation(.spring(duration: 0.3)) { revealedLines = 3 + i }
-            await pause(.milliseconds(90))
-        }
-        await pause(.milliseconds(250))
-        withAnimation(.spring(duration: 0.35)) { revealedTotal = true }
-        await pause(.milliseconds(700))
-        onFinished()
+        .listStyle(.insetGrouped)
     }
 }
 
-// MARK: - Scanning progress
-
-/// Animated, staged indicator shown while a receipt is being read & matched.
-/// The stages mirror the real pipeline; they advance on a timer since the work
-/// happens in a single server round-trip.
-private struct ScanningProgressView: View {
-    private struct Stage { let icon: String; let label: String }
-    private let stages: [Stage] = [
-        Stage(icon: "doc.text.viewfinder", label: "Reading the receipt…"),
-        Stage(icon: "list.bullet.rectangle", label: "Pulling out the items…"),
-        Stage(icon: "wand.and.stars", label: "Matching to your products…"),
-        Stage(icon: "sparkles", label: "Tidying up the names…"),
-    ]
-    @State private var index = 0
+private struct ReceiptProductChoice: View {
+    @Binding var item: EditableReceiptItem
+    let householdId: String
+    @Environment(AppServices.self) private var services
+    @Environment(\.dismiss) private var dismiss
+    @State private var query = ""
+    @State private var results: [ProductSearchResult] = []
+    @State private var loading = false
+    @State private var searchFailed = false
+    @State private var creating = false
+    @State private var newName = ""
+    @State private var adjusting = false
+    @State private var quantity = ""
+    @State private var price = ""
+    @State private var invalidDetails = false
 
     var body: some View {
-        VStack(spacing: 24) {
-            ZStack {
-                Circle()
-                    .fill(Color.accentColor.opacity(0.12))
-                    .frame(width: 96, height: 96)
-                Image(systemName: stages[index].icon)
-                    .font(.system(size: 38))
-                    .foregroundStyle(Color.accentColor)
-                    .contentTransition(.symbolEffect(.replace))
-                    .symbolEffect(.variableColor.iterative, options: .repeating)
+        List {
+            Section("On the receipt") {
+                Text(item.description).font(.system(.subheadline, design: .monospaced))
+                HStack {
+                    Text(item.productName)
+                    Spacer()
+                    Image(systemName: "checkmark").foregroundStyle(Color.accentColor)
+                }
             }
+            Section(query.isEmpty ? "Suggested products" : "Search results") {
+                if loading { ProgressView() }
+                if searchFailed {
+                    Text("Couldn’t search products. Try another search.").foregroundStyle(.secondary)
+                } else if !loading && results.isEmpty {
+                    Text("No matching products. Search by another name or create a new product.")
+                        .font(.subheadline).foregroundStyle(.secondary)
+                }
+                ForEach(results) { product in
+                    Button {
+                        item.productId = product.id
+                        item.productName = product.name
+                        item.isNew = false
+                        item.purchaseHistoryId = nil
+                        item.isIncluded = true
+                        dismiss()
+                    } label: {
+                        HStack {
+                            VStack(alignment: .leading, spacing: 3) {
+                                Text(product.name).foregroundStyle(.primary)
+                                Text(product.category).font(.caption).foregroundStyle(.secondary)
+                            }
+                            Spacer()
+                            if product.id == item.productId {
+                                Image(systemName: "checkmark").foregroundStyle(Color.accentColor)
+                            }
+                        }
+                    }
+                }
+            }
+            Section {
+                Button("Create new product…", systemImage: "plus.circle") {
+                    newName = item.productName
+                    creating = true
+                }
+            }
+            Section {
+                Button("Adjust quantity or price", systemImage: "slider.horizontal.3") {
+                    quantity = item.quantity.map { String($0) } ?? ""
+                    price = item.priceText
+                    adjusting = true
+                }
+                .font(.subheadline)
+            }
+        }
+        .navigationTitle("Choose product")
+        .navigationBarTitleDisplayMode(.inline)
+        .searchable(text: $query, prompt: "Search all your products")
+        .task(id: query) {
+            loading = true
+            searchFailed = false
+            do {
+                try await Task.sleep(for: .milliseconds(200))
+                let search = query.isEmpty ? item.productName : query
+                let found = try await services.api.searchProducts(householdId: householdId, query: search)
+                guard !Task.isCancelled else { return }
+                results = found
+                loading = false
+            } catch {
+                guard !Task.isCancelled else { return }
+                results = []
+                loading = false
+                searchFailed = true
+            }
+        }
+        .alert("New product", isPresented: $creating) {
+            TextField("Product name", text: $newName)
+            Button("Cancel", role: .cancel) {}
+            Button("Use new product") {
+                let name = newName.trimmingCharacters(in: .whitespacesAndNewlines)
+                guard !name.isEmpty else { return }
+                item.productId = nil
+                item.productName = name
+                item.isNew = true
+                item.purchaseHistoryId = nil
+                item.isIncluded = true
+                dismiss()
+            }
+            .disabled(newName.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+        } message: {
+            Text("This product will be created when you confirm the receipt.")
+        }
+        .alert("Adjust receipt line", isPresented: $adjusting) {
+            TextField("Quantity", text: $quantity).keyboardType(.decimalPad)
+            TextField("Line price", text: $price).keyboardType(.decimalPad)
+            Button("Cancel", role: .cancel) {}
+            Button("Apply") {
+                let qty = Double(quantity.replacingOccurrences(of: ",", with: "."))
+                let amount = Double(price.replacingOccurrences(of: ",", with: "."))
+                guard (quantity.isEmpty || (qty != nil && qty!.isFinite && qty! > 0)),
+                      (price.isEmpty || (amount != nil && amount!.isFinite)) else {
+                    invalidDetails = true
+                    return
+                }
+                item.quantity = qty
+                item.priceText = amount.map { String(format: "%.2f", $0) } ?? ""
+                // Original per-unit price is stale after a manual correction.
+                item.unitPrice = nil
+            }
+        }
+        .alert("Check quantity and price", isPresented: $invalidDetails) {
+            Button("OK", role: .cancel) {}
+        } message: { Text("Use a positive quantity and a valid price, or leave them blank.") }
+    }
+}
 
-            Text(stages[index].label)
-                .font(.headline)
-                .foregroundStyle(.primary)
-                .contentTransition(.opacity)
-                .animation(.easeInOut, value: index)
+// MARK: - Thermal receipt printer
 
-            HStack(spacing: 6) {
-                ForEach(stages.indices, id: \.self) { i in
-                    Capsule()
-                        .fill(i <= index ? Color.accentColor : Color.secondary.opacity(0.25))
-                        .frame(width: i == index ? 18 : 6, height: 6)
-                        .animation(.spring(duration: 0.3), value: index)
+/// Paper feeds upwards from the slot; the complete assembly scrolls together.
+/// The viewport, paper and printer
+/// all derive their widths from the same bounded geometry, regardless of content.
+private struct ReceiptPrinterView: View {
+    let result: ReceiptScanResponse?
+    let items: [EditableReceiptItem]
+    let isReady: Bool
+    let isSaving: Bool
+    let onFinished: () -> Void
+    let onEdit: () -> Void
+    let onTear: () -> Void
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var printed = 0
+    @State private var tearing = false
+    @State private var detached = false
+    @State private var feedHaptic = UIImpactFeedbackGenerator(style: .light)
+    private let paper = Color.white
+    private let ink = Color.black
+    private var included: [EditableReceiptItem] { items.filter(\.isIncluded) }
+    private var canTear: Bool { isReady && !included.isEmpty && !tearing && !detached }
+    private var lineCount: Int { items.count + 2 }
+
+    var body: some View {
+        GeometryReader { geometry in
+            let machineWidth = min(max(geometry.size.width - 32, 0), 370)
+            let paperWidth = max(machineWidth - 48, 0)
+            ScrollViewReader { proxy in
+                ScrollView {
+                    VStack(spacing: 0) {
+                        Spacer(minLength: 24)
+                        receipt(width: paperWidth)
+                            .rotationEffect(.degrees(reduceMotion || !tearing || detached ? 0 : -3), anchor: .bottomLeading)
+                            .offset(y: detached ? (reduceMotion ? 0 : -geometry.size.height - 200) : tearing ? -12 : 0)
+                            .opacity(detached ? 0 : 1)
+                            .zIndex(2)
+                        printer(width: machineWidth, paperWidth: paperWidth)
+                            .padding(.top, -8)
+                        Color.clear.frame(height: 104).id("feed")
+                    }
+                    .frame(maxWidth: .infinity)
+                    .frame(minHeight: geometry.size.height, alignment: .bottom)
+                }
+                .scrollEdgeEffectStyle(.soft, for: .all)
+                .scrollIndicators(.hidden)
+                .scrollDisabled(tearing || isSaving)
+                .defaultScrollAnchor(.bottom)
+                .onChange(of: printed) {
+                    withAnimation(reduceMotion ? nil : .linear(duration: 0.18)) {
+                        proxy.scrollTo("feed", anchor: .bottom)
+                    }
+                }
+                .overlay(alignment: .bottom) {
+                    HStack(spacing: 12) {
+                        if isReady && !tearing {
+                            Button(action: onEdit) {
+                                Label("Edit", systemImage: "slider.horizontal.3")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.glass)
+                            Button {
+                                proxy.scrollTo("feed", anchor: .bottom)
+                                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                                    tearing = true
+                                }
+                            } label: {
+                                Label("Confirm", systemImage: "checkmark")
+                                    .frame(maxWidth: .infinity)
+                            }
+                            .buttonStyle(.glassProminent)
+                            .disabled(!canTear)
+                        } else if !tearing && !isSaving {
+                            ProgressView().controlSize(.small)
+                            Text(result == nil ? "Reading receipt…" : "Printing…")
+                                .font(.subheadline).foregroundStyle(.secondary)
+                        }
+                    }
+                    .controlSize(.large)
+                    .frame(maxWidth: 370)
+                    .frame(maxWidth: .infinity)
+                    .padding(.horizontal, 20)
+                    .padding(.vertical, 16)
                 }
             }
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .task {
-            // Advance through the stages, easing off near the end so we don't claim
-            // completion before the response actually arrives.
-            while !Task.isCancelled {
-                let delay: Duration = index >= stages.count - 2 ? .milliseconds(1800) : .milliseconds(1100)
-                try? await Task.sleep(for: delay)
-                if Task.isCancelled { return }
-                if index < stages.count - 1 { withAnimation { index += 1 } }
-                else { return }
+        .background { Color(.systemGroupedBackground).ignoresSafeArea() }
+        .task(id: tearing) {
+            guard tearing else { return }
+            do {
+                UIImpactFeedbackGenerator(style: .rigid).impactOccurred()
+                try await Task.sleep(for: .milliseconds(180))
+                withAnimation(reduceMotion ? .linear(duration: 0.15) : .easeIn(duration: 0.5)) {
+                    detached = true
+                }
+                try await Task.sleep(for: .milliseconds(reduceMotion ? 150 : 500))
+                guard !Task.isCancelled else { return }
+                onTear()
+            } catch { }
+        }
+        .task(id: result != nil) {
+            guard result != nil, printed == 0 else { return }
+            feedHaptic.prepare()
+            do {
+                for line in 1...lineCount {
+                    try await Task.sleep(for: .milliseconds(reduceMotion ? 35 : 210))
+                    guard !Task.isCancelled else { return }
+                    // Feed advances in physical steps; never interpolate the text layout.
+                    var transaction = Transaction(animation: nil)
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) { printed = line }
+                    feedHaptic.impactOccurred(intensity: line == lineCount ? 0.7 : 0.35)
+                    feedHaptic.prepare()
+                }
+                try await Task.sleep(for: .milliseconds(250))
+                guard !Task.isCancelled else { return }
+                onFinished()
+            } catch { /* Dismissal cancels the feed without advancing the flow. */ }
+        }
+        .onChange(of: isSaving) { _, saving in
+            if !saving { detached = false; tearing = false }
+        }
+    }
+
+    private var displayDate: String? {
+        guard let raw = result?.receiptDate else { return nil }
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.dateFormat = "yyyy-MM-dd"
+        guard let date = formatter.date(from: String(raw.prefix(10))) else { return raw }
+        return date.formatted(.dateTime.weekday(.wide).day().month(.wide).year())
+    }
+
+    private func receipt(width: CGFloat) -> some View {
+        let priceWidth = min(width * 0.42, max(56, CGFloat(items.map { $0.priceText.count + 1 }.max() ?? 6) * UIFont.preferredFont(forTextStyle: .footnote).pointSize * 0.62))
+        return VStack(spacing: 0) {
+            if printed > 0 {
+                VStack(spacing: 4) {
+                    Text(result?.storeName ?? "Your receipt")
+                        .font(.system(.headline, design: .monospaced).bold())
+                        .multilineTextAlignment(.center)
+                    if let date = displayDate {
+                        Text(date)
+                            .font(.system(.caption, design: .monospaced))
+                            .foregroundStyle(ink.opacity(0.45))
+                    }
+                }
+                .frame(maxWidth: .infinity)
+                .padding(.top, 22)
+                .padding(.bottom, 14)
+                rule
             }
+            ForEach(Array(included.enumerated()), id: \.offset) { index, item in
+                if isReady || isSaving || printed > index + 1 {
+                    HStack(alignment: .top, spacing: 10) {
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(item.productName).fixedSize(horizontal: false, vertical: true)
+                            if let quantity = item.quantityText {
+                                Text(quantity).font(.system(.caption2, design: .monospaced))
+                            }
+                        }
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        Text(item.priceText.isEmpty ? "—" : "$" + item.priceText)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(width: priceWidth, alignment: .trailing)
+                    }
+                    .font(.system(.footnote, design: .monospaced))
+                    .padding(.vertical, 6)
+                    .transition(.identity)
+                }
+            }
+            if printed >= lineCount {
+                rule
+                HStack {
+                    Text("ITEMS TOTAL")
+                    Spacer(minLength: 4)
+                    Text(included.reduce(0) { $0 + (Double($1.priceText.replacingOccurrences(of: ",", with: ".")) ?? 0) }, format: .currency(code: "AUD"))
+                }
+                .font(.system(.subheadline, design: .monospaced).bold())
+                .padding(.top, 14)
+                .padding(.bottom, 6)
+                if let total = result?.totalAmount {
+                    Text("Original receipt: \(total, format: .currency(code: "AUD"))")
+                        .font(.system(.caption2, design: .monospaced))
+                        .padding(.bottom, 12)
+                }
+                Text(included.isEmpty ? "No items selected · Edit to add them back" : "\(included.count) items selected")
+                    .font(.system(.caption2, design: .monospaced))
+                    .multilineTextAlignment(.center)
+                    .padding(.bottom, 22)
+            }
+        }
+        .padding(.horizontal, 16)
+        .padding(.bottom, 8)
+        .frame(width: width, alignment: .top)
+        .foregroundStyle(ink)
+        .background(paper)
+        .clipShape(ReceiptPaperEdge(torn: tearing))
+        .shadow(color: .black.opacity(0.12), radius: 8, x: 0, y: -2)
+    }
+
+    private var rule: some View {
+        UnevenReceiptRule()
+            .stroke(ink.opacity(0.20), style: StrokeStyle(lineWidth: 1, dash: [3, 3]))
+            .frame(height: 1)
+            .padding(.vertical, 6)
+            .accessibilityHidden(true)
+    }
+
+    private func printer(width: CGFloat, paperWidth: CGFloat) -> some View {
+        VStack(spacing: 0) {
+            Capsule().fill(.black.opacity(0.8))
+                .frame(width: paperWidth + 16, height: 12)
+                .overlay { Capsule().stroke(.white.opacity(0.15), lineWidth: 1) }
+                .padding(.top, 4)
+            HStack(spacing: 7) {
+                Circle().fill(isReady ? Color.green : Color.orange).frame(width: 5, height: 5)
+                    .shadow(color: (isReady ? Color.green : Color.orange).opacity(0.5), radius: 4)
+                Text(isSaving || tearing ? "" : isReady ? "Ready" : "Processing")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(.white.opacity(0.6))
+                Spacer()
+                ForEach(0..<5) { _ in
+                    Capsule().fill(.black.opacity(0.35)).frame(width: 2, height: 12)
+                }
+            }
+            .padding(.horizontal, 24)
+            .padding(.top, 8)
+            .padding(.bottom, 20)
+        }
+        .frame(width: width)
+        .background {
+            RoundedRectangle(cornerRadius: 24)
+                .fill(LinearGradient(colors: [Color(white: 0.29), Color(white: 0.16)], startPoint: .top, endPoint: .bottom))
+                .overlay { RoundedRectangle(cornerRadius: 24).strokeBorder(.white.opacity(0.16), lineWidth: 1) }
+                .shadow(color: .black.opacity(0.2), radius: 12, y: 8)
+        }
+    }
+
+}
+
+/// Actual cut paper silhouette, rather than a printed dashed rule.
+private struct ReceiptPaperEdge: Shape {
+    var torn: Bool
+    func path(in rect: CGRect) -> Path {
+        let teeth = max(1, Int(rect.width / 9))
+        let step = rect.width / CGFloat(teeth)
+        let depth: CGFloat = 4
+        return Path { path in
+            path.move(to: CGPoint(x: 0, y: depth))
+            for tooth in 0..<teeth {
+                let x = CGFloat(tooth) * step
+                path.addLine(to: CGPoint(x: x + step / 2, y: 0))
+                path.addLine(to: CGPoint(x: x + step, y: depth))
+            }
+            path.addLine(to: CGPoint(x: rect.width, y: rect.height - (torn ? depth : 0)))
+            for tooth in (0..<teeth).reversed() {
+                let x = CGFloat(tooth) * step
+                path.addLine(to: CGPoint(x: x + step / 2, y: rect.height))
+                path.addLine(to: CGPoint(x: x, y: rect.height - (torn ? depth : 0)))
+            }
+            path.closeSubpath()
+        }
+    }
+}
+
+private struct UnevenReceiptRule: Shape {
+    func path(in rect: CGRect) -> Path {
+        Path { path in
+            path.move(to: CGPoint(x: rect.minX, y: rect.midY))
+            path.addLine(to: CGPoint(x: rect.maxX, y: rect.midY))
         }
     }
 }

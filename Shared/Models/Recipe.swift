@@ -223,7 +223,7 @@ struct ReceiptScanItem: Decodable, Identifiable {
 struct EditableReceiptItem: Identifiable {
     let id: String
     let description: String
-    let quantity: Double?
+    var quantity: Double?
     var priceText: String
     var isIncluded: Bool = true
 
@@ -234,12 +234,13 @@ struct EditableReceiptItem: Identifiable {
     var purchaseHistoryId: String?
 
     // Carried through unedited to /confirm for the $/100g-style unit price baseline.
-    let unitPrice: Double?
+    var unitPrice: Double?
     let sizeValue: Double?
     let sizeUnit: String?
 
     init(from item: ReceiptScanItem) {
-        self.id                = item.description
+        // Repeated receipt descriptions still represent separate editable lines.
+        self.id                = UUID().uuidString
         self.description       = item.description
         self.quantity          = item.quantity
         let price              = item.totalPrice ?? item.unitPrice

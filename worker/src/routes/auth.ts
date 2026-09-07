@@ -3,6 +3,7 @@ import type { Env } from "../env";
 import { upsertUserByEmail, publicUser } from "../db";
 import { issueSession } from "../session";
 import { generateCode, hashCode, sendCodeEmail, isValidEmail } from "../email";
+import { errorCode, logError } from "../log";
 
 const app = new Hono<{ Bindings: Env }>();
 
@@ -52,8 +53,8 @@ app.post("/email/start", async (c) => {
   try {
     await sendCodeEmail(c.env, email, code);
   } catch (e) {
-    console.error("Email send failed:", e);
-    return c.json({ error: "email_failed", detail: String(e) }, 502);
+    logError("sign_in_email_failed", { errorCode: errorCode(e) });
+    return c.json({ error: "email_failed" }, 502);
   }
 
   return c.json({ sent: true });
