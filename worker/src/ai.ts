@@ -1,4 +1,13 @@
 import type { Env } from "./env";
+import { ReceiptAssembler, type ReceiptRecord } from "./receipt-stream";
+import { anthropicTextDeltas } from "./sse";
+import {
+  foldDiscountLines,
+  itemCountMismatch,
+  reconcileReceiptLines,
+  totalsMismatch,
+  type ReceiptLineItem,
+} from "./receipt-lines";
 
 const ANTHROPIC_URL = "https://api.anthropic.com/v1/messages";
 const ANTHROPIC_HEADERS = (key: string) => ({
@@ -352,50 +361,173 @@ export async function parseRecipeFromImage(
 // Receipt OCR
 // ---------------------------------------------------------------------------
 
-export interface ReceiptLineItem {
-  description: string;
-  quantity: number | null;
-  unit_price: number | null;
-  total_price: number | null;
-  size_value: number | null;
-  size_unit: string | null;
-}
+export type { ReceiptLineItem } from "./receipt-lines";
 
 export interface ParsedReceipt {
   store_name: string | null;
   total_amount: number | null;
   receipt_date: string | null;
+  /** The "N Items" figure the receipt prints, used only to sanity-check quantities. */
+  item_count: number | null;
   line_items: ReceiptLineItem[];
+  /** Set when the receipt's own arithmetic didn't reconcile — worth a closer look. */
+  needs_review?: boolean;
 }
 
+// Newline-delimited JSON: one complete record per line, so a product can be
+// shown the moment it is read instead of after the whole receipt is parsed.
+const RECEIPT_OUTPUT_SHAPE =
+  `Reply with newline-delimited JSON — one complete JSON object per line, and nothing else. No array brackets, no code fences, no commentary.\n` +
+  `Line 1, the header: {"type":"receipt","store_name":"...","receipt_date":"2026-06-20"}\n` +
+  `Then ONE line per purchased product, in the order they are printed on the receipt:\n` +
+  `{"type":"item","description":"...","quantity":1,"unit_price":2.50,"total_price":2.50,"size_value":175,"size_unit":"g"}\n` +
+  `Last line, the totals: {"type":"totals","total_amount":12.34,"item_count":8}\n` +
+  `These lines are shown to the shopper as they arrive, so emit each product as soon as you have it and never re-print or amend a product you have already emitted. Before emitting a product, read the line printed BELOW it: if that is a quantity, weight or discount line belonging to it, fold it in first (see the rules below) and emit the finished product once.\n`;
+
 const RECEIPT_RULES =
-  `Return ONLY valid JSON:\n` +
-  `{"store_name":"...","total_amount":12.34,"receipt_date":"2026-06-20","line_items":[{"description":"...","quantity":1,"unit_price":2.50,"total_price":2.50,"size_value":175,"size_unit":"g"}]}\n` +
+  RECEIPT_OUTPUT_SHAPE +
   `Rules:\n` +
   `- Transcribe EXACTLY what is on the receipt. Never invent, guess, or "correct" a product, size, brand or price. If a value is unclear, use null — do NOT fill it in from what is typical.\n` +
   `- "description" is the raw product text exactly as printed, including the size/volume if shown (e.g. "WW FUL CRM MILK 2L" stays 2L, not 3L).\n` +
   `- "quantity" is the number of units (e.g. 2 for "2 @ $3.00"); use 1 for a single unit; for items sold by weight use the weight number (e.g. 0.65 for "0.65kg").\n` +
   `- "unit_price" is the per-unit/per-kg price; "total_price" is what was actually charged for that line.\n` +
-  `- A quantity line like "Qty 2 @ $2.40 each" / "Qty 2 @ $1.69 ea." is printed on its own line DIRECTLY BELOW the product it belongs to: merge it into that product (quantity 2, unit_price 2.40, total_price = the printed line total). Same for weight lines like "1.017 kg NET @ $3.90/kg" below a product: quantity 1.017, unit_price 3.90. Copy these numbers digit-for-digit; never emit such a line as its own item.\n` +
+  `- A quantity line like "Qty 2 @ $2.40 each" / "Qty 2 @ $1.69 ea." belongs to the product printed ABOVE it (receipts print the modifier underneath its product), not the one below it: merge it into that product (quantity 2, unit_price 2.40, total_price = that product's printed line total). Same for weight lines like "1.017 kg NET @ $3.90/kg": quantity 1.017, unit_price 3.90. Copy these numbers digit-for-digit; never emit such a line as its own item.\n` +
+  `- CHECK THE ARITHMETIC before you attach a quantity line: quantity x unit_price must equal the printed total of the product you attached it to. If it doesn't, you picked the wrong product — the right one is the line whose printed total the multiplication actually gives.\n` +
+  `  Worked example. Printed:\n` +
+  `    620522 SteakCutChips750g   2.79 A\n` +
+  `    399060 Milk Almond UHT 1L  3.38 A\n` +
+  `    Qty 2 @ $1.69 ea.\n` +
+  `    402848 Brie French 125g    3.49 A\n` +
+  `  2 x 1.69 = 3.38, which is the Milk Almond total, so the quantity belongs to Milk Almond (quantity 2, unit_price 1.69, total_price 3.38). Chips and Brie stay quantity 1 at their own printed totals. Attaching the "Qty 2" to Brie would be WRONG: 2 x 1.69 is not 3.49.\n` +
+  `- Every line you return must satisfy quantity x unit_price = total_price. For a single unit that is 1 x total_price. If no quantity line applies to a product, its quantity is 1 — do not carry a neighbouring product's quantity or unit price over to it.\n` +
+  `- Leading markers on a description are receipt flags, not part of the product name — strip a leading "^" (promotional price), "#" (taxable), "*" or any combination: "^#TTN Hydrate & Nourish Shampoo 500ml" -> "TTN Hydrate & Nourish Shampoo 500ml".\n` +
+  `- A product line can print with NO price when its quantity line below carries the money: "^Lurpak Spreadable Slightly Salted 250g" then " Qty 2 @ $5.20 each  10.40" is ONE item — Lurpak, quantity 2, unit_price 5.20, total_price 10.40.\n` +
   `- ALDI: a leading numeric item code (e.g. "399060 Milk Almond UHT 1L") is NOT part of the description — drop it. A single trailing letter after a price (e.g. "3.38 A") is a tax marker, not part of the price.\n` +
   `- "size_value"/"size_unit" are the PACKAGE size printed on the line, e.g. "175G" -> size_value:175, size_unit:"g"; "2L" -> size_value:2, size_unit:"L"; "6X250ML" -> size_value:1500, size_unit:"mL" (total volume of the multipack). Use null for both if no package size is shown, or if the item is sold loose by weight (its "unit_price" already gives the per-kg rate).\n` +
   `- receipt_date must be ISO format (YYYY-MM-DD) or null.\n` +
-  `- EXCLUDE non-product rows: subtotal, total, tax/GST, rounding, change, tender/EFTPOS/cash, loyalty/points, savings, and store header/footer text.\n` +
-  `- A discount line that reduces the price of the item above it should be folded into that item's total_price, not listed separately.\n` +
+  `- EXCLUDE non-product rows: subtotal, total, tax/GST, rounding, change, tender/EFTPOS/cash, loyalty/points, savings, marker legends ("^Promotional Price", "#Taxable Items"), card/terminal blocks, and store header/footer text (including advertised offers printed after the transaction — those were not bought).\n` +
+  `- "total_amount" is the receipt's TOTAL for the goods, NOT the amount tendered on the card after a loyalty redemption. A receipt showing "TOTAL $160.10" and "REWARDS SAVINGS $10.00" with a card purchase of $150.10 has total_amount 160.10 — the line items must add up to it.\n` +
+  `- A discount line reduces the price of the item(s) ABOVE it and is folded into their total_price, never listed as its own item. "BUY 2 for $12.90 -4.60" or "ANY 2 for $6.00 -1.00" covers the TWO items above it (whatever number it names): split the reduction across them in proportion to their prices, e.g. two $8.75 drinks with "BUY 2 for $12.90 -4.60" become $6.45 each — do not put the whole -4.60 on one of them.\n` +
   `- Some receipts print a product across TWO lines: the name alone on one line, then a continuation line below it with the weight/quantity, unit rate and price (e.g. "Potato Sweet Gold" followed by "1.017 kg NET @ $3.90/kg  3.97", or a name followed by "Qty 2 @ $2.40 each  4.80"). Merge each such pair into ONE line item — do not emit the name and its continuation as two separate items.\n` +
-  `- Include EVERY product line that is actually printed, and ONLY lines that are actually printed.`;
+  `- Include EVERY product line that is actually printed, and ONLY lines that are actually printed.\n` +
+  `- "item_count" is the item tally the receipt prints near the total — "8 Items" on its own line, or the bare number printed before SUBTOTAL ("30 SUBTOTAL" means 30). Use null if it prints none. It counts units, not lines, so a "Qty 2" line contributes 2 — use it to check you attached quantities to the right products.`;
+
+/** What the model is being shown: a PDF's text layer, or a photo of the paper. */
+export type ReceiptInput = { text: string } | { imageBase64: string; mediaType: string };
+
+function receiptMessages(input: ReceiptInput): { role: "user"; content: string | object[] }[] {
+  if ("text" in input) {
+    return [
+      {
+        role: "user",
+        content:
+          `This is the exact text extracted from a supermarket receipt. Extract every purchased product.\n` +
+          `${RECEIPT_RULES}\n\n` +
+          `Receipt text:\n${input.text.slice(0, 12000)}`,
+      },
+    ];
+  }
+  return [
+    {
+      role: "user",
+      content: [
+        {
+          type: "image",
+          source: { type: "base64", media_type: input.mediaType, data: input.imageBase64 },
+        },
+        {
+          type: "text",
+          text: `Extract every purchased product from this supermarket receipt image.\n${RECEIPT_RULES}`,
+        },
+      ],
+    },
+  ];
+}
+
+/**
+ * Finish an assembled receipt: check the model's work against the receipt's own
+ * arithmetic. Reconcile first (quantity x unit_price against each printed
+ * total), then fold any discount row left standing into the items it covers.
+ */
+function finishReceipt(assembler: ReceiptAssembler): ParsedReceipt | null {
+  const built = assembler.build();
+  if (!built || built.line_items.length === 0) return null;
+
+  const lineItems = foldDiscountLines(reconcileReceiptLines(built.line_items));
+  return {
+    store_name: built.header.store_name,
+    receipt_date: built.header.receipt_date,
+    total_amount: built.totals.total_amount,
+    item_count: built.totals.item_count,
+    line_items: lineItems,
+    needs_review:
+      lineItems.some((i) => i.needs_review) ||
+      itemCountMismatch(lineItems, built.totals.item_count) ||
+      totalsMismatch(lineItems, built.totals.total_amount),
+  };
+}
+
+/**
+ * Read the receipt, handing back each record as the model emits it and the
+ * finished (checked) receipt at the end. The scanner prints the item records
+ * onto the screen as they arrive; the review step uses the finished receipt,
+ * which may have corrected some of what was printed.
+ */
+export async function* streamReceipt(
+  env: Env,
+  input: ReceiptInput,
+): AsyncGenerator<ReceiptRecord | { type: "done"; receipt: ParsedReceipt | null }> {
+  const assembler = new ReceiptAssembler();
+
+  if (!env.ANTHROPIC_API_KEY) {
+    yield { type: "done", receipt: null };
+    return;
+  }
+
+  let body: ReadableStream<Uint8Array> | null = null;
+  try {
+    const res = await fetch(ANTHROPIC_URL, {
+      method: "POST",
+      headers: ANTHROPIC_HEADERS(env.ANTHROPIC_API_KEY),
+      body: JSON.stringify({
+        model: SONNET,
+        max_tokens: 3000,
+        stream: true,
+        messages: receiptMessages(input),
+      }),
+      signal: AbortSignal.timeout(120_000),
+    });
+    if (res.ok) body = res.body;
+  } catch {
+    body = null;
+  }
+  if (!body) {
+    yield { type: "done", receipt: null };
+    return;
+  }
+
+  let interrupted = false;
+  try {
+    for await (const text of anthropicTextDeltas(body)) {
+      for (const record of assembler.push(text)) yield record;
+    }
+    for (const record of assembler.finish()) yield record;
+  } catch {
+    // A dropped connection mid-receipt: finish with whatever arrived rather
+    // than losing it, but the result is a receipt missing its tail.
+    interrupted = true;
+  }
+
+  const receipt = finishReceipt(assembler);
+  if (receipt && interrupted) receipt.needs_review = true;
+  yield { type: "done", receipt };
+}
 
 function parseReceiptJson(text: string): ParsedReceipt | null {
-  const start = text.indexOf("{");
-  const end = text.lastIndexOf("}");
-  if (start === -1 || end === -1 || end < start) return null;
-  try {
-    const parsed = JSON.parse(text.slice(start, end + 1)) as ParsedReceipt;
-    if (!parsed || !Array.isArray(parsed.line_items)) return null;
-    return parsed;
-  } catch {
-    return null;
-  }
+  const assembler = new ReceiptAssembler();
+  assembler.push(text);
+  assembler.finish();
+  return finishReceipt(assembler);
 }
 
 /**
@@ -403,20 +535,7 @@ function parseReceiptJson(text: string): ParsedReceipt | null {
  * a rasterised PDF — there is nothing to misread, so the model cannot invent items.
  */
 export async function parseReceiptFromText(env: Env, receiptText: string): Promise<ParsedReceipt | null> {
-  const reply = await callClaude(
-    env,
-    [
-      {
-        role: "user",
-        content:
-          `This is the exact text extracted from a supermarket receipt. Extract every purchased product.\n` +
-          `${RECEIPT_RULES}\n\n` +
-          `Receipt text:\n${receiptText.slice(0, 12000)}`,
-      },
-    ],
-    3000,
-    SONNET,
-  );
+  const reply = await callClaude(env, receiptMessages({ text: receiptText }), 3000, SONNET);
   return reply ? parseReceiptJson(reply) : null;
 }
 
@@ -425,39 +544,8 @@ export async function parseReceiptFromImage(
   imageBase64: string,
   mediaType: string = "image/jpeg",
 ): Promise<ParsedReceipt | null> {
-  if (!env.ANTHROPIC_API_KEY) return null;
-  try {
-    const res = await fetch(ANTHROPIC_URL, {
-      method: "POST",
-      headers: ANTHROPIC_HEADERS(env.ANTHROPIC_API_KEY),
-      body: JSON.stringify({
-        model: SONNET,
-        max_tokens: 3000,
-        messages: [
-          {
-            role: "user",
-            content: [
-              {
-                type: "image",
-                source: { type: "base64", media_type: mediaType, data: imageBase64 },
-              },
-              {
-                type: "text",
-                text: `Extract every purchased product from this supermarket receipt image.\n${RECEIPT_RULES}`,
-              },
-            ],
-          },
-        ],
-      }),
-      signal: AbortSignal.timeout(30_000),
-    });
-    if (!res.ok) return null;
-    const json = await res.json<{ content?: { text?: string }[] }>();
-    const text = (json.content?.[0]?.text ?? "").trim();
-    return parseReceiptJson(text);
-  } catch {
-    return null;
-  }
+  const reply = await callClaude(env, receiptMessages({ imageBase64, mediaType }), 3000, SONNET);
+  return reply ? parseReceiptJson(reply) : null;
 }
 
 export interface ResolvedReceiptItem {

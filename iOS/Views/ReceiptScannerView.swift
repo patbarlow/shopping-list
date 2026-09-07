@@ -10,7 +10,7 @@ struct ReceiptScannerView: View {
 
     /// Content already captured by the caller (native picker triggered directly
     /// from the toolbar menu — see ReceiptImportToolbarButton) before this view
-    /// is ever presented, so it can open straight into `.scanning` instead of
+    /// is ever presented, so it can open straight into printing instead of
     /// showing its own "choose a source" step as a second card on top.
     // A struct (not a bare enum) specifically so it can carry a stable `id` —
     // `.sheet(item:)` keys the presented view's identity off it, and giving
@@ -32,25 +32,29 @@ struct ReceiptScannerView: View {
         static func pdfData(_ data: Data) -> InitialCapture { InitialCapture(payload: .pdfData(data)) }
     }
 
-    private enum Phase {
-        case failed
-        case scanning
-        case printing
-        case review
-        case confirming
+    /// Where the scan is reading from, kept so a failed stream can be retried
+    /// through the one-shot endpoint with the same input.
+    private enum ScanSource {
+        case text(String)
+        case image(String) // base64 JPEG
+
+        var requestBody: [String: Any] {
+            switch self {
+            case .text(let text):    return ["receipt_text": text]
+            case .image(let base64): return ["image_base64": base64, "media_type": "image/jpeg"]
+            }
+        }
     }
 
-    @State private var phase: Phase = .scanning
+    @State private var stage: ReceiptPrintingView.Stage = .printing
+    @State private var failureMessage: String? = nil
+    @State private var printer = ReceiptPrinter()
     @State private var scanResult: ReceiptScanResponse? = nil
     @State private var editableItems: [EditableReceiptItem] = []
-    @State private var errorMessage: String? = nil
-
-    // Product picker sheet state
-    @State private var showEditor = false
+    @State private var showEditSheet = false
+    @State private var hasEditedReceipt = false
+    @State private var saveError: String?
     @State private var showSaveError = false
-    @State private var showProductPicker = false
-    @State private var pickingForItemId: String? = nil
-    @State private var productPickerQuery: String = ""
 
     // Belt-and-braces: guarantees the scan request only ever fires once for
     // this instance even if `.task` were somehow re-entered — a request that
@@ -67,16 +71,16 @@ struct ReceiptScannerView: View {
     var body: some View {
         NavigationStack {
             Group {
-                switch phase {
-                case .failed:                failedView
-                default:
+                if let failureMessage {
+                    failedView(failureMessage)
+                } else {
                     ReceiptPrinterView(
                         result: scanResult,
-                        items: editableItems,
-                        isReady: isReady,
-                        isSaving: isSaving,
-                        onFinished: { phase = .review },
-                        onEdit: { showEditor = true },
+                        items: paperItems,
+                        printer: printer,
+                        isReady: stage == .printed,
+                        isSaving: stage == .saving,
+                        onEdit: { showEditSheet = true },
                         onTear: confirmReceipt
                     )
                 }
@@ -85,29 +89,32 @@ struct ReceiptScannerView: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button("Cancel") { dismiss() }.disabled(isSaving)
+                    Button("Cancel") { dismiss() }
+                        .disabled(stage == .saving)
                 }
-
             }
         }
-        .interactiveDismissDisabled(isSaving)
-        .sheet(isPresented: $showEditor) {
+        // Saving is the one point where backing out would leave the receipt
+        // half-imported, so the sheet holds still until it lands.
+        .interactiveDismissDisabled(stage == .saving)
+        .sheet(isPresented: $showEditSheet) {
             NavigationStack {
-                reviewView
+                ReceiptEditorView(items: $editableItems, householdId: householdId)
                     .navigationTitle("Review items")
                     .navigationBarTitleDisplayMode(.inline)
                     .toolbar {
                         ToolbarItem(placement: .confirmationAction) {
-                            Button("Done") { showEditor = false }.bold()
+                            Button("Done") { showEditSheet = false }.bold()
                         }
                     }
             }
         }
-
         .alert("Receipt wasn’t saved", isPresented: $showSaveError) {
             Button("OK", role: .cancel) {}
-        } message: {
-            Text(errorMessage ?? "Please try confirming the receipt again.")
+        } message: { Text(saveError ?? "Please try confirming again.") }
+        // However the sheet was closed, the paper reprints with what changed.
+        .onChange(of: showEditSheet) { _, isShowing in
+            if !isShowing { hasEditedReceipt = true; printer.sync(with: editableItems) }
         }
         .task {
             guard !hasStartedProcessing else { return }
@@ -133,34 +140,40 @@ struct ReceiptScannerView: View {
         }
     }
 
-    private var isReady: Bool {
-        if case .review = phase { return true }
-        return false
-    }
-
-    private var isSaving: Bool {
-        if case .confirming = phase { return true }
-        return false
-    }
-
     private var navTitle: String {
-        switch phase {
-        case .failed:     return "Couldn't Read Receipt"
-        case .scanning:   return "Scanning…"
-        case .printing:   return scanResult?.storeName ?? "Reading Receipt…"
-        case .review:     return scanResult?.storeName ?? "Match Items"
-        case .confirming: return "Saving…"
+        if failureMessage != nil { return "Couldn't Read Receipt" }
+        return printer.storeName ?? "Receipt"
+    }
+
+    private var paperItems: [EditableReceiptItem] {
+        if hasEditedReceipt { return editableItems }
+        return printer.lines.map { line in
+            EditableReceiptItem(from: ReceiptScanItem(
+                description: line.description, quantity: line.quantity,
+                unitPrice: line.unitPrice, totalPrice: line.totalPrice,
+                sizeValue: nil, sizeUnit: nil, productId: nil,
+                productName: line.description, isNew: false,
+                purchaseHistoryId: nil, needsReview: line.needsReview
+            ))
         }
+    }
+
+    private var includedCount: Int { editableItems.filter(\.isIncluded).count }
+
+    private var includedTotal: Double? {
+        let included = editableItems.filter(\.isIncluded)
+        guard !included.isEmpty else { return nil }
+        return included.reduce(0) { $0 + (Double($1.priceText.replacingOccurrences(of: ",", with: ".")) ?? 0) }
     }
 
     // MARK: - Failure
 
-    private var failedView: some View {
+    private func failedView(_ message: String) -> some View {
         VStack(spacing: 16) {
             Image(systemName: "exclamationmark.triangle")
                 .font(.system(size: 40))
                 .foregroundStyle(.red)
-            Text(errorMessage ?? "Something went wrong.")
+            Text(message)
                 .multilineTextAlignment(.center)
                 .foregroundStyle(.secondary)
                 .padding(.horizontal, 24)
@@ -170,50 +183,51 @@ struct ReceiptScannerView: View {
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
-    // MARK: - Review
-
-    private var includedCount: Int { editableItems.filter(\.isIncluded).count }
-    private var newCount: Int { editableItems.filter { $0.isIncluded && $0.productId == nil }.count }
-
-    private var reviewView: some View {
-        ReceiptEditorView(items: $editableItems, householdId: householdId)
-    }
-
     // MARK: - Image handling
 
     private func handlePDF(_ pdfData: Data) async {
-        phase = .scanning
-        errorMessage = nil
-
         // 1. Prefer the PDF's text layer — most accurate for digital eReceipts.
-        //    If extraction is garbled or the server can't parse it, fall through to image OCR.
-        if let text = extractReceiptText(pdfData),
-           let result = try? await services.api.scanReceipt(householdId: householdId, receiptText: text) {
-            applyResult(result)
+        //    If extraction is garbled or the server can't parse it, fall through
+        //    to image OCR.
+        if let text = extractReceiptText(pdfData), await scan(.text(text)) {
             return
         }
 
         // 2. Fall back to rasterising the PDF and reading it as an image.
-        do {
-            guard let image = renderPDFToImage(pdfData) else {
-                phase = .failed; errorMessage = "Couldn't read that PDF."; return
-            }
-            guard let compressed = image.compressedForUpload() else {
-                phase = .failed; errorMessage = "Image error."; return
-            }
-            let result = try await services.api.scanReceipt(
-                householdId: householdId,
-                imageBase64: compressed.base64EncodedString()
-            )
-            applyResult(result)
-        } catch {
-            phase = .failed
-            errorMessage = "Couldn't read that receipt. (\(error.localizedDescription))"
+        guard let image = renderPDFToImage(pdfData) else {
+            fail("Couldn't read that PDF.")
+            return
         }
+        await scanImage(image)
     }
 
-    /// Pull the embedded text layer from a PDF, returning it only if it looks like
-    /// genuine receipt text (enough readable characters and at least one price/number).
+    private func handlePhotoData(_ data: Data) async {
+        guard let image = UIImage(data: data) else {
+            fail("Couldn't load that photo.")
+            return
+        }
+        await scanImage(image)
+    }
+
+    /// The document scanner can return more than one page (a long receipt
+    /// scanned in sections) — stitch them into one tall image, same as the
+    /// multi-page PDF path above.
+    private func handleScannedPages(_ images: [UIImage]) async {
+        guard let stitched = images.count > 1 ? stitchVertically(images) : images.first else {
+            fail("Couldn't read that scan.")
+            return
+        }
+        await scanImage(stitched)
+    }
+
+    private func scanImage(_ image: UIImage) async {
+        guard let compressed = image.compressedForUpload() else {
+            fail("Image error.")
+            return
+        }
+        _ = await scan(.image(compressed.base64EncodedString()))
+    }
+
     private func extractReceiptText(_ data: Data) -> String? {
         guard let doc = PDFDocument(data: data) else { return nil }
         var text = ""
@@ -227,7 +241,9 @@ struct ReceiptScannerView: View {
         let readableSet = CharacterSet.alphanumerics
             .union(.punctuationCharacters)
             .union(.whitespacesAndNewlines)
-            .union(CharacterSet(charactersIn: "$€£¢"))
+            // Receipts flag lines with symbols that aren't Unicode punctuation
+            // ("^" promotional, "*"), so count those as readable too.
+            .union(CharacterSet(charactersIn: "$€£¢^*+×"))
         let readable = trimmed.unicodeScalars.filter { readableSet.contains($0) }.count
         guard Double(readable) / Double(trimmed.unicodeScalars.count) >= 0.85 else { return nil }
         return trimmed
@@ -305,40 +321,102 @@ struct ReceiptScannerView: View {
         return UIGraphicsGetImageFromCurrentImageContext()
     }
 
-    private func handlePhotoData(_ data: Data) async {
-        phase = .scanning
-        errorMessage = nil
+    // MARK: - Scanning
+
+    /// Read the receipt, printing it onto the screen as it arrives.
+    ///
+    /// The streaming endpoint delivers the store header, then a line per product
+    /// as the model reads it, then the checked lines, then the matched result.
+    /// If the stream can't be opened or dies mid-receipt we fall back to the
+    /// one-shot scan and print its result instead — the paper looks the same
+    /// either way, it just fills in at the end.
+    ///
+    /// Returns false if the receipt couldn't be read at all, so the PDF path can
+    /// try again as an image.
+    @discardableResult
+    private func scan(_ source: ScanSource) async -> Bool {
+        // Fresh paper: a retry (a PDF's text layer failing, then its image) must
+        // not print onto whatever the previous attempt left behind.
+        printer = ReceiptPrinter()
+        stage = .printing
+        failureMessage = nil
+
         do {
-            guard let image = UIImage(data: data),
-                  let compressed = image.compressedForUpload()
-            else { phase = .failed; errorMessage = "Couldn't load that photo."; return }
-            let result = try await services.api.scanReceipt(householdId: householdId, imageBase64: compressed.base64EncodedString())
-            applyResult(result)
+            var matched: ReceiptScanResponse?
+            let events = services.api.scanReceiptStream(householdId: householdId, body: source.requestBody)
+            for try await event in events {
+                switch event {
+                case .store(let name, let date):     printer.setStore(name: name, date: date)
+                case .item(let line):                printer.print(line)
+                case .totals(let amount, _):         printer.setTotal(amount)
+                case .revised(let lines, _):         printer.revise(with: lines)
+                case .matched(let result):           matched = result
+                case .failed(let error):             throw APIError.serverError(error)
+                }
+            }
+            guard let matched else { throw APIError.serverError(Self.unreadable) }
+            await present(matched)
+            return true
+        } catch let error as APIError where error == .serverError(Self.unreadable) {
+            // The receipt was read end to end and there was nothing in it —
+            // running the same input through the one-shot scan would only pay
+            // for the same answer twice.
+            fail("Couldn't find any items on that receipt.")
+            return false
         } catch {
-            phase = .failed
-            errorMessage = "Couldn't read that receipt. (\(error.localizedDescription))"
+            return await scanWithoutStreaming(source)
         }
     }
 
-    /// The document scanner can return more than one page (a long receipt
-    /// scanned in sections) — stitch them into one tall image, same as the
-    /// multi-page PDF path below.
-    private func handleScannedPages(_ images: [UIImage]) async {
-        phase = .scanning
-        errorMessage = nil
-        guard let stitched = images.count > 1 ? stitchVertically(images) : images.first else {
-            phase = .failed; errorMessage = "Couldn't read that scan."; return
-        }
+    /// The server's "I read it and found no items" error, as opposed to a
+    /// transport failure worth retrying.
+    private static let unreadable = "could_not_parse"
+
+    /// The pre-streaming path, kept as the fallback. Whatever printed before the
+    /// stream failed is discarded and reprinted from the finished result, so the
+    /// paper can't end up showing a half-read receipt.
+    private func scanWithoutStreaming(_ source: ScanSource) async -> Bool {
         do {
-            guard let compressed = stitched.compressedForUpload() else {
-                phase = .failed; errorMessage = "Image error."; return
+            let result: ReceiptScanResponse
+            switch source {
+            case .text(let text):
+                result = try await services.api.scanReceipt(householdId: householdId, receiptText: text)
+            case .image(let base64):
+                result = try await services.api.scanReceipt(householdId: householdId, imageBase64: base64)
             }
-            let result = try await services.api.scanReceipt(householdId: householdId, imageBase64: compressed.base64EncodedString())
-            applyResult(result)
+            printer = ReceiptPrinter()
+            printer.setStore(name: result.storeName, date: result.receiptDate)
+            printer.setTotal(result.totalAmount)
+            for item in result.items {
+                printer.print(ReceiptPrintedLine(
+                    description: item.description,
+                    quantity: item.quantity,
+                    unitPrice: item.unitPrice,
+                    totalPrice: item.totalPrice
+                ))
+            }
+            await present(result)
+            return true
         } catch {
-            phase = .failed
-            errorMessage = "Couldn't read that receipt. (\(error.localizedDescription))"
+            // Both paths failed: this error is the informative one, since a 422
+            // here means the receipt genuinely couldn't be read.
+            fail("Couldn't read that receipt. (\(error.localizedDescription))")
+            return false
         }
+    }
+
+    /// Let the paper finish printing, then show what each line will be saved as
+    /// and leave the receipt sitting there to be read, edited, or torn off.
+    private func present(_ result: ReceiptScanResponse) async {
+        scanResult = result
+        editableItems = result.items.map { EditableReceiptItem(from: $0) }
+        await printer.finish()
+        printer.sync(with: editableItems)
+        stage = .printed
+    }
+
+    private func fail(_ message: String) {
+        failureMessage = message
     }
 
     private func stitchVertically(_ images: [UIImage]) -> UIImage? {
@@ -352,17 +430,12 @@ struct ReceiptScannerView: View {
         return UIGraphicsGetImageFromCurrentImageContext()
     }
 
-    private func applyResult(_ result: ReceiptScanResponse) {
-        scanResult = result
-        editableItems = result.items.map { EditableReceiptItem(from: $0) }
-        phase = .printing
-    }
-
     // MARK: - Confirm
 
+    /// Tearing the receipt off is what saves it.
     private func confirmReceipt() {
-        guard case .review = phase, let result = scanResult else { return }
-        phase = .confirming
+        guard stage == .printed, let result = scanResult else { return }
+        stage = .saving
 
         let items: [[String: Any]] = editableItems
             .filter(\.isIncluded)
@@ -395,8 +468,9 @@ struct ReceiptScannerView: View {
                 )
                 dismiss()
             } catch {
-                phase = .review
-                errorMessage = error.localizedDescription
+                // The paper is already gone, so there's nothing to go back to.
+                stage = .printed
+                saveError = error.localizedDescription
                 showSaveError = true
             }
         }
@@ -464,6 +538,7 @@ struct DocumentScannerCapture: UIViewControllerRepresentable {
     }
 }
 
+
 // MARK: - Receipt editor
 
 private struct ReceiptEditorView: View {
@@ -497,6 +572,9 @@ private struct ReceiptEditorView: View {
                                     Text(item.priceText.isEmpty ? "—" : "$" + item.priceText)
                                         .font(.subheadline.monospacedDigit())
                                         .fixedSize()
+                                }
+                                if item.needsReview && item.isIncluded {
+                                    Text("Check quantity or price").font(.caption).foregroundStyle(.orange)
                                 }
                                 Text(!item.isIncluded ? "Ignored" : item.productId == nil ? "New product · \(item.productName)" : "Matched to \(item.productName)")
                                     .font(.caption).foregroundStyle(.secondary)
@@ -639,6 +717,7 @@ private struct ReceiptProductChoice: View {
                 item.priceText = amount.map { String(format: "%.2f", $0) } ?? ""
                 // Original per-unit price is stale after a manual correction.
                 item.unitPrice = nil
+                item.needsReview = false
             }
         }
         .alert("Check quantity and price", isPresented: $invalidDetails) {
@@ -655,14 +734,14 @@ private struct ReceiptProductChoice: View {
 private struct ReceiptPrinterView: View {
     let result: ReceiptScanResponse?
     let items: [EditableReceiptItem]
+    let printer: ReceiptPrinter
     let isReady: Bool
     let isSaving: Bool
-    let onFinished: () -> Void
     let onEdit: () -> Void
     let onTear: () -> Void
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    @State private var printed = 0
+    private var printed: Int { printer.totalPrinted ? lineCount : printer.lines.count + (printer.storeName == nil ? 0 : 1) }
     @State private var tearing = false
     @State private var detached = false
     @State private var feedHaptic = UIImpactFeedbackGenerator(style: .light)
@@ -748,24 +827,10 @@ private struct ReceiptPrinterView: View {
                 onTear()
             } catch { }
         }
-        .task(id: result != nil) {
-            guard result != nil, printed == 0 else { return }
+        .onChange(of: printer.lines.count) { old, new in
+            guard new > old else { return }
+            feedHaptic.impactOccurred(intensity: 0.35)
             feedHaptic.prepare()
-            do {
-                for line in 1...lineCount {
-                    try await Task.sleep(for: .milliseconds(reduceMotion ? 35 : 210))
-                    guard !Task.isCancelled else { return }
-                    // Feed advances in physical steps; never interpolate the text layout.
-                    var transaction = Transaction(animation: nil)
-                    transaction.disablesAnimations = true
-                    withTransaction(transaction) { printed = line }
-                    feedHaptic.impactOccurred(intensity: line == lineCount ? 0.7 : 0.35)
-                    feedHaptic.prepare()
-                }
-                try await Task.sleep(for: .milliseconds(250))
-                guard !Task.isCancelled else { return }
-                onFinished()
-            } catch { /* Dismissal cancels the feed without advancing the flow. */ }
         }
         .onChange(of: isSaving) { _, saving in
             if !saving { detached = false; tearing = false }
@@ -773,7 +838,7 @@ private struct ReceiptPrinterView: View {
     }
 
     private var displayDate: String? {
-        guard let raw = result?.receiptDate else { return nil }
+        guard let raw = result?.receiptDate else { return printer.dateText }
         let formatter = DateFormatter()
         formatter.locale = Locale(identifier: "en_US_POSIX")
         formatter.dateFormat = "yyyy-MM-dd"
@@ -782,11 +847,11 @@ private struct ReceiptPrinterView: View {
     }
 
     private func receipt(width: CGFloat) -> some View {
-        let priceWidth = min(width * 0.42, max(56, CGFloat(items.map { $0.priceText.count + 1 }.max() ?? 6) * UIFont.preferredFont(forTextStyle: .footnote).pointSize * 0.62))
+        let priceWidth = min(width * 0.42, UIFont.preferredFont(forTextStyle: .footnote).pointSize * 0.62 * 8)
         return VStack(spacing: 0) {
             if printed > 0 {
                 VStack(spacing: 4) {
-                    Text(result?.storeName ?? "Your receipt")
+                    Text(printer.storeName ?? "Your receipt")
                         .font(.system(.headline, design: .monospaced).bold())
                         .multilineTextAlignment(.center)
                     if let date = displayDate {

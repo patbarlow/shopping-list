@@ -182,12 +182,19 @@ struct ReceiptScanResponse: Decodable {
     let storeName: String?
     let totalAmount: Double?
     let receiptDate: String?
+    /// The "N Items" tally printed on the receipt, when it prints one.
+    let itemCount: Int?
+    /// The receipt's own arithmetic didn't reconcile (quantities, item tally or
+    /// line totals) — the review screen opens up quantity editing when it's set.
+    let needsReview: Bool?
     let items: [ReceiptScanItem]
 
     enum CodingKeys: String, CodingKey {
         case storeName   = "store_name"
         case totalAmount = "total_amount"
         case receiptDate = "receipt_date"
+        case itemCount   = "item_count"
+        case needsReview = "needs_review"
         case items
     }
 }
@@ -205,6 +212,9 @@ struct ReceiptScanItem: Decodable, Identifiable {
     let productName: String       // existing name, or a clean simple name for the new product
     let isNew: Bool
     let purchaseHistoryId: String? // non-nil → backfill this already-listed purchase
+    /// The server couldn't reconcile this line's printed numbers (a quantity
+    /// that multiplied out to nothing on the receipt) — worth a human look.
+    let needsReview: Bool?
 
     enum CodingKeys: String, CodingKey {
         case description, quantity
@@ -216,6 +226,132 @@ struct ReceiptScanItem: Decodable, Identifiable {
         case productName        = "product_name"
         case isNew              = "is_new"
         case purchaseHistoryId  = "purchase_history_id"
+        case needsReview        = "needs_review"
+    }
+}
+
+// MARK: - Streaming scan
+
+/// One line on the printed receipt.
+///
+/// It starts as the raw line the scan read (description, quantity, price) and
+/// prints that way while the scan is still running. Once matching has run, and
+/// again after any edits, the product it will be saved as is filled in and the
+/// paper shows both: what the receipt said, and what it's about to become.
+struct ReceiptPrintedLine: Decodable, Equatable {
+    let description: String
+    var quantity: Double?
+    var unitPrice: Double?
+    var totalPrice: Double?
+
+    // Filled in once the line has been matched to a product (not decoded).
+    var productName: String? = nil
+    var isNew: Bool = false
+    var isIncluded: Bool = true
+    var needsReview: Bool = false
+
+    enum CodingKeys: String, CodingKey {
+        case description, quantity
+        case unitPrice  = "unit_price"
+        case totalPrice = "total_price"
+    }
+
+    init(description: String, quantity: Double?, unitPrice: Double?, totalPrice: Double?) {
+        self.description = description
+        self.quantity    = quantity
+        self.unitPrice   = unitPrice
+        self.totalPrice  = totalPrice
+    }
+
+    /// The paper's version of a reviewed row: what it will be saved as, at the
+    /// price and quantity it will be saved with.
+    init(reviewed item: EditableReceiptItem) {
+        self.description = item.description
+        self.quantity    = item.quantity
+        self.unitPrice   = item.unitPrice
+        self.totalPrice  = Double(item.priceText.replacingOccurrences(of: ",", with: "."))
+        self.productName = item.productName
+        self.isNew       = item.productId == nil
+        self.isIncluded  = item.isIncluded
+        self.needsReview = item.needsReview
+    }
+
+    /// "×2" / "1.017 kg", matching how the receipt itself prints a modifier.
+    var quantityText: String? {
+        guard let q = quantity, q != 1 else { return nil }
+        return q == q.rounded() ? "×\(Int(q))" : String(format: "%g kg", q)
+    }
+}
+
+/// The scan, delivered as it happens: the store header, then each product as it
+/// is read, then the checked lines, then the finished match proposal.
+enum ReceiptScanEvent {
+    case store(name: String?, date: String?)
+    case item(ReceiptPrintedLine)
+    case totals(amount: Double?, itemCount: Int?)
+    /// The line items after the arithmetic checks — may correct what was printed.
+    case revised(lines: [ReceiptPrintedLine], needsReview: Bool)
+    case matched(ReceiptScanResponse)
+    case failed(String)
+}
+
+private struct StoreEventPayload: Decodable {
+    let storeName: String?
+    let receiptDate: String?
+    enum CodingKeys: String, CodingKey {
+        case storeName   = "store_name"
+        case receiptDate = "receipt_date"
+    }
+}
+
+private struct TotalsEventPayload: Decodable {
+    let totalAmount: Double?
+    let itemCount: Int?
+    enum CodingKeys: String, CodingKey {
+        case totalAmount = "total_amount"
+        case itemCount   = "item_count"
+    }
+}
+
+private struct RevisedEventPayload: Decodable {
+    let lineItems: [ReceiptPrintedLine]
+    let needsReview: Bool?
+    enum CodingKeys: String, CodingKey {
+        case lineItems   = "line_items"
+        case needsReview = "needs_review"
+    }
+}
+
+private struct FailedEventPayload: Decodable {
+    let error: String?
+}
+
+extension ReceiptScanEvent {
+    /// Decode one server-sent event. Unknown event names are ignored so the
+    /// server can add events without breaking an older build.
+    static func decode(event: String, data: Data, using decoder: JSONDecoder) -> ReceiptScanEvent? {
+        switch event {
+        case "store":
+            guard let p = try? decoder.decode(StoreEventPayload.self, from: data) else { return nil }
+            return .store(name: p.storeName, date: p.receiptDate)
+        case "item":
+            guard let line = try? decoder.decode(ReceiptPrintedLine.self, from: data) else { return nil }
+            return .item(line)
+        case "totals":
+            guard let p = try? decoder.decode(TotalsEventPayload.self, from: data) else { return nil }
+            return .totals(amount: p.totalAmount, itemCount: p.itemCount)
+        case "revised":
+            guard let p = try? decoder.decode(RevisedEventPayload.self, from: data) else { return nil }
+            return .revised(lines: p.lineItems, needsReview: p.needsReview ?? false)
+        case "matched":
+            guard let r = try? decoder.decode(ReceiptScanResponse.self, from: data) else { return nil }
+            return .matched(r)
+        case "failed":
+            let p = try? decoder.decode(FailedEventPayload.self, from: data)
+            return .failed(p?.error ?? "could_not_parse")
+        default:
+            return nil
+        }
     }
 }
 
@@ -223,7 +359,10 @@ struct ReceiptScanItem: Decodable, Identifiable {
 struct EditableReceiptItem: Identifiable {
     let id: String
     let description: String
+    /// Editable: the scan can staple a multi-buy onto the wrong product, and
+    /// the quantity divides the price when computing $/100g baselines.
     var quantity: Double?
+    var needsReview: Bool
     var priceText: String
     var isIncluded: Bool = true
 
@@ -233,16 +372,16 @@ struct EditableReceiptItem: Identifiable {
     var isNew: Bool
     var purchaseHistoryId: String?
 
-    // Carried through unedited to /confirm for the $/100g-style unit price baseline.
+    // Carried through to /confirm for the $/100g-style unit price baseline.
     var unitPrice: Double?
     let sizeValue: Double?
     let sizeUnit: String?
 
     init(from item: ReceiptScanItem) {
-        // Repeated receipt descriptions still represent separate editable lines.
         self.id                = UUID().uuidString
         self.description       = item.description
         self.quantity          = item.quantity
+        self.needsReview       = item.needsReview ?? false
         let price              = item.totalPrice ?? item.unitPrice
         self.priceText         = price.map { String(format: "%.2f", $0) } ?? ""
         self.productId         = item.productId
@@ -259,6 +398,21 @@ struct EditableReceiptItem: Identifiable {
         // Whole numbers are unit counts ("×2"); fractional quantities are loose
         // weights, which receipts print in kg ("1.017 kg").
         return q == q.rounded() ? "×\(Int(q))" : String(format: "%g kg", q)
+    }
+
+    /// Unit counts can be corrected in the review screen; a weighed quantity
+    /// (1.017 kg) is only meaningful as printed, so it stays read-only.
+    var isUnitCount: Bool {
+        guard let q = quantity else { return true }
+        return q == q.rounded() && q >= 1 && q < 100
+    }
+
+    /// "×2 @ $1.69" — showing the arithmetic is what makes a wrong multi-buy
+    /// obvious at a glance next to the line's price.
+    var quantityDetail: String? {
+        guard let text = quantityText else { return nil }
+        guard let unit = unitPrice, unit > 0 else { return text }
+        return String(format: "%@ @ $%.2f", text, unit)
     }
 }
 
