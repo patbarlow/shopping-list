@@ -75,7 +75,7 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.patbarlow.shoppinglist
-        MARKETING_VERSION: "1.6.0"
+        MARKETING_VERSION: "1.7.7"
         CURRENT_PROJECT_VERSION: "2"
         TARGETED_DEVICE_FAMILY: "1,2"
         IPHONEOS_DEPLOYMENT_TARGET: "26.0"
@@ -104,6 +104,19 @@ targets:
         com.apple.developer.siri: true
         com.apple.security.application-groups:
           - group.com.patbarlow.shoppinglist
+
+  ReceiptTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: Tests/ReceiptTests
+      - path: Shared/Models/Recipe.swift
+      - path: Shared/Models/ReceiptPrinter.swift
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.patbarlow.shoppinglist.receipt-tests
 
   "Shopping List macOS":
     type: application
@@ -148,6 +161,10 @@ schemes:
     build:
       targets:
         "Shopping List": all
+    test:
+      config: Debug
+      targets:
+        - ReceiptTests
     run:
       config: Debug
     archive:
