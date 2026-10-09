@@ -28,7 +28,9 @@ import Observation
         generation = token
         defer { isStarting = false }
         let status = await withCheckedContinuation { continuation in
-            SFSpeechRecognizer.requestAuthorization { continuation.resume(returning: $0) }
+            SFSpeechRecognizer.requestAuthorization { @Sendable status in
+                continuation.resume(returning: status)
+            }
         }
         #if os(iOS)
         let audio = await AVAudioApplication.requestRecordPermission()
@@ -55,7 +57,7 @@ import Observation
             request.shouldReportPartialResults = true
             request.taskHint = .dictation
             self.request = request
-            recognition = recognizer.recognitionTask(with: request) { [weak self] result, error in
+            recognition = recognizer.recognitionTask(with: request) { @Sendable [weak self] result, error in
                 let text = result?.bestTranscription.formattedString
                 let final = result?.isFinal ?? false
                 let failed = error != nil
@@ -75,7 +77,7 @@ import Observation
                 stop()
                 return
             }
-            input.installTap(onBus: 0, bufferSize: 1024, format: format) { [weak self] buffer, _ in
+            input.installTap(onBus: 0, bufferSize: 1024, format: format) { @Sendable [weak self] buffer, _ in
                 request.append(buffer)
                 var power: Float = 0
                 if let samples = buffer.floatChannelData?[0], buffer.frameLength > 0 {
