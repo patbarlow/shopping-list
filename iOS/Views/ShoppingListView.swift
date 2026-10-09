@@ -10,6 +10,8 @@ struct ShoppingListView: View {
     let household: Household
     @Environment(AppServices.self) private var services
     @State private var showSettings = false
+    let voice: VoiceEntryController
+    @Environment(\.scenePhase) private var scenePhase
 
     // ── Inline add ─────────────────────────────────────────────────────────────
     @State private var isAdding  = false
@@ -79,16 +81,6 @@ struct ShoppingListView: View {
                 }
 
                 mainList
-                    .overlay(alignment: .bottom) {
-                        LinearGradient(
-                            colors: [.clear, Color(.systemBackground)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        .frame(height: 80)
-                        .padding(.bottom, -56)
-                        .allowsHitTesting(false)
-                    }
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         addItemAccessory
                     }
@@ -117,18 +109,8 @@ struct ShoppingListView: View {
             unitPricesByName = lookup
         }
         .onChange(of: focusedField) { old, new in handleFocusChange(old: old, new: new) }
-        .onChange(of: addText) { old, new in
-            // iOS TextField strips newlines on paste — detect multiline pastes via clipboard
-            guard isAdding,
-                  new.count - old.count > 2,
-                  let clip = UIPasteboard.general.string,
-                  clip.contains("\n") else { return }
-            let items = Self.parseMultipleItems(clip)
-            guard items.count > 1 else { return }
-            addText = ""; addQty = ""; addNotes = ""
-            isAdding = false; focusedField = nil
-            for name in items { Task { await store.addItem(name: name) } }
-        }
+        .onDisappear { voice.stop(discardPending: true) }
+        .onChange(of: scenePhase) { _, phase in if phase == .background { voice.stop(discardPending: true) } }
         .onReceive(NotificationCenter.default.publisher(for: .shoppingListQuickAdd)) { _ in
             startAdding()
         }
@@ -145,6 +127,9 @@ struct ShoppingListView: View {
     private var addItemAccessory: some View {
         GlassEffectContainer(spacing: 12) {
         VStack(alignment: .trailing, spacing: 6) {
+            VoiceFeedbackPill(voice: voice)
+                .padding(.horizontal, 12)
+
             // Duplicate-item toast
             if let dupe = duplicateToastName {
                 Button { duplicateToastName = nil } label: {
@@ -203,6 +188,8 @@ struct ShoppingListView: View {
                             .font(.body.weight(.semibold))
                             .foregroundStyle(.tint)
                             .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
+                            .onTapGesture { startAdding() }
                     }
                     if isEditingItem {
                         TextField("Item name", text: $editName)
@@ -216,8 +203,12 @@ struct ShoppingListView: View {
                                 .foregroundStyle(.tertiary)
                         }
                         .buttonStyle(.plain)
+                    } else if voice.isActive {
+                        VoiceInputLabel(voice: voice)
+                            .contentShape(Rectangle())
+                            .onTapGesture { startAdding() }
                     } else if isAdding {
-                        TextField("Item name", text: $addText)
+                        TextField("Items, separated by commas", text: $addText, axis: .vertical)
                             .focused($focusedField, equals: .newName)
                             .submitLabel(.done)
                             .onSubmit { commitAdd() }
@@ -234,17 +225,23 @@ struct ShoppingListView: View {
                         Text("Add item…")
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                            .onTapGesture { voice.speech.error = nil; startAdding() }
+                    }
+                    if !isEditingItem {
+                        VoiceInputControls(voice: voice, toggle: toggleVoice)
                     }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, (isAdding || isEditingItem) ? 10 : 16)
 
                 // Extra fields — shown while adding or editing
-                if isAdding || isEditingItem {
+                if (isAdding && !voice.isActive) || isEditingItem {
                     Divider().padding(.horizontal, 16).opacity(0.2)
                     HStack(spacing: 12) {
                         Color.clear.frame(width: 24)
-                        TextField("Qty", text: isEditingItem ? $editQty : $addQty)
+                        TextField(!isEditingItem && parsedAddItems.count > 1 ? "Write quantities beside each item" : "Qty", text: isEditingItem ? $editQty : $addQty)
+                            .disabled(!isEditingItem && parsedAddItems.count > 1)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .focused($focusedField, equals: isEditingItem ? .editQty : .newQty)
@@ -276,7 +273,6 @@ struct ShoppingListView: View {
             .padding(.bottom, 10)
             .padding(.top, 6)
             .contentShape(Rectangle())
-            .onTapGesture { if !isAdding && !isEditingItem { startAdding() } }
             .simultaneousGesture(
                 DragGesture(minimumDistance: 8, coordinateSpace: .local)
                     .onEnded { value in
@@ -583,7 +579,19 @@ struct ShoppingListView: View {
 
     // MARK: - Actions
 
+    private func toggleVoice() {
+        if voice.isActive {
+            voice.stop()
+        } else {
+            isAdding = false
+            focusedField = nil
+            voice.start(store: store)
+        }
+    }
+
     private func startAdding() {
+        guard !voice.isActive else { return }
+        voice.dismissFeedback()
         if let id = editingItemID, store.items.contains(where: { $0.id == id }) {
             commitCurrentEdit()
         }
@@ -591,7 +599,6 @@ struct ShoppingListView: View {
             focusedField = .newName
             return
         }
-        addText = ""; addQty = ""; addNotes = ""
         isAdding = true
         // Focus in the same transaction as the card expanding, not after, so the
         // keyboard and the card animate up together instead of the keyboard lagging.
@@ -637,11 +644,14 @@ struct ShoppingListView: View {
         }
 
         Task {
-            await store.addItem(
-                name: trimmed,
-                quantity: qty.isEmpty ? nil : qty,
-                notes: note.isEmpty ? nil : note
-            )
+            let names = ShoppingInputParser.split(trimmed)
+            for name in names {
+                await store.addItem(
+                    name: name,
+                    quantity: names.count == 1 && !qty.isEmpty ? qty : nil,
+                    notes: note.isEmpty ? nil : note
+                )
+            }
         }
     }
 
@@ -767,8 +777,6 @@ struct ShoppingListView: View {
     // MARK: - Helpers
 
     static func parseMultipleItems(_ text: String) -> [String] {
-        text.components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+        ShoppingInputParser.split(text)
     }
 }

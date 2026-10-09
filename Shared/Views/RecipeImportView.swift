@@ -21,8 +21,8 @@ public struct RecipeImportView: View {
     @State private var ingredients: [EditableIngredient] = []
     @State private var sourceUrl: String? = nil
     @State private var errorMessage: String? = nil
-    @State private var selectedPhoto: PhotosPickerItem? = nil
     #if os(iOS)
+    @State private var selectedPhoto: PhotosPickerItem? = nil
     @State private var showCamera = false
     #endif
     @FocusState private var focusedField: IngFocusField?

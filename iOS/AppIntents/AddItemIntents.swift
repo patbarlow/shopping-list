@@ -42,7 +42,9 @@ struct TrolleyAddIntent: AppIntent {
         var added: [String] = []
 
         await withTaskGroup(of: (String, Bool).self) { group in
-            for name in parsed {
+            for raw in parsed {
+                let item = ShoppingInputParser.parse(raw)
+                let name = item.name
                 if existingNames.contains(name.lowercased()) {
                     alreadyThere.append(name)
                     continue
@@ -53,9 +55,9 @@ struct TrolleyAddIntent: AppIntent {
                     req.httpMethod = "POST"
                     req.setValue("application/json", forHTTPHeaderField: "Content-Type")
                     req.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
-                    req.httpBody = try? JSONSerialization.data(withJSONObject: [
-                        "household_id": householdId, "name": name
-                    ])
+                    var payload = ["household_id": householdId, "name": name]
+                    if let quantity = item.quantity { payload["quantity"] = quantity }
+                    req.httpBody = try? JSONSerialization.data(withJSONObject: payload)
                     guard let (_, r) = try? await URLSession.shared.data(for: req),
                           let http = r as? HTTPURLResponse,
                           (200...299).contains(http.statusCode)
@@ -82,12 +84,7 @@ struct TrolleyAddIntent: AppIntent {
     }
 
     static func parseItems(_ text: String) -> [String] {
-        text
-            .replacingOccurrences(of: " and ", with: ",", options: .caseInsensitive)
-            .replacingOccurrences(of: " & ", with: ",")
-            .components(separatedBy: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+        ShoppingInputParser.split(text)
     }
 
     static func formatList(_ names: [String]) -> String {
