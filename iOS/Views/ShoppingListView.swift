@@ -79,16 +79,6 @@ struct ShoppingListView: View {
                 }
 
                 mainList
-                    .overlay(alignment: .bottom) {
-                        LinearGradient(
-                            colors: [.clear, Color(.systemBackground)],
-                            startPoint: .top,
-                            endPoint: .bottom
-                        )
-                        .frame(height: 80)
-                        .padding(.bottom, -56)
-                        .allowsHitTesting(false)
-                    }
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         addItemAccessory
                     }
@@ -117,18 +107,6 @@ struct ShoppingListView: View {
             unitPricesByName = lookup
         }
         .onChange(of: focusedField) { old, new in handleFocusChange(old: old, new: new) }
-        .onChange(of: addText) { old, new in
-            // iOS TextField strips newlines on paste — detect multiline pastes via clipboard
-            guard isAdding,
-                  new.count - old.count > 2,
-                  let clip = UIPasteboard.general.string,
-                  clip.contains("\n") else { return }
-            let items = Self.parseMultipleItems(clip)
-            guard items.count > 1 else { return }
-            addText = ""; addQty = ""; addNotes = ""
-            isAdding = false; focusedField = nil
-            for name in items { Task { await store.addItem(name: name) } }
-        }
         .onReceive(NotificationCenter.default.publisher(for: .shoppingListQuickAdd)) { _ in
             startAdding()
         }
@@ -188,6 +166,9 @@ struct ShoppingListView: View {
             VStack(alignment: .leading, spacing: 0) {
                 // Name row
                 HStack(spacing: 12) {
+                    if !isEditingItem {
+                        VoiceEntryButton()
+                    }
                     if isEditingItem {
                         Image(systemName: "pencil")
                             .font(.body.weight(.semibold))
@@ -217,7 +198,7 @@ struct ShoppingListView: View {
                         }
                         .buttonStyle(.plain)
                     } else if isAdding {
-                        TextField("Item name", text: $addText)
+                        TextField("Items, separated by commas", text: $addText, axis: .vertical)
                             .focused($focusedField, equals: .newName)
                             .submitLabel(.done)
                             .onSubmit { commitAdd() }
@@ -244,7 +225,8 @@ struct ShoppingListView: View {
                     Divider().padding(.horizontal, 16).opacity(0.2)
                     HStack(spacing: 12) {
                         Color.clear.frame(width: 24)
-                        TextField("Qty", text: isEditingItem ? $editQty : $addQty)
+                        TextField(!isEditingItem && parsedAddItems.count > 1 ? "Write quantities beside each item" : "Qty", text: isEditingItem ? $editQty : $addQty)
+                            .disabled(!isEditingItem && parsedAddItems.count > 1)
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                             .focused($focusedField, equals: isEditingItem ? .editQty : .newQty)
@@ -637,11 +619,14 @@ struct ShoppingListView: View {
         }
 
         Task {
-            await store.addItem(
-                name: trimmed,
-                quantity: qty.isEmpty ? nil : qty,
-                notes: note.isEmpty ? nil : note
-            )
+            let names = ShoppingInputParser.split(trimmed)
+            for name in names {
+                await store.addItem(
+                    name: name,
+                    quantity: names.count == 1 && !qty.isEmpty ? qty : nil,
+                    notes: note.isEmpty ? nil : note
+                )
+            }
         }
     }
 
@@ -767,8 +752,6 @@ struct ShoppingListView: View {
     // MARK: - Helpers
 
     static func parseMultipleItems(_ text: String) -> [String] {
-        text.components(separatedBy: .newlines)
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
+        ShoppingInputParser.split(text)
     }
 }

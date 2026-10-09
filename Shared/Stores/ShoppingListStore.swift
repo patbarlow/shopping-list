@@ -109,34 +109,8 @@ import Observation
     // MARK: - Name helpers
 
     static func extractQuantity(from raw: String) -> (name: String, qty: String?) {
-        let t = raw.trimmingCharacters(in: .whitespaces)
-        let pattern = #"^(\d+(?:[.,/]\d+)?(?:\s*(?:g|kg|ml|L|l|oz|lbs?|tbsp|tsp|cups?|pcs?|packs?|bunch|x))?)(?:\s+)(.+)$"#
-        if let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive) {
-            let range = NSRange(t.startIndex..., in: t)
-            if let match = regex.firstMatch(in: t, range: range),
-               let qr = Range(match.range(at: 1), in: t),
-               let nr = Range(match.range(at: 2), in: t) {
-                let qty  = String(t[qr]).trimmingCharacters(in: .whitespaces)
-                let name = String(t[nr]).trimmingCharacters(in: .whitespaces)
-                if !name.isEmpty {
-                    return (name: name, qty: qty.isEmpty ? nil : qty)
-                }
-            }
-        }
-        // Trailing multiplier: "Milk x2" / "Milk 2x"
-        let suffixPattern = #"^(.+?)\s+(?:x\s*(\d+(?:[.,/]\d+)?)|(\d+(?:[.,/]\d+)?)\s*x)$"#
-        if let regex = try? NSRegularExpression(pattern: suffixPattern, options: .caseInsensitive) {
-            let range = NSRange(t.startIndex..., in: t)
-            if let match = regex.firstMatch(in: t, range: range),
-               let nr = Range(match.range(at: 1), in: t) {
-                let numRange = Range(match.range(at: 2), in: t) ?? Range(match.range(at: 3), in: t)
-                let name = String(t[nr]).trimmingCharacters(in: .whitespaces)
-                if let numRange, !name.isEmpty {
-                    return (name: name, qty: "\(t[numRange])x")
-                }
-            }
-        }
-        return (name: t, qty: nil)
+        let item = ShoppingInputParser.parse(raw)
+        return (item.name, item.quantity)
     }
 
     static func capitalizeFirst(_ s: String) -> String {
@@ -146,7 +120,8 @@ import Observation
 
     // MARK: - Add
 
-    func addItem(name: String, quantity: String? = nil, notes: String? = nil) async {
+    @discardableResult
+    func addItem(name: String, quantity: String? = nil, notes: String? = nil) async -> Bool {
         var itemName = name.trimmingCharacters(in: .whitespaces)
         let explicitQty = quantity?.trimmingCharacters(in: .whitespaces)
         var itemQty: String?
@@ -161,7 +136,7 @@ import Observation
         itemName = Self.capitalizeFirst(itemName)
 
         let trimmed = itemName
-        guard !trimmed.isEmpty, let householdId else { return }
+        guard !trimmed.isEmpty, let householdId else { return false }
 
         recordInHistory(trimmed)
 
@@ -190,9 +165,11 @@ import Observation
             } else if !items.contains(where: { $0.id == serverItem.id }) {
                 items.append(serverItem)
             }
+            return true
         } catch {
             items.removeAll { $0.id == itemId }
             self.error = error.localizedDescription
+            return false
         }
     }
 

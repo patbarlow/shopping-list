@@ -18,22 +18,14 @@ struct AddItemView: View {
     var body: some View {
         NavigationStack {
             VStack(spacing: 16) {
-                TextField("e.g. Milk, Bananas, Pasta…", text: $text)
+                TextField("e.g. Milk, Bananas, Pasta…", text: $text, axis: .vertical)
+                    .lineLimit(1...4)
                     .textFieldStyle(.roundedBorder)
                     .submitLabel(.done)
                     .focused($focused)
                     .onSubmit(addItems)
                     .padding(.horizontal)
-                    .onChange(of: text) { old, new in
-                        guard new.count - old.count > 2,
-                              let clip = UIPasteboard.general.string,
-                              clip.contains("\n") else { return }
-                        let items = Self.parseItems(clip)
-                        guard items.count > 1 else { return }
-                        text = ""
-                        for name in items { Task { await store.addItem(name: name) } }
-                        dismiss()
-                    }
+
 
                 if !parsedItems.isEmpty {
                     VStack(alignment: .leading, spacing: 6) {
@@ -42,7 +34,7 @@ struct AddItemView: View {
                             .foregroundStyle(.secondary)
                         ScrollView(.horizontal, showsIndicators: false) {
                             HStack(spacing: 8) {
-                                ForEach(parsedItems, id: \.self) { item in
+                                ForEach(Array(parsedItems.enumerated()), id: \.offset) { _, item in
                                     Text(item)
                                         .font(.subheadline)
                                         .padding(.horizontal, 10)
@@ -92,27 +84,6 @@ struct AddItemView: View {
     }
 
     static func parseItems(_ raw: String) -> [String] {
-        let newlineItems = raw.components(separatedBy: .newlines)
-            .map { stripBulletPrefix($0) }
-            .filter { !$0.isEmpty }
-        if newlineItems.count > 1 { return newlineItems }
-        return raw
-            .replacingOccurrences(of: " and ", with: ",", options: .caseInsensitive)
-            .replacingOccurrences(of: " & ", with: ",")
-            .components(separatedBy: ",")
-            .map { $0.trimmingCharacters(in: .whitespaces) }
-            .filter { !$0.isEmpty }
-    }
-
-    private static func stripBulletPrefix(_ raw: String) -> String {
-        let t = raw.trimmingCharacters(in: .whitespaces)
-        let bullets = ["• ", "•", "- ", "* ", "– ", "— ", "◦ ", "▪ ", "▸ ", "► "]
-        for b in bullets where t.hasPrefix(b) {
-            return String(t.dropFirst(b.count)).trimmingCharacters(in: .whitespaces)
-        }
-        if let range = t.range(of: #"^\d+[.)]\s+"#, options: .regularExpression) {
-            return String(t[range.upperBound...]).trimmingCharacters(in: .whitespaces)
-        }
-        return t
+        ShoppingInputParser.split(raw)
     }
 }

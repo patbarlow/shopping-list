@@ -315,13 +315,14 @@ private struct MacListView: View {
     private var addBar: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
+                VoiceEntryButton()
                 Image(systemName: isAdding ? "circle" : "plus")
                     .foregroundStyle(isAdding ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Color.green))
                     .font(isAdding ? .body : .body.weight(.semibold))
                     .frame(width: 22, height: 22)
 
                 if isAdding {
-                    TextField("Item name", text: $newItem)
+                    TextField("Items, separated by commas", text: $newItem, axis: .vertical)
                         .textFieldStyle(.plain)
                         .focused($focusedField, equals: .addName)
                         .onSubmit { commitAdd() }
@@ -339,7 +340,8 @@ private struct MacListView: View {
                 Divider().padding(.horizontal, 12).opacity(0.25)
                 HStack(spacing: 10) {
                     Color.clear.frame(width: 22)
-                    TextField("Qty", text: $newQty)
+                    TextField(ShoppingInputParser.split(newItem).count > 1 ? "Write quantities beside each item" : "Qty", text: $newQty)
+                        .disabled(ShoppingInputParser.split(newItem).count > 1)
                         .textFieldStyle(.plain)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -533,7 +535,12 @@ private struct MacListView: View {
         } else {
             isAdding = false; focusedField = nil
         }
-        Task { await store.addItem(name: trimmed, quantity: qty.isEmpty ? nil : qty) }
+        Task {
+            let names = ShoppingInputParser.split(trimmed)
+            for name in names {
+                await store.addItem(name: name, quantity: names.count == 1 && !qty.isEmpty ? qty : nil)
+            }
+        }
     }
 
     private func cancelAdd() {
