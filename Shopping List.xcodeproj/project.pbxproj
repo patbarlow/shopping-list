@@ -40,6 +40,7 @@
 		6ED76CC4E00A14815FC0707E /* SpendTrendsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90ED6AE48BC99A0C35E43C6 /* SpendTrendsView.swift */; };
 		759F0E6FD4D2AB94FEFF3244 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 199A94407A8F361452039A05 /* Assets.xcassets */; };
 		78F81B3A671F48402FAC60F6 /* ShoppingListMacApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 40912EDFFF62E3AE19133B58 /* ShoppingListMacApp.swift */; };
+		799079471492CCA1DDEB7098 /* VoiceEntryController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BB14EC7B4D7B674889213B7 /* VoiceEntryController.swift */; };
 		7EF34F643A900486FF9CD0E0 /* TripReceiptView.swift in Sources */ = {isa = PBXBuildFile; fileRef = E85DFD5490ED526B000DC300 /* TripReceiptView.swift */; };
 		84F91FFA458ACB2F5CD27AA0 /* QuickAddIntent.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EC68D8CDFA6582CFFEE3468 /* QuickAddIntent.swift */; };
 		866D18987DC91A573350366E /* ShoppingInputTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6C3F48ABA864A02F896576EE /* ShoppingInputTests.swift */; };
@@ -50,6 +51,7 @@
 		92C77C8200BFCAEBBCD05158 /* RecipeHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A666E10637E9465B6733A2 /* RecipeHubView.swift */; };
 		94CFD6FD94772818C79FBC8F /* Household.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBEC057EB44C2C3C2778B9C3 /* Household.swift */; };
 		962D7B364296F9A3FDAB9912 /* ReceiptImportToolbarButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA506A539E6FBA7DA2156F4B /* ReceiptImportToolbarButton.swift */; };
+		9632EB28B4C9D145207AC2E3 /* VoiceEntryController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1BB14EC7B4D7B674889213B7 /* VoiceEntryController.swift */; };
 		97184F439951502A053845E6 /* MenuBarView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF8B3203E96D1AB11A946F05 /* MenuBarView.swift */; };
 		9D6EB5D8BB64F807F475B666 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DD716EEC8E998041577ECEC /* SettingsView.swift */; };
 		9EB1EF4FBDB51E3AE699592C /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7462B86AD882C4C18C4DF1DF /* APIService.swift */; };
@@ -92,6 +94,7 @@
 		145A5C2183790DA7F940227E /* RealtimeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RealtimeService.swift; sourceTree = "<group>"; };
 		199A94407A8F361452039A05 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1B06687513055194F342B4B7 /* ShoppingItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingItem.swift; sourceTree = "<group>"; };
+		1BB14EC7B4D7B674889213B7 /* VoiceEntryController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceEntryController.swift; sourceTree = "<group>"; };
 		211B897E937C23B444C3DFAC /* PredictedListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredictedListView.swift; sourceTree = "<group>"; };
 		24D8C95D29F673B68DFBD8A7 /* AddItemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddItemView.swift; sourceTree = "<group>"; };
 		266701578D7DB0B386E52AC6 /* ReceiptPrinter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptPrinter.swift; sourceTree = "<group>"; };
@@ -325,6 +328,7 @@
 				145A5C2183790DA7F940227E /* RealtimeService.swift */,
 				97B1734E7407EC373454F34A /* SentryHelpers.swift */,
 				611148128D2D216B5C6F751B /* SpeechService.swift */,
+				1BB14EC7B4D7B674889213B7 /* VoiceEntryController.swift */,
 				E69802945D406EBD8113A863 /* VoiceShoppingParser.swift */,
 			);
 			path = Services;
@@ -536,6 +540,7 @@
 				A9F21AE0984A2DDDCA63783C /* SpeechService.swift in Sources */,
 				6ED76CC4E00A14815FC0707E /* SpendTrendsView.swift in Sources */,
 				7EF34F643A900486FF9CD0E0 /* TripReceiptView.swift in Sources */,
+				9632EB28B4C9D145207AC2E3 /* VoiceEntryController.swift in Sources */,
 				86BA07FF5B15D4BEEA73E790 /* VoiceEntryView.swift in Sources */,
 				8AB77FA464BFFD54D173DEDA /* VoiceShoppingParser.swift in Sources */,
 			);
@@ -565,6 +570,7 @@
 				78F81B3A671F48402FAC60F6 /* ShoppingListMacApp.swift in Sources */,
 				BC032B773815D22A3A604589 /* ShoppingListStore.swift in Sources */,
 				33F8FB0CFC64968558F7CE70 /* SpeechService.swift in Sources */,
+				799079471492CCA1DDEB7098 /* VoiceEntryController.swift in Sources */,
 				AD4EC800179EB1391B793460 /* VoiceEntryView.swift in Sources */,
 				5F955F0F95DCF9384020D382 /* VoiceShoppingParser.swift in Sources */,
 			);

@@ -52,24 +52,54 @@ enum ShoppingInputParser {
         return Item(name: text, quantity: nil)
     }
 
+    static func voiceContent(_ raw: String) -> String {
+        var text = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+        text = text.replacingOccurrences(of: #"^(?:please\s+)?(?:(?:can|could|would) you\s+)?(?:add|get|buy|we need|i need|i want to buy)\s+"#, with: "", options: [.regularExpression, .caseInsensitive])
+        text = text.replacingOccurrences(of: #"\s+(?:to (?:my|the|our) (?:shopping )?list|please)[.!?]*$"#, with: "", options: [.regularExpression, .caseInsensitive])
+        return text.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+    }
+
     /// This gate also runs before the language model: mentioning food in a
     /// conversation must not be mistaken for a request to buy it.
     static func isConversationalSpeech(_ raw: String) -> Bool {
-        raw.range(of: #"\b(?:don['’]?t|do not|not|no|had|ate|was|were|is|are|did|how|why|when|said|says|talk|talking|think|maybe|if|ignore|instead|actually)\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+        raw.range(of: #"\b(?:don['’]?t|do not|not|no|had|ate|was|were|is|are|did|how|why|when|said|says|talk|talking|think|maybe|if|ignore|instead|actually|i|you|he|she|we|they|my|your|our|love|hate|tastes?|costs?|expensive|delicious|yesterday|tomorrow)\b"#, options: [.regularExpression, .caseInsensitive]) != nil
+    }
+
+    /// Auto-add requires the *whole* phrase to be a shopping request. A model
+    /// can't cherry-pick “apples” from a conversation containing that word.
+    static func validatedVoiceItems(_ phrases: [String], in raw: String) -> [Item] {
+        let content = voiceContent(raw)
+        guard !isConversationalSpeech(content), !phrases.isEmpty, phrases.count <= 40 else { return [] }
+        var remainder = content
+        var items: [Item] = []
+        for phrase in phrases {
+            let value = phrase.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+            guard !value.isEmpty, value.split(separator: " ").count <= 10,
+                  !isConversationalSpeech(value),
+                  value.rangeOfCharacter(from: .letters) != nil,
+                  let range = remainder.range(of: value, options: .caseInsensitive) else { return [] }
+            remainder.replaceSubrange(range, with: " ")
+            items.append(parse(value))
+        }
+        remainder = remainder.replacingOccurrences(of: #"\b(?:and|please)\b"#, with: "", options: [.regularExpression, .caseInsensitive])
+        guard remainder.rangeOfCharacter(from: .alphanumerics) == nil else { return [] }
+        return items
     }
 
     /// Conservative offline fallback when Apple Intelligence isn't available.
-    /// Unknown or sentence-like input stays out of the proposed shopping items.
+    /// Unknown or sentence-like input stays out of automatic additions.
     static func conservativeVoiceItems(_ raw: String) -> [Item] {
-        guard !isConversationalSpeech(raw) else { return [] }
+        let content = voiceContent(raw)
+        guard !isConversationalSpeech(content) else { return [] }
         let products = Set("apple apples banana bananas milk butter egg eggs bread flour sugar chicken beef pork fish rice pasta cheese yoghurt yogurt cream chocolate coffee tea potato potatoes onion onions tomato tomatoes carrot carrots broccoli lettuce cucumber salt pepper soap shampoo toothpaste detergent nappies tissues toilet paper juice cereal oats nuts strawberries blueberries wraps oil beans lentils lemon lemons lime limes avocado avocados mushroom mushrooms spinach garlic ginger".split(separator: " ").map(String.init))
-        return split(raw).compactMap { phrase in
-            let cleaned = phrase.replacingOccurrences(of: #"^(?:please\s+)?(?:add|get|buy|we need|i need)\s+"#, with: "", options: [.regularExpression, .caseInsensitive])
-            let item = parse(cleaned.trimmingCharacters(in: CharacterSet(charactersIn: ".!? ")))
+        let phrases = split(content)
+        let items: [Item] = phrases.compactMap { phrase in
+            let item = parse(phrase.trimmingCharacters(in: CharacterSet(charactersIn: ".!? ")))
             let words = item.name.lowercased().split(separator: " ").map(String.init)
-            let modifiers = Set(["red", "green", "fresh", "frozen", "small", "large", "unsalted", "salted", "plain", "brown", "white", "dark", "thickened", "greek", "whole", "skim", "organic", "ground", "breast", "thigh", "olive", "extra", "virgin", "rolls"])
+            let modifiers = Set(["red", "green", "fresh", "frozen", "small", "large", "unsalted", "salted", "plain", "brown", "white", "dark", "thickened", "greek", "whole", "skim", "organic", "ground", "breast", "thigh", "olive", "extra", "virgin", "rolls", "and"])
             guard !words.isEmpty, words.count <= 5, words.contains(where: products.contains), words.allSatisfy({ products.contains($0) || modifiers.contains($0) }) else { return nil }
             return item
         }
+        return items.count == phrases.count ? items : []
     }
 }

@@ -121,7 +121,7 @@ import Observation
     // MARK: - Add
 
     @discardableResult
-    func addItem(name: String, quantity: String? = nil, notes: String? = nil) async -> Bool {
+    func addItem(name: String, quantity: String? = nil, notes: String? = nil) async -> ShoppingItem? {
         var itemName = name.trimmingCharacters(in: .whitespaces)
         let explicitQty = quantity?.trimmingCharacters(in: .whitespaces)
         var itemQty: String?
@@ -136,7 +136,7 @@ import Observation
         itemName = Self.capitalizeFirst(itemName)
 
         let trimmed = itemName
-        guard !trimmed.isEmpty, let householdId else { return false }
+        guard !trimmed.isEmpty, let householdId else { return nil }
 
         recordInHistory(trimmed)
 
@@ -165,11 +165,11 @@ import Observation
             } else if !items.contains(where: { $0.id == serverItem.id }) {
                 items.append(serverItem)
             }
-            return true
+            return serverItem
         } catch {
             items.removeAll { $0.id == itemId }
             self.error = error.localizedDescription
-            return false
+            return nil
         }
     }
 
@@ -299,7 +299,8 @@ import Observation
 
     // MARK: - Delete ("didn't buy it")
 
-    func deleteItem(_ item: ShoppingItem) async {
+    @discardableResult
+    func deleteItem(_ item: ShoppingItem) async -> Bool {
         if let idx = recentlyCompleted.firstIndex(where: { $0.id == item.id }) {
             recentlyCompleted.remove(at: idx)
             if recentlyCompleted.isEmpty { finalizeTask?.cancel(); finalizeTask = nil }
@@ -308,9 +309,11 @@ import Observation
         items.removeAll { $0.id == item.id }
         do {
             try await api.deleteItem(id: item.id)
+            return true
         } catch {
             items.append(item)
             self.error = error.localizedDescription
+            return false
         }
     }
 

@@ -212,6 +212,8 @@ private struct MacHouseholdSetupView: View {
 // MARK: - Main list
 
 private struct MacListView: View {
+    @State private var voice = VoiceEntryController()
+    @Environment(\.scenePhase) private var scenePhase
     let household: Household
     @Environment(AppServices.self) private var services
 
@@ -279,6 +281,8 @@ private struct MacListView: View {
         }
         .task { await store.load(householdId: household.id) }
         .onChange(of: focusedField) { old, new in handleFocusChange(old: old, new: new) }
+        .onDisappear { voice.stop(discardPending: true) }
+        .onChange(of: scenePhase) { _, phase in if phase == .background { voice.stop(discardPending: true) } }
         .animation(.default, value: store.groupedItems.map {
             "\($0.category.rawValue)\($0.items.map { "\($0.id)\($0.checked)" }.joined())"
         })
@@ -315,13 +319,18 @@ private struct MacListView: View {
     private var addBar: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                VoiceEntryButton()
                 Image(systemName: isAdding ? "circle" : "plus")
                     .foregroundStyle(isAdding ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Color.green))
                     .font(isAdding ? .body : .body.weight(.semibold))
                     .frame(width: 22, height: 22)
+                    .contentShape(Rectangle())
+                    .onTapGesture { startAdding() }
 
-                if isAdding {
+                if voice.isActive || voice.speech.error != nil || (!isAdding && voice.status != nil) {
+                    VoiceInputLabel(voice: voice)
+                        .contentShape(Rectangle())
+                        .onTapGesture { startAdding() }
+                } else if isAdding {
                     TextField("Items, separated by commas", text: $newItem, axis: .vertical)
                         .textFieldStyle(.plain)
                         .focused($focusedField, equals: .addName)
@@ -331,12 +340,15 @@ private struct MacListView: View {
                     Text("Add item…")
                         .foregroundStyle(.secondary)
                         .frame(maxWidth: .infinity, alignment: .leading)
+                        .contentShape(Rectangle())
+                        .onTapGesture { voice.speech.error = nil; startAdding() }
                 }
+                VoiceInputControls(voice: voice, toggle: toggleVoice)
             }
             .padding(.horizontal, 12)
             .padding(.vertical, isAdding ? 10 : 12)
 
-            if isAdding {
+            if isAdding && !voice.isActive {
                 Divider().padding(.horizontal, 12).opacity(0.25)
                 HStack(spacing: 10) {
                     Color.clear.frame(width: 22)
@@ -356,8 +368,8 @@ private struct MacListView: View {
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+        .overlay { VoiceBarGlow(active: voice.isActive, level: voice.speech.level, cornerRadius: 12) }
         .contentShape(Rectangle())
-        .onTapGesture { if !isAdding { startAdding() } }
         .animation(.easeOut(duration: 0.18), value: isAdding)
     }
 
@@ -514,10 +526,21 @@ private struct MacListView: View {
 
     // MARK: Add actions
 
+    private func toggleVoice() {
+        if voice.isActive {
+            voice.stop()
+        } else {
+            isAdding = false
+            focusedField = nil
+            voice.start(store: store)
+        }
+    }
+
     private func startAdding() {
+        guard !voice.isActive else { return }
+        voice.dismissFeedback()
         commitEdit()
         guard !isAdding else { focusedField = .addName; return }
-        newItem = ""; newQty = ""
         isAdding = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { focusedField = .addName }
     }

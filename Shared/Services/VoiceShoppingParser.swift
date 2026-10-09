@@ -15,7 +15,8 @@ enum VoiceShoppingParser {
     }
 
     static func parse(_ transcript: String) async -> Result {
-        guard !ShoppingInputParser.isConversationalSpeech(transcript) else {
+        let content = ShoppingInputParser.voiceContent(transcript)
+        guard !ShoppingInputParser.isConversationalSpeech(content) else {
             return Result(items: [], usedModel: false)
         }
         if #available(iOS 26.0, macOS 26.0, *), SystemLanguageModel.default.availability == .available {
@@ -28,12 +29,8 @@ enum VoiceShoppingParser {
                     items when unsure. Copy each item phrase and its quantity from the transcript;
                     do not infer additional ingredients or paraphrase. Keep compound product names intact.
                     """)
-                let response = try await session.respond(to: "Transcript:\n\(transcript)", generating: SpokenShoppingItems.self)
-                // Ground every proposed entry in the actual recording, not model inventions.
-                let source = transcript.lowercased()
-                let items = response.content.items.prefix(40).filter {
-                    !$0.isEmpty && source.contains($0.lowercased())
-                }.map(ShoppingInputParser.parse)
+                let response = try await session.respond(to: "Transcript:\n\(content)", generating: SpokenShoppingItems.self)
+                let items = ShoppingInputParser.validatedVoiceItems(response.content.items, in: content)
                 return Result(items: items, usedModel: true)
             } catch {
                 // Unsupported language, model downloads and generation errors use the safe fallback.

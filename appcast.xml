@@ -8,8 +8,8 @@
             <sparkle:version>200</sparkle:version>
             <sparkle:shortVersionString>1.8.0</sparkle:shortVersionString>
             <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
-            <description><![CDATA[<ul><li>Add several items at once with commas, “and”, or newlines.</li><li>Quantities such as “2 apples”, “220g butter”, and “chicken 700g” go into the quantity field.</li><li>Add items by voice with on-device speech recognition, an animated glow, and editable review before saving.</li><li>Shopping-intent filtering helps keep unrelated conversation out of your list.</li></ul>]]></description>
-            <enclosure url="https://github.com/patbarlow/shopping-list/releases/download/v1.8.0/ShoppingList.dmg" length="5204181" type="application/octet-stream" sparkle:edSignature="3RwoqfDQB47Bpz0gHNCT5Y64CJpDIP+H77g15Jp5kM6+3O22bQ/BpX+Xb/qJlfCkAVu4aUiNH6pZyfBGgaiiDg=="/>
+            <description><![CDATA[<ul><li>Add several items at once with commas, “and”, or newlines.</li><li>Quantities such as “2 apples”, “220g butter”, and “chicken 700g” go into the quantity field.</li><li>Add items by voice with on-device speech recognition, a subtle glow in the add bar, automatic adding after a pause, and Undo.</li><li>Shopping-intent filtering helps keep unrelated conversation out of your list.</li></ul>]]></description>
+            <enclosure url="https://github.com/patbarlow/shopping-list/releases/download/v1.8.0/ShoppingList.dmg" length="5205981" type="application/octet-stream" sparkle:edSignature="PJntfO0bUW/IQC8B7y5ZiyZennxMpTLlXjPjyPYcKWHS4jWsA8mCahomOol72uXuQCTjg7E4Ph7n/kU05LgGDQ=="/>
         </item>
         <item>
             <title>1.0.2</title>

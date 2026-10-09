@@ -10,6 +10,8 @@ struct ShoppingListView: View {
     let household: Household
     @Environment(AppServices.self) private var services
     @State private var showSettings = false
+    @State private var voice = VoiceEntryController()
+    @Environment(\.scenePhase) private var scenePhase
 
     // ── Inline add ─────────────────────────────────────────────────────────────
     @State private var isAdding  = false
@@ -107,6 +109,8 @@ struct ShoppingListView: View {
             unitPricesByName = lookup
         }
         .onChange(of: focusedField) { old, new in handleFocusChange(old: old, new: new) }
+        .onDisappear { voice.stop(discardPending: true) }
+        .onChange(of: scenePhase) { _, phase in if phase == .background { voice.stop(discardPending: true) } }
         .onReceive(NotificationCenter.default.publisher(for: .shoppingListQuickAdd)) { _ in
             startAdding()
         }
@@ -166,9 +170,6 @@ struct ShoppingListView: View {
             VStack(alignment: .leading, spacing: 0) {
                 // Name row
                 HStack(spacing: 12) {
-                    if !isEditingItem {
-                        VoiceEntryButton()
-                    }
                     if isEditingItem {
                         Image(systemName: "pencil")
                             .font(.body.weight(.semibold))
@@ -184,6 +185,8 @@ struct ShoppingListView: View {
                             .font(.body.weight(.semibold))
                             .foregroundStyle(.tint)
                             .frame(width: 24, height: 24)
+                            .contentShape(Rectangle())
+                            .onTapGesture { startAdding() }
                     }
                     if isEditingItem {
                         TextField("Item name", text: $editName)
@@ -197,6 +200,10 @@ struct ShoppingListView: View {
                                 .foregroundStyle(.tertiary)
                         }
                         .buttonStyle(.plain)
+                    } else if voice.isActive || voice.speech.error != nil || (!isAdding && voice.status != nil) {
+                        VoiceInputLabel(voice: voice)
+                            .contentShape(Rectangle())
+                            .onTapGesture { startAdding() }
                     } else if isAdding {
                         TextField("Items, separated by commas", text: $addText, axis: .vertical)
                             .focused($focusedField, equals: .newName)
@@ -215,13 +222,18 @@ struct ShoppingListView: View {
                         Text("Add item…")
                             .foregroundStyle(.secondary)
                             .frame(maxWidth: .infinity, alignment: .leading)
+                            .contentShape(Rectangle())
+                            .onTapGesture { voice.speech.error = nil; startAdding() }
+                    }
+                    if !isEditingItem {
+                        VoiceInputControls(voice: voice, toggle: toggleVoice)
                     }
                 }
                 .padding(.horizontal, 16)
                 .padding(.vertical, (isAdding || isEditingItem) ? 10 : 16)
 
                 // Extra fields — shown while adding or editing
-                if isAdding || isEditingItem {
+                if (isAdding && !voice.isActive) || isEditingItem {
                     Divider().padding(.horizontal, 16).opacity(0.2)
                     HStack(spacing: 12) {
                         Color.clear.frame(width: 24)
@@ -253,12 +265,12 @@ struct ShoppingListView: View {
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .glassEffect(in: RoundedRectangle(cornerRadius: 20))
+            .overlay { VoiceBarGlow(active: voice.isActive, level: voice.speech.level, cornerRadius: 20) }
             .clipShape(RoundedRectangle(cornerRadius: 20))
             .padding(.horizontal, 12)
             .padding(.bottom, 10)
             .padding(.top, 6)
             .contentShape(Rectangle())
-            .onTapGesture { if !isAdding && !isEditingItem { startAdding() } }
             .simultaneousGesture(
                 DragGesture(minimumDistance: 8, coordinateSpace: .local)
                     .onEnded { value in
@@ -565,7 +577,19 @@ struct ShoppingListView: View {
 
     // MARK: - Actions
 
+    private func toggleVoice() {
+        if voice.isActive {
+            voice.stop()
+        } else {
+            isAdding = false
+            focusedField = nil
+            voice.start(store: store)
+        }
+    }
+
     private func startAdding() {
+        guard !voice.isActive else { return }
+        voice.dismissFeedback()
         if let id = editingItemID, store.items.contains(where: { $0.id == id }) {
             commitCurrentEdit()
         }
@@ -573,7 +597,6 @@ struct ShoppingListView: View {
             focusedField = .newName
             return
         }
-        addText = ""; addQty = ""; addNotes = ""
         isAdding = true
         // Focus in the same transaction as the card expanding, not after, so the
         // keyboard and the card animate up together instead of the keyboard lagging.
