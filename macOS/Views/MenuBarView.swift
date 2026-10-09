@@ -262,6 +262,10 @@ private struct MacListView: View {
                 .padding(.horizontal, 12)
                 .padding(.vertical, 8)
         }
+        .overlay(alignment: .bottom) {
+            VoiceScreenGlow(active: voice.isActive, level: voice.speech.level)
+                .ignoresSafeArea(.container, edges: .bottom)
+        }
         .navigationTitle("Shopping List")
         .toolbar { toolbarItems }
         .toolbarBackground(Color(.windowBackgroundColor), for: .windowToolbar)
@@ -368,7 +372,6 @@ private struct MacListView: View {
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
-        .overlay { VoiceBarGlow(active: voice.isActive, level: voice.speech.level, cornerRadius: 12) }
         .contentShape(Rectangle())
         .animation(.easeOut(duration: 0.18), value: isAdding)
     }

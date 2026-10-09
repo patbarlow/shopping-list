@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct ContentView: View {
+    @State private var voice = VoiceEntryController()
     @Environment(AppServices.self) private var services
     @Environment(ReceiptImportCoordinator.self) private var receiptImportCoordinator
 
@@ -14,7 +15,7 @@ struct ContentView: View {
                 if let household = services.auth.household {
                     TabView {
                         Tab("List", systemImage: "cart") {
-                            ShoppingListView(household: household)
+                            ShoppingListView(household: household, voice: voice)
                         }
                         Tab("Insights", systemImage: "chart.bar") {
                             SpendTrendsView(household: household)
@@ -25,6 +26,10 @@ struct ContentView: View {
                                     .environment(services)
                             }
                         }
+                    }
+                    .overlay(alignment: .bottom) {
+                        VoiceScreenGlow(active: voice.isActive, level: voice.speech.level)
+                            .ignoresSafeArea(.container, edges: .bottom)
                     }
                     // Anchored here — the TabView's root, always "in window"
                     // regardless of which tab is frontmost — rather than on

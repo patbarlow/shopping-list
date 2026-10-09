@@ -10,7 +10,7 @@ struct ShoppingListView: View {
     let household: Household
     @Environment(AppServices.self) private var services
     @State private var showSettings = false
-    @State private var voice = VoiceEntryController()
+    let voice: VoiceEntryController
     @Environment(\.scenePhase) private var scenePhase
 
     // ── Inline add ─────────────────────────────────────────────────────────────
@@ -265,7 +265,6 @@ struct ShoppingListView: View {
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
             .glassEffect(in: RoundedRectangle(cornerRadius: 20))
-            .overlay { VoiceBarGlow(active: voice.isActive, level: voice.speech.level, cornerRadius: 20) }
             .clipShape(RoundedRectangle(cornerRadius: 20))
             .padding(.horizontal, 12)
             .padding(.bottom, 10)
