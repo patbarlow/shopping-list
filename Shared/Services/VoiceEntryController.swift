@@ -4,7 +4,8 @@ import Observation
 @MainActor
 @Observable final class VoiceEntryController {
     let speech = SpeechService()
-    private(set) var status: String?
+    private(set) var feedbackID = UUID()
+    private(set) var status: String? { didSet { feedbackID = UUID() } }
     private(set) var isWorking = false
     private(set) var lastAdded: [ShoppingItem] = []
     private(set) var isUndoing = false
@@ -18,15 +19,14 @@ import Observation
     var isActive: Bool { speech.isRecording || speech.isStarting }
     var canUndo: Bool { !lastAdded.isEmpty && !isWorking && !isUndoing }
     var displayText: String {
-        if let error = speech.error { return error }
         if !speech.transcript.isEmpty { return speech.transcript }
-        if let status { return status }
         return speech.isStarting ? "Starting…" : "Listening…"
     }
 
     func dismissFeedback() {
         status = nil
         speech.error = nil
+        lastAdded = []
     }
 
     func start(store: ShoppingListStore) {
@@ -52,6 +52,7 @@ import Observation
             worker = nil
             queue.removeAll()
             isWorking = false
+            dismissFeedback()
         }
     }
 
@@ -67,7 +68,6 @@ import Observation
                 guard !Task.isCancelled, self.sessionID == token,
                       store.householdId == self.householdID else { break }
                 if result.items.isEmpty {
-                    self.status = "Listening…"
                     continue
                 }
                 var added: [ShoppingItem] = []

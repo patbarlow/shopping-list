@@ -257,6 +257,11 @@ private struct MacListView: View {
                 .padding(.top, 8)
             }
 
+            VoiceFeedbackPill(voice: voice)
+                .frame(maxWidth: .infinity, alignment: .trailing)
+                .padding(.horizontal, 12)
+                .padding(.bottom, voice.status == nil && voice.speech.error == nil ? 0 : 6)
+
             Divider().opacity(0.4)
             addBar
                 .padding(.horizontal, 12)
@@ -330,7 +335,7 @@ private struct MacListView: View {
                     .contentShape(Rectangle())
                     .onTapGesture { startAdding() }
 
-                if voice.isActive || voice.speech.error != nil || (!isAdding && voice.status != nil) {
+                if voice.isActive {
                     VoiceInputLabel(voice: voice)
                         .contentShape(Rectangle())
                         .onTapGesture { startAdding() }

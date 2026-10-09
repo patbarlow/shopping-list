@@ -127,6 +127,9 @@ struct ShoppingListView: View {
     private var addItemAccessory: some View {
         GlassEffectContainer(spacing: 12) {
         VStack(alignment: .trailing, spacing: 6) {
+            VoiceFeedbackPill(voice: voice)
+                .padding(.horizontal, 12)
+
             // Duplicate-item toast
             if let dupe = duplicateToastName {
                 Button { duplicateToastName = nil } label: {
@@ -200,7 +203,7 @@ struct ShoppingListView: View {
                                 .foregroundStyle(.tertiary)
                         }
                         .buttonStyle(.plain)
-                    } else if voice.isActive || voice.speech.error != nil || (!isAdding && voice.status != nil) {
+                    } else if voice.isActive {
                         VoiceInputLabel(voice: voice)
                             .contentShape(Rectangle())
                             .onTapGesture { startAdding() }
