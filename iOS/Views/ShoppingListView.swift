@@ -585,7 +585,7 @@ struct ShoppingListView: View {
         } else {
             isAdding = false
             focusedField = nil
-            voice.start(store: store)
+            voice.start(store: store, api: services.api)
         }
     }
 

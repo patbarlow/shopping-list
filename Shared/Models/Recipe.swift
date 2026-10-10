@@ -19,6 +19,72 @@ struct SavedRecipesResponse: Decodable {
     let recipes: [SavedRecipe]
 }
 
+/// Only unambiguous pantry basics are skipped. Never substring-match: bell
+/// peppers, salted butter, coconut water and stock still need to be purchased.
+enum RecipeStaples {
+    static func contains(_ name: String) -> Bool {
+        var value = name.lowercased().replacingOccurrences(of: "&", with: "and")
+        value = value.replacingOccurrences(of: #"\s*\([^)]*\)"#, with: "", options: .regularExpression)
+        value = value.replacingOccurrences(of: #"[,;]?\s+to taste$"#, with: "", options: .regularExpression)
+        value = value.replacingOccurrences(of: #"\s+"#, with: " ", options: .regularExpression)
+            .trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        return Set([
+            "water", "tap water", "cold water", "warm water", "hot water", "boiling water",
+            "salt", "table salt", "sea salt", "fine salt", "kosher salt", "sea salt flakes",
+            "pepper", "black pepper", "ground black pepper", "freshly ground black pepper",
+            "white pepper", "ground white pepper", "salt and pepper", "salt and black pepper",
+            "salt and freshly ground black pepper", "sea salt and freshly ground black pepper"
+        ]).contains(value)
+    }
+}
+
+/// Explicit cooking requests are routed before the ordinary grocery parser.
+/// Matching uses saved names only; it never generates a recipe from memory.
+enum VoiceRecipeRequest {
+    struct Request: Equatable {
+        let name: String
+        let servings: Int?
+    }
+
+    static func parse(_ text: String) -> Request? {
+        let value = text.trimmingCharacters(in: .whitespacesAndNewlines.union(.punctuationCharacters))
+        let pattern = #"^(?:(?:okay|ok|please)[, ]+)?(?:we want to (?:make|cook)|i want to (?:make|cook)|let['’]?s (?:make|cook)|(?:can|could) you add (?:the )?ingredients for|add (?:the )?ingredients for|(?:make|cook))\s+(.+)$"#
+        guard let regex = try? NSRegularExpression(pattern: pattern, options: .caseInsensitive),
+              let match = regex.firstMatch(in: value, range: NSRange(value.startIndex..., in: value)),
+              let range = Range(match.range(at: 1), in: value) else { return nil }
+        var name = String(value[range])
+        var servings: Int?
+        let servingPattern = #"\s+for\s+(\d+|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve)(?:\s+(?:people|servings|portions))?$"#
+        if let regex = try? NSRegularExpression(pattern: servingPattern, options: .caseInsensitive),
+           let match = regex.firstMatch(in: name, range: NSRange(name.startIndex..., in: name)),
+           let numberRange = Range(match.range(at: 1), in: name),
+           let suffixRange = Range(match.range, in: name) {
+            let number = String(name[numberRange]).lowercased()
+            let words = ["one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten", "eleven", "twelve"]
+            servings = Int(number) ?? words.firstIndex(of: number).map { $0 + 1 }
+            name.removeSubrange(suffixRange)
+        }
+        guard !name.isEmpty else { return nil }
+        return Request(name: name, servings: servings)
+    }
+
+    static func matches(_ query: String, recipes: [SavedRecipe]) -> [SavedRecipe] {
+        let key = normalizedName(query)
+        guard !key.isEmpty else { return [] }
+        let exact = recipes.filter { normalizedName($0.name) == key }
+        if !exact.isEmpty { return exact }
+        let words = Set(key.split(separator: " "))
+        return recipes.filter { words.isSubset(of: Set(normalizedName($0.name).split(separator: " "))) }
+    }
+
+    private static func normalizedName(_ text: String) -> String {
+        text.folding(options: [.caseInsensitive, .diacriticInsensitive], locale: Locale(identifier: "en_AU"))
+            .components(separatedBy: CharacterSet.alphanumerics.inverted)
+            .filter { !$0.isEmpty && !["our", "my", "the", "recipe", "please"].contains($0) }
+            .joined(separator: " ")
+    }
+}
+
 // Response from /v1/recipes/parse-url or /v1/recipes/parse-image
 struct ParsedRecipeResponse: Decodable {
     let recipeName: String
@@ -70,7 +136,7 @@ struct EditableIngredient: Identifiable {
         self.existingItemId   = response.existingItemId
         self.existingListQty  = response.existingQuantity
         // Pre-exclude items the server confirmed are already on the list
-        self.isIncluded       = response.existingItemId == nil
+        self.isIncluded       = response.existingItemId == nil && !RecipeStaples.contains(response.name)
     }
 
     mutating func applyServingsScale(factor: Double) {
@@ -80,7 +146,7 @@ struct EditableIngredient: Identifiable {
 
     static func scaleQuantity(_ raw: String?, by factor: Double) -> String? {
         guard let raw, !raw.isEmpty, factor != 1.0 else { return raw }
-        let pattern = #"^(\d+(?:\.\d+)?(?:\s+\d+\/\d+)?|(?:\d+\/\d+))\s*(.*)"#
+        let pattern = #"^(\d+\s+\d+/\d+|\d+/\d+|\d+(?:\.\d+)?)\s*(.*)"#
         guard let regex = try? NSRegularExpression(pattern: pattern),
               let match = regex.firstMatch(in: raw, range: NSRange(raw.startIndex..., in: raw)),
               let numRange = Range(match.range(at: 1), in: raw),

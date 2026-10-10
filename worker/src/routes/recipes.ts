@@ -196,4 +196,30 @@ app.get("/", async (c) => {
   return c.json({ recipes: results });
 });
 
+// Read the saved ingredient snapshot, not the source website. Both the recipe
+// and all list/product lookups are scoped to the authenticated household.
+app.get("/:id", async (c) => {
+  const householdId = c.req.query("household_id");
+  if (!householdId) return c.json({ error: "household_id required" }, 400);
+  if (!(await assertMember(c.env, householdId, c.var.user.id))) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+  const recipe = await c.env.DB.prepare(
+    "SELECT name, default_servings FROM recipes WHERE id = ? AND household_id = ?",
+  ).bind(c.req.param("id"), householdId).first<{ name: string; default_servings: number | null }>();
+  if (!recipe) return c.json({ error: "not_found" }, 404);
+  const { results } = await c.env.DB.prepare(
+    `SELECT ri.name, ri.quantity, COALESCE(p.category, 'other') AS category,
+            COALESCE(p.aisle_order, 99) AS aisle_order,
+            (SELECT si.id FROM shopping_items si
+             WHERE si.household_id = ? AND si.checked = 0 AND si.product_id = ri.product_id
+             LIMIT 1) AS existing_item_id,
+            NULL AS existing_quantity
+     FROM recipe_ingredients ri
+     LEFT JOIN products p ON p.id = ri.product_id AND p.household_id = ?
+     WHERE ri.recipe_id = ? ORDER BY ri.rowid`,
+  ).bind(householdId, householdId, c.req.param("id")).all();
+  return c.json({ recipe_name: recipe.name, default_servings: recipe.default_servings, ingredients: results });
+});
+
 export default app;

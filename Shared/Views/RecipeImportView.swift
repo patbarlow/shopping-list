@@ -11,7 +11,7 @@ public struct RecipeImportView: View {
     @Environment(AppServices.self) private var services
     @Environment(\.dismiss) private var dismiss
 
-    private enum Phase { case input, loading(String), preview, confirming }
+    private enum Phase { case input, loading(String), preview, confirming(String) }
 
     @State private var phase: Phase = .input
     @State private var urlText = ""
@@ -21,6 +21,7 @@ public struct RecipeImportView: View {
     @State private var ingredients: [EditableIngredient] = []
     @State private var sourceUrl: String? = nil
     @State private var errorMessage: String? = nil
+    @State private var savedSnapshot: Data?
     #if os(iOS)
     @State private var selectedPhoto: PhotosPickerItem? = nil
     @State private var showCamera = false
@@ -38,7 +39,7 @@ public struct RecipeImportView: View {
                 case .input:              inputView
                 case .loading(let msg):   loadingView(msg)
                 case .preview:            previewView
-                case .confirming:         loadingView("Adding to list…")
+                case .confirming(let msg): loadingView(msg)
                 }
             }
             .navigationTitle(navTitle)
@@ -181,6 +182,11 @@ public struct RecipeImportView: View {
                         .foregroundStyle(Color.accentColor)
                     }
                 }
+            } footer: {
+                Text("Water, salt and pepper are skipped by default. Include them if you're running low. The full recipe is saved for next time.")
+            }
+            if let errorMessage {
+                Section { Text(errorMessage).foregroundStyle(.red) }
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
@@ -194,7 +200,7 @@ public struct RecipeImportView: View {
     private var confirmBar: some View {
         VStack(spacing: 0) {
             Divider()
-            Button(action: confirmImport) {
+            Button { confirmImport(addToList: true) } label: {
                 Group {
                     if includedCount == 0 {
                         Text("Nothing selected")
@@ -208,7 +214,10 @@ public struct RecipeImportView: View {
             .buttonStyle(.borderedProminent)
             .disabled(includedCount == 0)
             .padding(.horizontal)
-            .padding(.vertical, 12)
+            .padding(.top, 12)
+            Button("Save recipe without adding items") { confirmImport(addToList: false) }
+                .disabled(ingredients.isEmpty || recipeName.trimmingCharacters(in: .whitespaces).isEmpty)
+                .padding(.vertical, 12)
         }
         .background(.regularMaterial)
     }
@@ -288,6 +297,10 @@ public struct RecipeImportView: View {
                                 }
                                 .font(.caption)
                                 .foregroundStyle(ing.isIncluded ? Color.orange : Color.green)
+                            } else if !ing.isIncluded && RecipeStaples.contains(ing.name) {
+                                Text("pantry basic — skipped")
+                                    .font(.caption)
+                                    .foregroundStyle(.secondary)
                             }
                         }
 
@@ -396,27 +409,37 @@ public struct RecipeImportView: View {
         }
     }
 
-    private func confirmImport() {
+    private func confirmImport(addToList: Bool) {
         guard case .preview = phase else { return }
         let toAdd = ingredients.filter(\.isIncluded)
-        guard !toAdd.isEmpty else { return }
-        phase = .confirming
+        guard !ingredients.isEmpty, !addToList || !toAdd.isEmpty else { return }
+        errorMessage = nil
+        phase = .confirming("Saving recipe…")
         Task {
             do {
-                try await store.addBulkItems(toAdd)
-                Task {
-                    let ingPayload: [[String: Any]] = toAdd.map {
-                        var d: [String: Any] = ["name": $0.name]
-                        if let q = $0.currentQuantity { d["quantity"] = q }
-                        return d
-                    }
-                    try? await services.api.saveRecipe(
+                // Save all ingredients, including staples and anything already
+                // on the list. Quantities and serving count share the same scale.
+                let ingPayload: [[String: Any]] = ingredients.map {
+                    var d: [String: Any] = ["name": $0.name]
+                    if let q = $0.currentQuantity { d["quantity"] = q }
+                    return d
+                }
+                let snapshot = try JSONSerialization.data(withJSONObject: [
+                    "name": recipeName, "servings": currentServings, "ingredients": ingPayload
+                ], options: .sortedKeys)
+                if savedSnapshot != snapshot {
+                    try await services.api.saveRecipe(
                         householdId: householdId,
                         name: recipeName,
                         sourceUrl: sourceUrl,
-                        defaultServings: defaultServings,
+                        defaultServings: currentServings,
                         ingredients: ingPayload
                     )
+                    savedSnapshot = snapshot
+                }
+                if addToList {
+                    phase = .confirming("Adding to list…")
+                    try await store.addBulkItems(toAdd)
                 }
                 dismiss()
             } catch {
