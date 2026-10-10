@@ -126,6 +126,10 @@ final class APIService {
         return response.recipes
     }
 
+    func fetchRecipe(id: String, householdId: String) async throws -> ParsedRecipeResponse {
+        try await get("/v1/recipes/\(id)", query: ["household_id": householdId])
+    }
+
     // MARK: - Receipts
 
     // The worker runs two sequential Claude calls to parse and match a receipt (up to

@@ -1,6 +1,45 @@
 import Testing
 
 struct ShoppingInputTests {
+    @Test func recipeBasicsDoNotHideOtherGroceries() {
+        for name in ["Water", "Sea salt", "Salt & pepper", "Freshly ground black pepper, to taste", "salt (to taste)"] {
+            #expect(RecipeStaples.contains(name))
+        }
+        for name in ["Red pepper", "Bell peppers", "Coconut water", "Salted butter", "Pepper sauce", "Olive oil", "Flour", "Chicken stock"] {
+            #expect(!RecipeStaples.contains(name))
+        }
+        // Explicit spoken shopping still includes pantry basics.
+        #expect(ShoppingInputParser.conservativeVoiceItems("add salt").first?.name == "salt")
+    }
+
+    @Test func cookingRequestsPreserveRecipeAndServings() {
+        #expect(VoiceRecipeRequest.parse("Okay, we want to make spaghetti bolognese.") == .init(name: "spaghetti bolognese", servings: nil))
+        #expect(VoiceRecipeRequest.parse("Let's make our bolognese for six") == .init(name: "our bolognese", servings: 6))
+        #expect(VoiceRecipeRequest.parse("Add ingredients for chicken curry for 2 people") == .init(name: "chicken curry", servings: 2))
+        for text in ["Don't make bolognese", "We made bolognese yesterday", "Do we have ingredients for curry?", "milk, butter, cheese"] {
+            #expect(VoiceRecipeRequest.parse(text) == nil)
+        }
+    }
+
+    @Test func recipeSelectionDoesNotGuessBetweenMatches() {
+        let recipes = [
+            SavedRecipe(id: "1", name: "Spaghetti Bolognese", sourceUrl: nil, defaultServings: 4, createdAt: ""),
+            SavedRecipe(id: "2", name: "Lentil Bolognese", sourceUrl: nil, defaultServings: 2, createdAt: "")
+        ]
+        #expect(VoiceRecipeRequest.matches("our spaghetti bolognese", recipes: recipes).map(\.id) == ["1"])
+        #expect(VoiceRecipeRequest.matches("bolognese", recipes: recipes).count == 2)
+        #expect(VoiceRecipeRequest.matches("curry", recipes: recipes).isEmpty)
+        #expect(VoiceRecipeRequest.matches("our recipe", recipes: recipes).isEmpty)
+        #expect(VoiceRecipeRequest.matches("lent", recipes: recipes).isEmpty)
+    }
+
+    @Test func recipeQuantitiesScaleFractionsCorrectly() {
+        #expect(EditableIngredient.scaleQuantity("500 g", by: 0.5) == "250 g")
+        #expect(EditableIngredient.scaleQuantity("1/2 cup", by: 2) == "1 cup")
+        #expect(EditableIngredient.scaleQuantity("1 1/2 cups", by: 2) == "3 cups")
+        #expect(EditableIngredient.scaleQuantity("to taste", by: 2) == "to taste")
+    }
+
     @Test func screenshotQuantities() {
         let examples = [
             ("220g Unsalted Butter", "Unsalted Butter", "220g"),

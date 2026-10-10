@@ -23,12 +23,13 @@ private final class SpeechAudioSink: @unchecked Sendable {
 }
 
 @MainActor
-@Observable final class SpeechService {
+@Observable final class SpeechService: NSObject, AVSpeechSynthesizerDelegate {
     var transcript = ""
     var isRecording = false
     var isStarting = false
     var level: Float = 0
     var error: String?
+    var isSpeaking = false
     var onUtterance: ((String) -> Void)?
 
     private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-AU"))
@@ -40,12 +41,16 @@ private final class SpeechAudioSink: @unchecked Sendable {
     private var rolloverTask: Task<Void, Never>?
     private var hasTap = false
     private var generation = UUID()
+    private let synthesizer = AVSpeechSynthesizer()
+    private var chimePlayer: AVAudioPlayer?
+    private var resumeTask: Task<Void, Never>?
 
     func start() async {
         guard !isRecording, !isStarting else { return }
         isStarting = true
         error = nil
         transcript = ""
+        synthesizer.delegate = self
         let token = UUID()
         generation = token
         defer { isStarting = false }
@@ -71,7 +76,7 @@ private final class SpeechAudioSink: @unchecked Sendable {
         do {
             #if os(iOS)
             let session = AVAudioSession.sharedInstance()
-            try session.setCategory(.record, mode: .measurement, options: .duckOthers)
+            try session.setCategory(.playAndRecord, mode: .default, options: [.duckOthers, .defaultToSpeaker])
             try session.setActive(true)
             #endif
             let input = engine.inputNode
@@ -107,7 +112,7 @@ private final class SpeechAudioSink: @unchecked Sendable {
     }
 
     private func beginUtterance() {
-        guard isRecording, let recognizer else { return }
+        guard isRecording, !isSpeaking, let recognizer else { return }
         let token = UUID()
         generation = token
         transcript = ""
@@ -174,6 +179,10 @@ private final class SpeechAudioSink: @unchecked Sendable {
     func stop(flush: Bool = false) {
         let finalPhrase = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         isRecording = false
+        resumeTask?.cancel()
+        synthesizer.stopSpeaking(at: .immediate)
+        isSpeaking = false
+        chimePlayer?.stop()
         cancelRecognition()
         engine.stop()
         if hasTap { engine.inputNode.removeTap(onBus: 0); hasTap = false }
@@ -182,5 +191,59 @@ private final class SpeechAudioSink: @unchecked Sendable {
         try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
         #endif
         if flush && !finalPhrase.isEmpty { onUtterance?(finalPhrase) }
+    }
+
+    /// Brief spoken replies suspend recognition so the app cannot add its own
+    /// words. The microphone session resumes automatically after output drains.
+    func say(_ message: String) {
+        guard isRecording else { return }
+        let pending = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
+        isSpeaking = true
+        resumeTask?.cancel()
+        cancelRecognition()
+        if !pending.isEmpty { onUtterance?(pending) }
+        let utterance = AVSpeechUtterance(string: message)
+        utterance.voice = AVSpeechSynthesisVoice(language: "en-AU")
+        synthesizer.speak(utterance)
+    }
+
+    nonisolated func speechSynthesizer(_ synthesizer: AVSpeechSynthesizer, didFinish utterance: AVSpeechUtterance) {
+        Task { @MainActor [weak self] in
+            guard let self, !self.synthesizer.isSpeaking else { return }
+            self.resumeTask = Task { @MainActor [weak self] in
+                try? await Task.sleep(for: .milliseconds(300))
+                guard !Task.isCancelled, let self else { return }
+                self.isSpeaking = false
+                if self.isRecording { self.beginUtterance() }
+            }
+        }
+    }
+
+    /// A short, low-volume tone can play while recognition continues.
+    func chime() {
+        guard isRecording, !isSpeaking else { return }
+        if chimePlayer == nil {
+            let rate = 22_050
+            let count = rate / 8
+            var samples = Data()
+            for index in 0..<count {
+                let t = Double(index) / Double(rate)
+                let envelope = min(1, Double(index) / 100) * exp(-t * 35)
+                var sample = Int16(sin(t * 2 * .pi * 880) * envelope * 5_000).littleEndian
+                withUnsafeBytes(of: &sample) { samples.append(contentsOf: $0) }
+            }
+            var wav = Data()
+            func word(_ value: UInt32, bytes: Int = 4) {
+                for offset in 0..<bytes { wav.append(UInt8(truncatingIfNeeded: value >> (offset * 8))) }
+            }
+            wav.append(contentsOf: "RIFF".utf8); word(UInt32(36 + samples.count))
+            wav.append(contentsOf: "WAVEfmt ".utf8); word(16); word(1, bytes: 2); word(1, bytes: 2)
+            word(UInt32(rate)); word(UInt32(rate * 2)); word(2, bytes: 2); word(16, bytes: 2)
+            wav.append(contentsOf: "data".utf8); word(UInt32(samples.count)); wav.append(samples)
+            chimePlayer = try? AVAudioPlayer(data: wav)
+            chimePlayer?.prepareToPlay()
+        }
+        chimePlayer?.currentTime = 0
+        chimePlayer?.play()
     }
 }
