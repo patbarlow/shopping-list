@@ -14,19 +14,14 @@ enum MediaPickerSource: String, Identifiable {
 struct CompactPhotoPicker: View {
     let onSelect: (UIImage) -> Void
     @Environment(\.dismiss) private var dismiss
-    @State private var selection: PhotosPickerItem?
-    @State private var detent: PresentationDetent = .height(430)
+    @State private var selection: NSItemProvider?
+    @State private var detent: PresentationDetent = .height(480)
     @State private var loading = false
     @State private var error: String?
 
     var body: some View {
         ZStack(alignment: .bottom) {
-            PhotosPicker(selection: $selection, matching: .images, preferredItemEncoding: .automatic) {
-                EmptyView()
-            }
-            .photosPickerStyle(.inline)
-            .photosPickerAccessoryVisibility(detent == .large ? .visible : .hidden, edges: .top)
-            .photosPickerAccessoryVisibility(.hidden, edges: .bottom)
+            EmbeddedPhotoGrid(expanded: detent == .large) { selection = $0 }
             .ignoresSafeArea(edges: .bottom)
             .disabled(loading)
 
@@ -34,15 +29,16 @@ struct CompactPhotoPicker: View {
                 Button { AppHaptics.tap(); dismiss() } label: {
                     Image(hugeIcon: "chevron.left").frame(width: 48, height: 48)
                 }.accessibilityLabel("Close photos")
-                    .glassEffect(in: Circle())
+                    .glassEffect(.regular.tint(.black.opacity(0.35)), in: Circle())
                 Spacer()
-                Button { AppHaptics.selection(); withAnimation { detent = detent == .large ? .height(430) : .large } } label: {
+                Button { AppHaptics.selection(); withAnimation { detent = detent == .large ? .height(480) : .large } } label: {
                     Text(detent == .large ? "Recents" : "All Photos")
-                        .font(.headline).padding(.horizontal, 24).frame(height: 48)
-                }.glassEffect(in: Capsule())
+                        .font(.headline).padding(.horizontal, 16).frame(height: 48)
+                }.glassEffect(.regular.tint(.black.opacity(0.35)), in: Capsule())
                     .accessibilityIdentifier("photos-expand")
             }
-            .buttonStyle(.plain).padding(20)
+            .buttonStyle(.plain).foregroundStyle(.white)
+            .padding(.horizontal, 28)
             if loading { ProgressView().padding(20).background(.regularMaterial, in: Capsule()).frame(maxHeight: .infinity) }
         }
         // One permitted height at a time: dragging the grid always scrolls it.
@@ -50,7 +46,7 @@ struct CompactPhotoPicker: View {
         .presentationDetents([detent], selection: $detent)
         .presentationContentInteraction(.scrolls)
         .presentationDragIndicator(.hidden)
-        .presentationBackground(TrolleyStyle.canvas)
+        .background(TrolleyStyle.canvas)
         .alert("Couldn't open photo", isPresented: Binding(get: { error != nil }, set: { if !$0 { error = nil } })) {
             Button("OK") { error = nil }
         } message: { Text(error ?? "") }
@@ -59,8 +55,12 @@ struct CompactPhotoPicker: View {
             loading = true
             defer { loading = false }
             do {
-                guard let data = try await selection.loadTransferable(type: Data.self),
-                      let image = UIImage(data: data) else { throw CocoaError(.fileReadCorruptFile) }
+                let image: UIImage = try await withCheckedThrowingContinuation { continuation in
+                    selection.loadObject(ofClass: UIImage.self) { object, error in
+                        if let image = object as? UIImage { continuation.resume(returning: image) }
+                        else { continuation.resume(throwing: error ?? CocoaError(.fileReadCorruptFile)) }
+                    }
+                }
                 guard !Task.isCancelled else { return }
                 onSelect(image)
                 dismiss()
@@ -68,6 +68,69 @@ struct CompactPhotoPicker: View {
                 if !Task.isCancelled { self.error = "Try choosing that photo again." }
             }
         }
+    }
+}
+
+/// Explicit child containment keeps the private picker inside the sheet rather
+/// than letting its SwiftUI presentation wrapper cover the presenting page.
+private struct EmbeddedPhotoGrid: UIViewControllerRepresentable {
+    let expanded: Bool
+    let onSelect: (NSItemProvider) -> Void
+    func makeUIViewController(context: Context) -> PhotoGridController {
+        let controller = PhotoGridController(expanded: expanded)
+        controller.onSelect = onSelect
+        return controller
+    }
+    func updateUIViewController(_ controller: PhotoGridController, context: Context) {
+        controller.onSelect = onSelect
+        controller.setExpanded(expanded)
+    }
+}
+
+private final class PhotoGridController: UIViewController, PHPickerViewControllerDelegate {
+    let picker: PHPickerViewController
+    var expanded: Bool
+    var onSelect: ((NSItemProvider) -> Void)?
+
+    init(expanded: Bool) {
+        self.expanded = expanded
+        var configuration = PHPickerConfiguration()
+        configuration.filter = .images
+        configuration.selectionLimit = 1
+        configuration.selection = .continuous
+        configuration.disabledCapabilities = .selectionActions
+        configuration.edgesWithoutContentMargins = expanded ? [.bottom] : [.top, .bottom]
+        picker = PHPickerViewController(configuration: configuration)
+        super.init(nibName: nil, bundle: nil)
+        picker.delegate = self
+    }
+    required init?(coder: NSCoder) { fatalError("init(coder:) has not been implemented") }
+    override func viewDidLoad() {
+        super.viewDidLoad()
+        view.backgroundColor = .clear
+        view.clipsToBounds = true
+        view.accessibilityIdentifier = "photo-grid"
+        addChild(picker)
+        picker.view.translatesAutoresizingMaskIntoConstraints = false
+        view.addSubview(picker.view)
+        NSLayoutConstraint.activate([
+            picker.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
+            picker.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            picker.view.topAnchor.constraint(equalTo: view.topAnchor),
+            picker.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
+        ])
+        picker.didMove(toParent: self)
+    }
+    func setExpanded(_ value: Bool) {
+        guard expanded != value else { return }
+        expanded = value
+        var update = PHPickerConfiguration.Update()
+        update.edgesWithoutContentMargins = value ? [.bottom] : [.top, .bottom]
+        picker.updatePicker(using: update)
+    }
+    func picker(_ picker: PHPickerViewController, didFinishPicking results: [PHPickerResult]) {
+        guard let result = results.first else { return }
+        onSelect?(result.itemProvider)
     }
 }
 
@@ -215,17 +278,74 @@ struct MediaSourceMenu: View {
         VStack(spacing: 2) {
             row("Camera", icon: "camera", source: .camera)
             row("Photos", icon: "photo", source: .photos)
-        }.padding(12).frame(width: 260)
+        }.padding(12).frame(width: 280)
     }
     private func row(_ title: String, icon: String, source: MediaPickerSource) -> some View {
         Button { onSelect(source) } label: {
             HStack(spacing: 16) {
                 Image(hugeIcon: icon).frame(width: 44, height: 44)
                     .background(TrolleyStyle.surface, in: Circle())
-                Text(title).font(.title3)
+                Text(title).font(.body)
                 Spacer()
             }.padding(.horizontal, 12).frame(minHeight: 68).contentShape(RoundedRectangle(cornerRadius: 20))
         }.buttonStyle(.plain).foregroundStyle(.primary)
+    }
+}
+
+/// A native popover supplies the system's glass material and dismissal. Its
+/// arrow is disabled, and its anchor sits over the invoking circular button.
+struct AttachmentMenuPresenter: UIViewControllerRepresentable {
+    @Binding var isPresented: Bool
+    let onSelect: (MediaPickerSource) -> Void
+    func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
+    func makeUIViewController(context: Context) -> UIViewController {
+        let controller = UIViewController()
+        controller.view.backgroundColor = .clear
+        controller.view.isUserInteractionEnabled = false
+        return controller
+    }
+    func updateUIViewController(_ controller: UIViewController, context: Context) {
+        context.coordinator.parent = self
+        if !isPresented, let host = context.coordinator.host {
+            host.dismiss(animated: true)
+            context.coordinator.host = nil
+            return
+        }
+        guard isPresented, context.coordinator.host == nil, controller.view.window != nil else { return }
+        let coordinator = context.coordinator
+        let host = UIHostingController(rootView: MediaSourceMenu { source in
+            coordinator.dismiss(selecting: source)
+        }.fontDesign(.rounded))
+        host.view.backgroundColor = .clear
+        host.view.accessibilityIdentifier = "price-check-attachment-menu"
+        host.preferredContentSize = CGSize(width: 280, height: 162)
+        host.modalPresentationStyle = .popover
+        guard let popover = host.popoverPresentationController else { return }
+        popover.sourceView = controller.view
+        popover.sourceRect = CGRect(x: 128, y: controller.view.bounds.maxY - 69, width: 1, height: 1)
+        popover.permittedArrowDirections = []
+        popover.canOverlapSourceViewRect = true
+        popover.delegate = coordinator
+        coordinator.host = host
+        controller.present(host, animated: true)
+    }
+    final class Coordinator: NSObject, UIPopoverPresentationControllerDelegate {
+        var parent: AttachmentMenuPresenter
+        var host: UIViewController?
+        init(parent: AttachmentMenuPresenter) { self.parent = parent }
+        func adaptivePresentationStyle(for controller: UIPresentationController) -> UIModalPresentationStyle { .none }
+        func adaptivePresentationStyle(for controller: UIPresentationController, traitCollection: UITraitCollection) -> UIModalPresentationStyle { .none }
+        func presentationControllerDidDismiss(_ presentationController: UIPresentationController) {
+            host = nil
+            parent.isPresented = false
+        }
+        func dismiss(selecting source: MediaPickerSource) {
+            host?.dismiss(animated: true) { [self] in
+                host = nil
+                parent.isPresented = false
+                parent.onSelect(source)
+            }
+        }
     }
 }
 

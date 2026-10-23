@@ -15,7 +15,6 @@ struct PriceCheckView: View {
     @Namespace private var mediaTransition
     @State private var mediaOrigin = "attachments"
     @State private var showAttachments = false
-    @State private var queuedMedia: MediaPickerSource?
     @State private var focusAfterMedia = false
     @State private var showProducts = false
     @State private var busy = false
@@ -146,7 +145,7 @@ struct PriceCheckView: View {
         }
         .onChange(of: text) { _, value in if !value.isEmpty { dismissedRecentID = recentID } }
         .onChange(of: speech.transcript) { _, value in if !value.isEmpty { dismissedRecentID = recentID } }
-        .onDisappear { speech.stop(flush: true) }
+        .onDisappear { speech.stop(flush: true); showAttachments = false }
     }
 
     private var introduction: some View {
@@ -223,26 +222,21 @@ struct PriceCheckView: View {
                 }
                 if let error = speech.error { Text(error).font(.caption).foregroundStyle(.secondary) }
                 HStack(spacing: 4) {
-                    Button { AppHaptics.tap(); showAttachments = true } label: {
+                    Button {
+                        AppHaptics.tap()
+                        withAnimation(reduceMotion ? nil : .spring(response: 0.25, dampingFraction: 0.9)) { showAttachments = true }
+                    } label: {
                         Image(hugeIcon: "plus").frame(width: 44, height: 44)
                             .contentShape(Circle())
                     }
                         .buttonStyle(.plain)
                         .matchedTransitionSource(id: "attachments", in: mediaTransition)
-                        .accessibilityLabel("Attach photo").accessibilityIdentifier("price-check-attachments")
-                        .popover(isPresented: $showAttachments, arrowEdge: .bottom) {
-                            MediaSourceMenu { source in
-                                queuedMedia = source
-                                showAttachments = false
-                            }
-                            .presentationCompactAdaptation(.popover)
-                            .onDisappear {
-                                if let queuedMedia {
-                                    self.queuedMedia = nil
-                                    openMedia(queuedMedia, origin: "attachments")
-                                }
+                        .background {
+                            AttachmentMenuPresenter(isPresented: $showAttachments) { source in
+                                openMedia(source, origin: "attachments")
                             }
                         }
+                        .accessibilityLabel("Attach photo").accessibilityIdentifier("price-check-attachments")
                     Spacer()
                     Button {
                         AppHaptics.tap()

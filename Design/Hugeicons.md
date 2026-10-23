@@ -19,7 +19,7 @@ Camera and photos zoom from their initiating control into compact sheets, using 
 
 The shared AVFoundation camera serves price photos, receipt scans and recipe imports without writing to Photos. Its ellipsis reveals camera switching, flash mode and document mode. Document mode straightens a confidently detected paper boundary, preserving the whole photo when there is no reliable boundary. Capture, attachment and camera controls provide restrained haptics and respect Reduce Motion for their small animations.
 
-Price check's introduction is fixed in the available space and disappears during composition. Attachment selection focuses the keyboard, and a photo can be sent by itself. The attachment menu has large rows and a circular plus hit target. Receipt/photo import remains coordinated at the app root so processing survives picker dismissal.
+Price check's introduction is fixed in the available space and disappears during composition. Attachment selection focuses the keyboard, and a photo can be sent by itself. The attachment menu has large rows and opens over its circular plus target with no pointer; tapping outside dismisses it while retaining keyboard focus. Photos and camera share a 480-point compact height, with the photo controls inset over the lower corners. Receipt/photo import remains coordinated at the app root so processing survives picker dismissal.
 
 The composer dismiss gesture observes downward drags that begin within the input area, including UIKit text fields. The List's upward-swipe gesture uses global coordinates so movement of the composer while dismissing the keyboard cannot reverse the gesture and reopen it.
 

@@ -250,11 +250,26 @@ final class PriceCheckUITests: XCTestCase {
         let app = XCUIApplication()
         app.launchEnvironment["TROLLEY_UI_TEST"] = "price"
         app.launch()
-        app.buttons["price-check-attachments"].tap()
-        let photos = app.popovers.buttons["Photos"].firstMatch
+        let plus = app.buttons["price-check-attachments"]
+        let plusFrame = plus.frame
+        plus.tap()
+        let menu = app.descendants(matching: .any)["price-check-attachment-menu"].firstMatch
+        let photos = menu.buttons["Photos"].firstMatch
         XCTAssertTrue(photos.waitForExistence(timeout: 5))
         XCTAssertGreaterThanOrEqual(photos.frame.height, 64)
+        XCTAssertTrue(menu.frame.intersects(plusFrame))
+        XCTAssertTrue(app.popovers.firstMatch.exists)
         capture(app, named: "Larger attachment menu")
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.25)).tap()
+        XCTAssertTrue(menu.waitForNonExistence(timeout: 5))
+        app.descendants(matching: .any)["price-check-input"].firstMatch.tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        let keyboardPlusFrame = plus.frame
+        plus.tap()
+        XCTAssertTrue(photos.waitForExistence(timeout: 5))
+        XCTAssertTrue(menu.frame.intersects(keyboardPlusFrame))
+        XCTAssertTrue(app.keyboards.firstMatch.exists)
+        capture(app, named: "Attachment menu overlapping plus above keyboard")
         photos.tap()
         waitForPhotoGrid(app)
         app.images.matching(identifier: "PXGGridLayout-Info").firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
@@ -275,6 +290,8 @@ final class PriceCheckUITests: XCTestCase {
         app.buttons["Photos"].tap()
         waitForPhotoGrid(app)
         let close = app.buttons["Close photos"]
+        let grid = app.otherElements["photo-grid"].firstMatch
+        let gridBefore = grid.frame
         let firstImage = app.images.matching(identifier: "PXGGridLayout-Info").firstMatch
         let topBefore = firstImage.frame.minY
         let firstLabel = firstImage.label
@@ -282,7 +299,9 @@ final class PriceCheckUITests: XCTestCase {
         start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -180)))
         XCTAssertTrue(app.buttons["All Photos"].exists)
         XCTAssertFalse(app.buttons["Recents"].exists)
-        XCTAssertGreaterThan(firstImage.frame.minY, 250)
+        XCTAssertGreaterThan(grid.frame.minY, 250)
+        XCTAssertEqual(grid.frame.minY, gridBefore.minY, accuracy: 2)
+        XCTAssertEqual(grid.frame.height, gridBefore.height, accuracy: 2)
         XCTAssertTrue(firstImage.label != firstLabel || abs(firstImage.frame.minY - topBefore) > 10)
         capture(app, named: "Scrolled compact photo grid")
         app.buttons["All Photos"].tap()
