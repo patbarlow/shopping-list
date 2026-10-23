@@ -14,11 +14,11 @@ struct HouseholdSetupView: View {
                 Spacer()
 
                 VStack(spacing: 8) {
-                    Image(systemName: "house.fill")
-                        .font(.system(size: 64))
-                        .foregroundStyle(.green)
+                    Image(hugeIcon: "house.fill")
+                        .resizable().scaledToFit().frame(width: 64, height: 64)
+                        .foregroundStyle(TrolleyStyle.accent)
                     Text("Your Household")
-                        .font(.largeTitle.bold())
+                        .font(.system(.largeTitle, design: .rounded, weight: .bold))
                     Text("Create a new household or join one with an invite code.")
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -43,24 +43,24 @@ struct HouseholdSetupView: View {
                 VStack(spacing: 12) {
                     if mode == .create {
                         TextField("Household name (e.g. \"The Smiths\")", text: $householdName)
-                            .textFieldStyle(.roundedBorder)
+                            .padding(18).background(TrolleyStyle.surface, in: RoundedRectangle(cornerRadius: 20))
                             .submitLabel(.done)
                             .onSubmit { createOrJoin() }
 
                         Button("Create Household") { createOrJoin() }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.large)
                             .disabled(householdName.trimmingCharacters(in: .whitespaces).isEmpty
                                       || services.auth.isLoading)
                     } else {
                         TextField("Invite code", text: $inviteCode)
-                            .textFieldStyle(.roundedBorder)
+                            .padding(18).background(TrolleyStyle.surface, in: RoundedRectangle(cornerRadius: 20))
                             .textInputAutocapitalization(.characters)
                             .autocorrectionDisabled()
                             .submitLabel(.done)
                             .onSubmit { createOrJoin() }
 
                         Button("Join Household") { createOrJoin() }
-                            .buttonStyle(.borderedProminent)
+                            .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.large)
                             .disabled(inviteCode.trimmingCharacters(in: .whitespaces).isEmpty
                                       || services.auth.isLoading)
                     }

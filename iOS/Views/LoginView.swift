@@ -26,11 +26,9 @@ private struct EmailEntryView: View {
             Spacer()
 
             VStack(spacing: 8) {
-                Image(systemName: "cart.fill")
-                    .font(.system(size: 64))
-                    .foregroundStyle(.green)
-                Text("Shopping List")
-                    .font(.largeTitle.bold())
+                TrolleyMascot(size: 112).padding(.bottom, 16)
+                Text("Trolley")
+                    .font(.system(.largeTitle, design: .rounded, weight: .bold))
                 Text("Enter your email to sign in")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -41,7 +39,7 @@ private struct EmailEntryView: View {
                     .textInputAutocapitalization(.never)
                     .keyboardType(.emailAddress)
                     .autocorrectionDisabled()
-                    .textFieldStyle(.roundedBorder)
+                    .padding(18).background(TrolleyStyle.surface, in: RoundedRectangle(cornerRadius: 20))
                     .submitLabel(.send)
                     .onSubmit { submit() }
 
@@ -64,7 +62,7 @@ private struct EmailEntryView: View {
                         }
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.large)
                 .disabled(services.auth.isLoading || email.trimmingCharacters(in: .whitespaces).isEmpty)
             }
             .padding(.horizontal)
@@ -91,11 +89,11 @@ private struct CodeEntryView: View {
             Spacer()
 
             VStack(spacing: 8) {
-                Image(systemName: "envelope.badge")
-                    .font(.system(size: 64))
-                    .foregroundStyle(.green)
+                Image(hugeIcon: "envelope.badge")
+                    .resizable().scaledToFit().frame(width: 64, height: 64)
+                    .foregroundStyle(TrolleyStyle.accent)
                 Text("Check your email")
-                    .font(.largeTitle.bold())
+                    .font(.system(.largeTitle, design: .rounded, weight: .bold))
                 Text("We sent a 6-digit code to\n**\(email)**")
                     .font(.subheadline)
                     .foregroundStyle(.secondary)
@@ -105,7 +103,7 @@ private struct CodeEntryView: View {
             VStack(spacing: 12) {
                 TextField("6-digit code", text: $code)
                     .keyboardType(.numberPad)
-                    .textFieldStyle(.roundedBorder)
+                    .padding(18).background(TrolleyStyle.surface, in: RoundedRectangle(cornerRadius: 20))
                     .submitLabel(.done)
                     .onSubmit { submit() }
 
@@ -128,7 +126,7 @@ private struct CodeEntryView: View {
                         }
                     }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.large)
                 .disabled(services.auth.isLoading || code.trimmingCharacters(in: .whitespaces).isEmpty)
 
                 Button("Use a different email") {

@@ -37,7 +37,7 @@ test("reads text deltas out of the event stream", async () => {
 });
 
 test("a frame split across chunk boundaries still arrives whole", async () => {
-  const whole = frame("Milk Almond UHT 1L");
+  const whole = frame("Milk Almond UHT 1L") + 'data: {"type":"message_stop"}\n\n';
   for (const size of [1, 5, 23, 100]) {
     const chunks: string[] = [];
     for (let i = 0; i < whole.length; i += size) chunks.push(whole.slice(i, i + size));
@@ -45,17 +45,20 @@ test("a frame split across chunk boundaries still arrives whole", async () => {
   }
 });
 
-test("ignores pings, other event types and unparsable frames", async () => {
+test("ignores pings and other event types", async () => {
   const body = [
     "event: ping\ndata: {\"type\":\"ping\"}\n\n",
     'data: {"type":"content_block_start","content_block":{"type":"text","text":""}}\n\n',
-    "data: not json at all\n\n",
     frame("kept"),
-    "data: [DONE]\n\n",
+    'data: {"type":"message_stop"}\n\n',
   ];
   assert.equal(await collect(body), "kept");
 });
 
-test("an empty stream yields nothing", async () => {
-  assert.equal(await collect([]), "");
+test("empty, interrupted, malformed and provider error streams reject", async () => {
+  await assert.rejects(collect([]), /incomplete_provider_stream/);
+  await assert.rejects(collect([frame("partial")]), /incomplete_provider_stream/);
+  await assert.rejects(collect(['data: {"type":"error"}\n\n']), /receipt_provider_error/);
+  await assert.rejects(collect(['data: broken\n\n']), /invalid_provider_stream/);
+  await assert.rejects(collect(['data: {"type":"message_delta","delta":{"stop_reason":"max_tokens"}}\n\n']), /receipt_provider_truncated/);
 });

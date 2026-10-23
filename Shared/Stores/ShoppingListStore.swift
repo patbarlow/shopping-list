@@ -5,6 +5,8 @@ import Observation
 @Observable final class ShoppingListStore {
     var items: [ShoppingItem] = []
     var isLoading    = false
+    private(set) var hasLoaded = false
+    @ObservationIgnored private var fetchGeneration = 0
     var error: String?
     private(set) var householdId: String?
 
@@ -50,6 +52,9 @@ import Observation
     // MARK: - Lifecycle
 
     func load(householdId: String) async {
+        if self.householdId != householdId {
+            items = []; hasLoaded = false; error = nil
+        }
         self.householdId = householdId
 
         realtime.onEvent = { [weak self] action, record in
@@ -65,13 +70,20 @@ import Observation
 
     func fetch() async {
         guard let householdId else { return }
+        fetchGeneration += 1
+        let generation = fetchGeneration
         isLoading = true
+        defer { if generation == fetchGeneration { isLoading = false } }
         do {
-            items = try await api.fetchItems(householdId: householdId)
+            let fetched = try await api.fetchItems(householdId: householdId)
+            guard generation == fetchGeneration, self.householdId == householdId else { return }
+            items = fetched
+            hasLoaded = true
+            error = nil
         } catch {
+            guard generation == fetchGeneration else { return }
             self.error = error.localizedDescription
         }
-        isLoading = false
     }
 
     // MARK: - Realtime event application

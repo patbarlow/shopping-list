@@ -23,8 +23,8 @@ public struct RecipeImportView: View {
     @State private var errorMessage: String? = nil
     @State private var savedSnapshot: Data?
     #if os(iOS)
-    @State private var selectedPhoto: PhotosPickerItem? = nil
-    @State private var showCamera = false
+    @State private var mediaSource: MediaPickerSource?
+    @Namespace private var mediaTransition
     #endif
     @FocusState private var focusedField: IngFocusField?
 
@@ -49,15 +49,14 @@ public struct RecipeImportView: View {
             .toolbar { toolbarItems }
         }
         #if os(iOS)
-        .onChange(of: selectedPhoto) { _, item in
-            guard let item else { return }
-            Task { await handlePhotoSelection(item) }
-        }
-        .sheet(isPresented: $showCamera) {
-            CameraCapture { image in
-                showCamera = false
-                Task { await handleCapturedImage(image) }
+        .sheet(item: $mediaSource) { source in
+            Group {
+                switch source {
+                case .camera, .scan: CompactCameraPicker(scan: source == .scan) { image in Task { await handleCapturedImage(image) } }
+                case .photos: CompactPhotoPicker { image in Task { await handleCapturedImage(image) } }
+                }
             }
+            .navigationTransition(.zoom(sourceID: source.rawValue, in: mediaTransition))
         }
         #endif
     }
@@ -93,7 +92,7 @@ public struct RecipeImportView: View {
                         .onSubmit { parseURL() }
 
                     Button(action: parseURL) {
-                        Label("Import from URL", systemImage: "arrow.down.circle")
+                        Label("Import from URL", hugeIcon: "arrow.down.circle")
                             .frame(maxWidth: .infinity)
                     }
                     .buttonStyle(.borderedProminent)
@@ -105,17 +104,19 @@ public struct RecipeImportView: View {
                 #if os(iOS)
                 Section {
                     HStack(spacing: 16) {
-                        PhotosPicker(selection: $selectedPhoto, matching: .images) {
-                            Label("Photo Library", systemImage: "photo.on.rectangle")
+                        Button { AppHaptics.tap(); mediaSource = .photos } label: {
+                            Label("Photo Library", hugeIcon: "photo.on.rectangle")
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
+                        .matchedTransitionSource(id: "photos", in: mediaTransition)
 
-                        Button { showCamera = true } label: {
-                            Label("Camera", systemImage: "camera")
+                        Button { AppHaptics.tap(); mediaSource = .scan } label: {
+                            Label("Camera", hugeIcon: "camera")
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
+                        .matchedTransitionSource(id: "scan", in: mediaTransition)
                     }
                     .padding(.vertical, 4)
                 } header: {
@@ -125,7 +126,7 @@ public struct RecipeImportView: View {
 
             if let error = errorMessage {
                 Section {
-                    Label(error, systemImage: "exclamationmark.triangle")
+                    Label(error, hugeIcon: "exclamationmark.triangle")
                         .foregroundStyle(.red)
                 }
             }
@@ -237,7 +238,7 @@ public struct RecipeImportView: View {
                 }
                 if !ingredient.wrappedValue.isIncluded { focusedField = nil }
             } label: {
-                Image(systemName: ing.isIncluded ? "circle" : "minus.circle.fill")
+                Image(hugeIcon: ing.isIncluded ? "circle" : "minus.circle.fill")
                     .font(.system(size: 22))
                     .foregroundStyle(ing.isIncluded ? Color.secondary.opacity(0.4) : Color.secondary.opacity(0.35))
                     .animation(.easeInOut(duration: 0.15), value: ing.isIncluded)
@@ -287,7 +288,7 @@ public struct RecipeImportView: View {
                             if ing.existingItemId != nil {
                                 let existingQty = ing.existingListQty ?? ""
                                 HStack(spacing: 4) {
-                                    Image(systemName: ing.isIncluded ? "arrow.triangle.merge" : "checkmark.circle.fill")
+                                    Image(hugeIcon: ing.isIncluded ? "arrow.triangle.merge" : "checkmark.circle.fill")
                                     if ing.isIncluded {
                                         let merged = EditableIngredient.mergeQuantities(ing.existingListQty, ing.currentQuantity)
                                         Text(merged != nil ? "on list: \(existingQty) → \(merged!)" : "will combine with on-list qty")
@@ -344,24 +345,6 @@ public struct RecipeImportView: View {
     }
 
     #if os(iOS)
-    private func handlePhotoSelection(_ item: PhotosPickerItem) async {
-        phase = .loading("Reading recipe…")
-        errorMessage = nil
-        do {
-            guard let data = try await item.loadTransferable(type: Data.self),
-                  let image = UIImage(data: data),
-                  let compressed = image.compressedForUpload()
-            else { phase = .input; errorMessage = "Couldn't load that photo."; return }
-            let result = try await services.api.parseRecipeFromImage(
-                householdId: householdId, imageBase64: compressed.base64EncodedString()
-            )
-            applyParsedRecipe(result)
-        } catch {
-            phase = .input
-            errorMessage = "Couldn't read the recipe from that photo."
-        }
-    }
-
     private func handleCapturedImage(_ image: UIImage) async {
         phase = .loading("Reading recipe…")
         errorMessage = nil
@@ -451,36 +434,6 @@ public struct RecipeImportView: View {
 }
 
 #if os(iOS)
-struct CameraCapture: UIViewControllerRepresentable {
-    let onCapture: (UIImage) -> Void
-
-    func makeCoordinator() -> Coordinator { Coordinator(onCapture: onCapture) }
-
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        let picker = UIImagePickerController()
-        picker.sourceType = .camera
-        picker.delegate   = context.coordinator
-        return picker
-    }
-
-    func updateUIViewController(_ uiViewController: UIImagePickerController, context: Context) {}
-
-    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-        let onCapture: (UIImage) -> Void
-        init(onCapture: @escaping (UIImage) -> Void) { self.onCapture = onCapture }
-
-        func imagePickerController(_ picker: UIImagePickerController,
-                                   didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-            picker.dismiss(animated: true)
-            if let image = info[.originalImage] as? UIImage { onCapture(image) }
-        }
-
-        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) {
-            picker.dismiss(animated: true)
-        }
-    }
-}
-
 // MARK: - UIImage compression
 
 extension UIImage {

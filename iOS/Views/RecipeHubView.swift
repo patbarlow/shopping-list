@@ -15,7 +15,7 @@ struct RecipeHubView: View {
                     Button {
                         showImport = true
                     } label: {
-                        Label("Import new recipe", systemImage: "arrow.down.circle")
+                        Label("Import new recipe", hugeIcon: "arrow.down.circle")
                             .foregroundStyle(.tint)
                     }
                 }
@@ -31,9 +31,9 @@ struct RecipeHubView: View {
                     }
                 } else if recipes.isEmpty {
                     Section {
-                        ContentUnavailableView(
+                        TrolleyUnavailableView(
                             "No saved recipes",
-                            systemImage: "fork.knife",
+                            hugeIcon: "fork.knife",
                             description: Text("Recipes you import will appear here.")
                         )
                         .listRowBackground(Color.clear)
@@ -56,6 +56,8 @@ struct RecipeHubView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(TrolleyStyle.canvas)
             .navigationTitle("Recipes")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

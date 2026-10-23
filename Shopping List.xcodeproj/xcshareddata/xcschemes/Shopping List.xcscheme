@@ -50,6 +50,17 @@
                ReferencedContainer = "container:Shopping List.xcodeproj">
             </BuildableReference>
          </TestableReference>
+         <TestableReference
+            skipped = "NO"
+            parallelizable = "NO">
+            <BuildableReference
+               BuildableIdentifier = "primary"
+               BlueprintIdentifier = "E3F42C45E73BE2F5B001F2C7"
+               BuildableName = "PriceCheckUITests.xctest"
+               BlueprintName = "PriceCheckUITests"
+               ReferencedContainer = "container:Shopping List.xcodeproj">
+            </BuildableReference>
+         </TestableReference>
       </Testables>
       <CommandLineArguments>
       </CommandLineArguments>

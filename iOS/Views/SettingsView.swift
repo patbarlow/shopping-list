@@ -30,8 +30,8 @@ struct SettingsView: View {
                             copied = true
                             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
                         } label: {
-                            Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                                .foregroundStyle(copied ? .green : .accentColor)
+                            Image(hugeIcon: copied ? "checkmark" : "doc.on.doc")
+                                .foregroundStyle(copied ? .green : TrolleyStyle.accent)
                         }
                         .buttonStyle(.borderless)
                     }
@@ -66,6 +66,8 @@ struct SettingsView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(TrolleyStyle.canvas)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

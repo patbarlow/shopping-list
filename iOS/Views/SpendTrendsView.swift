@@ -32,37 +32,35 @@ struct SpendTrendsView: View {
         }
     }
 
-    /// A soft, pale mint wash that lingers well past the header — like Health's
-    /// per-category pages — rather than a saturated banner with a hard edge.
-    private static let headerGradient = LinearGradient(
-        stops: [
-            .init(color: Color(red: 0.78, green: 0.93, blue: 0.82), location: 0),
-            .init(color: Color(red: 0.80, green: 0.94, blue: 0.84).opacity(0.85), location: 0.2),
-            .init(color: Color(red: 0.83, green: 0.95, blue: 0.86).opacity(0.5), location: 0.45),
-            .init(color: Color(red: 0.85, green: 0.96, blue: 0.88).opacity(0.18), location: 0.7),
-            .init(color: Color(red: 0.85, green: 0.96, blue: 0.88).opacity(0), location: 1),
-        ],
-        startPoint: .top,
-        endPoint: .bottom
-    )
-
     var body: some View {
         NavigationStack {
             Group {
                 if isLoading {
                     ProgressView().frame(maxWidth: .infinity).padding(.vertical, 80)
+                } else if let errorMessage {
+                    TrolleyUnavailableView("Couldn't load insights", hugeIcon: "wifi.exclamationmark", description: Text(errorMessage))
                 } else if trips.isEmpty {
-                    ContentUnavailableView(
+                    TrolleyUnavailableView(
                         "No trips yet",
-                        systemImage: "chart.bar",
+                        hugeIcon: "chart.bar",
                         description: Text("Scan receipts and your spend per shop will show up here.")
                     )
                 } else {
                     ScrollView {
-                        VStack(alignment: .leading, spacing: 20) {
+                        VStack(alignment: .leading, spacing: 24) {
                             rangePicker
 
                             statCards
+                            NavigationLink {
+                                ProductsListView(householdId: householdId)
+                            } label: {
+                                HStack(spacing: 12) {
+                                    Image(hugeIcon: "basket").foregroundStyle(TrolleyStyle.accent)
+                                    Text("Your products").font(.subheadline.weight(.semibold))
+                                    Spacer()
+                                    Image(hugeIcon: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                                }.padding(18).trolleyCard()
+                            }.buttonStyle(.plain).accessibilityIdentifier("insights-products")
 
                             if let insightText {
                                 insightCard(insightText)
@@ -89,38 +87,21 @@ struct SpendTrendsView: View {
                 }
             }
             .frame(maxWidth: .infinity, maxHeight: .infinity)
-            // Attached via .background rather than as a ZStack sibling in front
-            // of the ScrollView — that arrangement kept the ScrollView from
-            // being recognized as the NavigationStack's scrollable content, so
-            // the large title's extra height never got automatically reserved
-            // for it (needing a hand-tuned top-padding fudge that was never
-            // quite right, and threw off the system's own scroll-to-top-on-
-            // tab-tap since it targets the real, automatic inset). As a
-            // .background this stays a passive layer behind the content
-            // without interfering with that.
-            .background {
-                ZStack(alignment: .top) {
-                    Color(.systemGroupedBackground).ignoresSafeArea()
-                    Self.headerGradient
-                        .frame(height: 700)
-                        .ignoresSafeArea(edges: .top)
-                }
-            }
+            .background(TrolleyStyle.canvas.ignoresSafeArea())
             .navigationTitle("Insights")
             .navigationBarTitleDisplayMode(.large)
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button { showSettings = true } label: {
-                        Image(systemName: "gearshape")
+                        Image(hugeIcon: "gearshape")
                             .frame(width: 22, height: 22)
-                    }
+                    }.accessibilityLabel("Settings")
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
                     NavigationLink {
                         ProductsListView(householdId: householdId).environment(services)
                     } label: {
-                        Image(systemName: "basket")
-                            .frame(width: 22, height: 22)
+                        Label("Products", hugeIcon: "basket")
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -303,15 +284,14 @@ struct SpendTrendsView: View {
             Divider().frame(height: 40)
             statColumn(title: "Average per shop", value: averagePerShopDay.map { currencyShort($0) } ?? "—")
         }
-        .padding(.vertical, 16)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.05), radius: 6, y: 3)
+        .padding(.vertical, 24)
+        .background(TrolleyStyle.softGreen, in: RoundedRectangle(cornerRadius: 24))
     }
 
     private func statColumn(title: String, value: String) -> some View {
         VStack(spacing: 4) {
             Text(value)
-                .font(.title.weight(.heavy))
+                .font(.system(.largeTitle, design: .rounded, weight: .bold))
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
             Text(title)
@@ -323,16 +303,15 @@ struct SpendTrendsView: View {
 
     private func insightCard(_ text: String) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: "sparkles")
-                .foregroundStyle(Color.accentColor)
+            Image(hugeIcon: "sparkles")
+                .foregroundStyle(TrolleyStyle.accent)
             Text(text)
                 .font(.subheadline)
                 .foregroundStyle(.primary)
             Spacer(minLength: 0)
         }
         .padding(14)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.05), radius: 6, y: 3)
+        .trolleyCard()
     }
 
     // MARK: - Card container
@@ -340,8 +319,7 @@ struct SpendTrendsView: View {
     private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
         content()
             .padding(16)
-            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .shadow(color: .black.opacity(0.05), radius: 8, y: 3)
+            .trolleyCard()
     }
 
     // MARK: - Charts
@@ -488,7 +466,7 @@ struct SpendTrendsView: View {
                                             .font(.subheadline.weight(.semibold))
                                             .foregroundStyle(.primary)
                                     }
-                                    Image(systemName: "chevron.right")
+                                    Image(hugeIcon: "chevron.right")
                                         .font(.caption2.weight(.semibold))
                                         .foregroundStyle(.tertiary)
                                 }
@@ -512,7 +490,7 @@ struct SpendTrendsView: View {
     /// another day row.
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
-            .font(.title3.weight(.bold))
+            .font(.system(.title3, design: .rounded, weight: .bold))
             .foregroundStyle(.primary)
     }
 
