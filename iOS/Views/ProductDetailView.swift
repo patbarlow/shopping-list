@@ -38,6 +38,7 @@ struct ProductDetailView: View {
                     .padding(.top, 80)
             }
         }
+        .background(TrolleyStyle.canvas)
         .navigationTitle(detail?.product.name ?? fallbackName)
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
@@ -98,7 +99,7 @@ struct ProductDetailView: View {
     private func statCard(value: String, label: String) -> some View {
         VStack(spacing: 4) {
             Text(value)
-                .font(.title2.weight(.heavy))
+                .font(.system(.title2, design: .rounded, weight: .bold))
                 .minimumScaleFactor(0.6)
                 .lineLimit(1)
             Text(label)
@@ -107,8 +108,7 @@ struct ProductDetailView: View {
         }
         .frame(maxWidth: .infinity)
         .padding(.vertical, 14)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.05), radius: 6, y: 3)
+        .trolleyCard()
     }
 
     // MARK: - Purchase log
@@ -128,7 +128,7 @@ struct ProductDetailView: View {
         } else {
             VStack(alignment: .leading, spacing: 16) {
                 Text("Purchases")
-                    .font(.title3.weight(.bold))
+                    .font(.system(.title3, design: .rounded, weight: .bold))
                     .foregroundStyle(.primary)
                 ForEach(groupedPurchases, id: \.day) { group in
                     VStack(alignment: .leading, spacing: 8) {
@@ -141,7 +141,7 @@ struct ProductDetailView: View {
                             }
                         }
                         .padding(.horizontal, 12)
-                        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 12))
+                        .trolleyCard()
                     }
                 }
             }

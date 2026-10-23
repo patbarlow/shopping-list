@@ -39,6 +39,7 @@ SentrySDK.start { options in
     var body: some Scene {
         WindowGroup {
             ContentView()
+                .fontDesign(.rounded)
                 .environment(services)
                 .environment(receiptImportCoordinator)
                 .task {

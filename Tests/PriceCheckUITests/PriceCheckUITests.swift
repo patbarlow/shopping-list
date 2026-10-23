@@ -1,6 +1,47 @@
 import XCTest
 
 final class PriceCheckUITests: XCTestCase {
+    @MainActor func testFullAppNavigationAndPriceShortcut() {
+        let app = XCUIApplication()
+        app.launchEnvironment["TROLLEY_UI_TEST"] = "app"
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Bananas"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.tabBars.buttons["Check price"].exists)
+        capture(app, named: "Full app shopping list")
+        app.buttons["list-check-price"].tap()
+        XCTAssertTrue(app.staticTexts["Good price?\nLet’s find out."].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.tabBars.buttons["List"].isHittable)
+        capture(app, named: "Full app price check welcome")
+        let input = app.descendants(matching: .any)["price-check-input"].firstMatch
+        input.tap()
+        input.typeText("Red Bull 4 x 250mL for $9.83")
+        app.buttons["price-check-send"].tap()
+        XCTAssertTrue(app.staticTexts["26% above your average."].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.tabBars.buttons["Insights"].isHittable)
+        capture(app, named: "Full app price comparison")
+        app.tabBars.buttons["Insights"].tap()
+        XCTAssertTrue(app.buttons["insights-products"].waitForExistence(timeout: 10))
+        capture(app, named: "Full app insights")
+        app.buttons["insights-products"].tap()
+        XCTAssertTrue(app.navigationBars["Products"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Red Bull Energy Drink"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.searchFields.firstMatch.isHittable)
+        capture(app, named: "Full app products")
+        app.staticTexts["Red Bull Energy Drink"].tap()
+        XCTAssertTrue(app.staticTexts["Purchases"].waitForExistence(timeout: 5))
+        capture(app, named: "Full app product history")
+        app.tabBars.buttons["Forecast"].tap()
+        XCTAssertTrue(app.staticTexts["Estimated next shop"].waitForExistence(timeout: 10))
+        capture(app, named: "Full app forecast")
+        app.tabBars.buttons["List"].tap()
+        XCTAssertTrue(app.staticTexts["Bananas"].waitForExistence(timeout: 5))
+        app.buttons["Settings"].tap()
+        XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 5))
+        capture(app, named: "Full app settings")
+        app.buttons["Done"].tap()
+        XCTAssertTrue(app.tabBars.buttons["Check price"].isHittable)
+    }
+
     @MainActor func testReceiptStreamReachesReview() {
         let app = XCUIApplication()
         app.launchEnvironment["TROLLEY_UI_TEST"] = "receipt"

@@ -56,6 +56,8 @@ struct RecipeHubView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(TrolleyStyle.canvas)
             .navigationTitle("Recipes")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

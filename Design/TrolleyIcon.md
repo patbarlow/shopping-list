@@ -1,0 +1,7 @@
+# Trolley icon
+
+Created with the built-in image-generation tool. The production iOS icon is `iOS/Assets.xcassets/AppIcon.appiconset/AppIcon.png`: 1024 x 1024, opaque, full bleed so iOS applies its own mask. The same artwork is packaged at all existing macOS icon sizes. `TrolleyMascot.imageset` is the smaller in-app illustration used at sign-in, in empty states, and in Price check.
+
+## Generation prompt
+
+Use case: logo-brand. Create a finished square iOS app icon for a playful, polished grocery app called Trolley. One original blobby shopping-trolley mascot, with just two large deep forest-green oval eyes, no mouth. A plump soft mint-white cart basket body with gently rounded irregular edges, a tiny curved cart handle joined to the upper left, and two simple rounded wheel nubs below so the silhouette clearly reads as a shopping trolley. Friendly and minimal, almost a soft little toy. Bright vivid spring/lime green background, rich but clean, edge to edge; very subtle green tonal lighting only. Softly sculpted satin 3D forms with restrained highlights and a little depth, large unmistakable eyes, no complex textures or tiny details. Center the mascot, filling roughly 72 percent of the square, strong legibility at small app-icon sizes. Simple, modern, charming, high contrast. No text, no letters, no groceries, no extra objects, no frame, no border, no pre-rounded outer corners, no white margins, no watermark. Deliver one opaque square production-quality 1024x1024 image.

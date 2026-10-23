@@ -1,6 +1,8 @@
 import SwiftUI
 
 struct ContentView: View {
+    private enum AppTab { case list, insights, price, forecast }
+    @State private var selectedTab = AppTab.list
     @State private var voice = VoiceEntryController()
     @Environment(AppServices.self) private var services
     @Environment(ReceiptImportCoordinator.self) private var receiptImportCoordinator
@@ -12,11 +14,18 @@ struct ContentView: View {
         Group {
             #if DEBUG
             if let scenario = ProcessInfo.processInfo.environment["TROLLEY_UI_TEST"] {
-                NavigationStack {
-                    if scenario == "receipt" {
-                        ReceiptScannerView(householdId: "fixture", initialCapture: .pdfData(Self.receiptFixture))
-                    } else if scenario == "products" { ProductsListView(householdId: "fixture") }
-                    else { PriceCheckView(householdId: "fixture") }
+                if scenario == "app" {
+                    householdTabs(Household(id: "fixture", name: "Our place", inviteCode: "TEST", shoppingFrequency: .weekly))
+                } else {
+                    NavigationStack {
+                        if scenario == "receipt" {
+                            ReceiptScannerView(householdId: "fixture", initialCapture: .pdfData(Self.receiptFixture))
+                        } else if scenario == "products" {
+                            ProductsListView(householdId: "fixture")
+                        } else {
+                            PriceCheckView(householdId: "fixture")
+                        }
+                    }
                 }
             } else { authenticatedContent }
             #else
@@ -35,32 +44,34 @@ struct ContentView: View {
     }
     #endif
 
+    private func householdTabs(_ household: Household) -> some View {
+        TabView(selection: $selectedTab) {
+            Tab("List", systemImage: "cart", value: AppTab.list) {
+                ShoppingListView(household: household, voice: voice) { selectedTab = .price }
+            }
+            Tab("Insights", systemImage: "chart.bar", value: AppTab.insights) {
+                SpendTrendsView(household: household)
+            }
+            Tab("Check price", systemImage: "tag", value: AppTab.price) {
+                NavigationStack { PriceCheckView(householdId: household.id) }
+            }
+            Tab("Forecast", systemImage: "calendar.badge.clock", value: AppTab.forecast) {
+                NavigationStack { PredictedListView(household: household) }
+            }
+        }
+        .tabBarMinimizeBehavior(.never)
+        .overlay(alignment: .bottom) {
+            VoiceScreenGlow(active: voice.isActive, level: voice.speech.level)
+                .ignoresSafeArea(.container, edges: .bottom)
+        }
+    }
+
     private var authenticatedContent: some View {
         @Bindable var receiptImportCoordinator = receiptImportCoordinator
         return Group {
             if services.auth.isLoggedIn {
                 if let household = services.auth.household {
-                    TabView {
-                        Tab("List", systemImage: "cart") {
-                            ShoppingListView(household: household, voice: voice)
-                        }
-                        Tab("Insights", systemImage: "chart.bar") {
-                            SpendTrendsView(household: household)
-                        }
-                        Tab("Check price", systemImage: "tag") {
-                            NavigationStack { PriceCheckView(householdId: household.id) }
-                        }
-                        Tab("Forecast", systemImage: "calendar.badge.clock") {
-                            NavigationStack {
-                                PredictedListView(household: household)
-                                    .environment(services)
-                            }
-                        }
-                    }
-                    .overlay(alignment: .bottom) {
-                        VoiceScreenGlow(active: voice.isActive, level: voice.speech.level)
-                            .ignoresSafeArea(.container, edges: .bottom)
-                    }
+                    householdTabs(household)
                     // Anchored here — the TabView's root, always "in window"
                     // regardless of which tab is frontmost — rather than on
                     // ShoppingListView specifically. A share-sheet import

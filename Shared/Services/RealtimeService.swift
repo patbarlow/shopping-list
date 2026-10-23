@@ -21,6 +21,9 @@ final class RealtimeService {
     }
 
     func connect(householdId: String) {
+        #if DEBUG
+        guard ProcessInfo.processInfo.environment["TROLLEY_UI_TEST"] == nil else { return }
+        #endif
         streamTask?.cancel()
         streamTask = Task { [weak self] in
             await self?.stream(householdId: householdId)

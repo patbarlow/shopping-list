@@ -66,6 +66,8 @@ struct SettingsView: View {
                     }
                 }
             }
+            .scrollContentBackground(.hidden)
+            .background(TrolleyStyle.canvas)
             .navigationTitle("Settings")
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {

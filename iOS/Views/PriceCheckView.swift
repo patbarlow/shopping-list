@@ -136,14 +136,7 @@ struct PriceCheckView: View {
 
     private var introduction: some View {
         VStack(spacing: 24) {
-            ZStack {
-                Circle().fill(Color.mint.opacity(0.13)).frame(width: 112, height: 112)
-                Image(systemName: "tag.fill")
-                    .font(.system(size: 54, weight: .medium)).rotationEffect(.degrees(-15))
-                    .foregroundStyle(Color(red: 0.16, green: 0.52, blue: 0.39))
-                Image(systemName: "sparkle").font(.system(size: 23, weight: .medium))
-                    .foregroundStyle(Color(red: 0.67, green: 0.75, blue: 0.26)).offset(x: 44, y: -33)
-            }.accessibilityHidden(true)
+            TrolleyMascot(size: 112)
             VStack(spacing: 12) {
                 Text("Good price?\nLet’s find out.")
                     .font(.system(.largeTitle, design: .rounded, weight: .bold)).tracking(-1)
@@ -237,9 +230,7 @@ struct PriceCheckView: View {
                 }.tint(.primary)
             }
             .padding(14)
-            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28))
-            .overlay(RoundedRectangle(cornerRadius: 28).strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5))
-            .shadow(color: .black.opacity(0.04), radius: 18, y: 5)
+            .trolleyComposer()
         }
         .padding(.horizontal, 16).padding(.bottom, 10).padding(.top, 8)
         .disabled(busy)

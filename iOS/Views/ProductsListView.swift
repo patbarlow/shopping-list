@@ -21,20 +21,6 @@ struct ProductsListView: View {
         var id: String { rawValue }
     }
 
-    /// A soft periwinkle wash — same treatment as Insights' mint and Forecast's
-    /// coral, in a cooler tone for "what you buy" as distinct from spend or timing.
-    private static let headerGradient = LinearGradient(
-        stops: [
-            .init(color: Color(red: 0.72, green: 0.78, blue: 0.96), location: 0),
-            .init(color: Color(red: 0.76, green: 0.81, blue: 0.96).opacity(0.85), location: 0.2),
-            .init(color: Color(red: 0.80, green: 0.85, blue: 0.97).opacity(0.5), location: 0.45),
-            .init(color: Color(red: 0.84, green: 0.88, blue: 0.98).opacity(0.18), location: 0.7),
-            .init(color: Color(red: 0.84, green: 0.88, blue: 0.98).opacity(0), location: 1),
-        ],
-        startPoint: .top,
-        endPoint: .bottom
-    )
-
     private func updateDisplayed() {
         let filtered = search.isEmpty ? products : products.filter { $0.name.localizedCaseInsensitiveContains(search) }
         displayed = filtered.sorted {
@@ -70,9 +56,10 @@ struct ProductsListView: View {
                         ProductDetailView(householdId: householdId, productId: product.id, fallbackName: product.name)
                             .environment(services)
                     } label: { row(product) }
-                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
+                    .listRowInsets(EdgeInsets(top: 8, leading: 24, bottom: 8, trailing: 24))
+                    .listRowBackground(Color.clear)
                 }
-                .listStyle(.insetGrouped)
+                .listStyle(.plain)
                 .scrollContentBackground(.hidden)
                 .overlay {
                     if displayed.isEmpty { ContentUnavailableView.search(text: search) }
@@ -80,23 +67,8 @@ struct ProductsListView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // Attached via .background rather than as a ZStack sibling in front
-        // of the ScrollView — that arrangement kept the ScrollView from being
-        // recognized as the NavigationStack's scrollable content, so the
-        // large title's extra height never got automatically reserved for it
-        // (needing a hand-tuned top-padding fudge that was never quite right,
-        // and threw off the system's own scroll-to-top-on-tab-tap since it
-        // targets the real, automatic inset). As a .background this stays a
-        // passive layer behind the content without interfering with that.
-        .background {
-            ZStack(alignment: .top) {
-                Color(.systemGroupedBackground).ignoresSafeArea()
-                Self.headerGradient
-                    .frame(height: 700)
-                    .ignoresSafeArea(edges: .top)
-            }
-        }
-        .searchable(text: $search, prompt: "Find a product")
+        .background(TrolleyStyle.canvas.ignoresSafeArea())
+        .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Find a product")
         .onChange(of: search) { _, _ in updateDisplayed() }
         .onChange(of: sort) { _, _ in updateDisplayed() }
         .navigationTitle("Products")
