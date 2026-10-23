@@ -6,6 +6,7 @@ import UniformTypeIdentifiers
 @main
 struct ShoppingListApp: App {
     init() {
+        TrolleyStyle.configureNavigationTypography()
         ShoppingCore.migrateIfNeeded()
 SentrySDK.start { options in
             options.dsn = "https://4fbbe6fdbd49ab9139757d8b8a1de53f@o4511482336772096.ingest.us.sentry.io/4511482454933504"
@@ -40,6 +41,7 @@ SentrySDK.start { options in
         WindowGroup {
             ContentView()
                 .fontDesign(.rounded)
+                .tint(TrolleyStyle.accent)
                 .environment(services)
                 .environment(receiptImportCoordinator)
                 .task {

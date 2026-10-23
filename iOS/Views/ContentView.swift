@@ -47,7 +47,7 @@ struct ContentView: View {
     private func householdTabs(_ household: Household) -> some View {
         TabView(selection: $selectedTab) {
             Tab("List", systemImage: "cart", value: AppTab.list) {
-                ShoppingListView(household: household, voice: voice) { selectedTab = .price }
+                ShoppingListView(household: household, voice: voice)
             }
             Tab("Insights", systemImage: "chart.bar", value: AppTab.insights) {
                 SpendTrendsView(household: household)

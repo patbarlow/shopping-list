@@ -559,7 +559,7 @@ private struct ReceiptEditorView: View {
                         } label: {
                             Image(systemName: item.isIncluded ? "checkmark.circle.fill" : "circle")
                                 .font(.title3)
-                                .foregroundStyle(item.isIncluded ? Color.accentColor : Color.secondary)
+                                .foregroundStyle(item.isIncluded ? TrolleyStyle.accent : Color.secondary)
                                 .frame(width: 32, height: 44)
                         }
                         .buttonStyle(.plain)
@@ -619,7 +619,7 @@ private struct ReceiptProductChoice: View {
                 HStack {
                     Text(item.productName)
                     Spacer()
-                    Image(systemName: "checkmark").foregroundStyle(Color.accentColor)
+                    Image(systemName: "checkmark").foregroundStyle(TrolleyStyle.accent)
                 }
             }
             Section(query.isEmpty ? "Suggested products" : "Search results") {
@@ -646,7 +646,7 @@ private struct ReceiptProductChoice: View {
                             }
                             Spacer()
                             if product.id == item.productId {
-                                Image(systemName: "checkmark").foregroundStyle(Color.accentColor)
+                                Image(systemName: "checkmark").foregroundStyle(TrolleyStyle.accent)
                             }
                         }
                     }

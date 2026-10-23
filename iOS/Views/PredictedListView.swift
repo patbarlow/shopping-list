@@ -175,7 +175,7 @@ struct PredictedListView: View {
                 } label: {
                     Image(systemName: "plus.circle")
                         .font(.title3)
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(TrolleyStyle.accent)
                 }
                 .buttonStyle(.borderless).accessibilityLabel("Add \(item.name) to list")
             }

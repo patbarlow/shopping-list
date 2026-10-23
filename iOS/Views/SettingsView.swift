@@ -31,7 +31,7 @@ struct SettingsView: View {
                             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
                         } label: {
                             Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                                .foregroundStyle(copied ? .green : .accentColor)
+                                .foregroundStyle(copied ? .green : TrolleyStyle.accent)
                         }
                         .buttonStyle(.borderless)
                     }

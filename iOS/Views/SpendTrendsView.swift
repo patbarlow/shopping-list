@@ -55,7 +55,7 @@ struct SpendTrendsView: View {
                                 ProductsListView(householdId: householdId)
                             } label: {
                                 HStack(spacing: 12) {
-                                    Image(systemName: "basket").foregroundStyle(Color.accentColor)
+                                    Image(systemName: "basket").foregroundStyle(TrolleyStyle.accent)
                                     Text("Your products").font(.subheadline.weight(.semibold))
                                     Spacer()
                                     Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
@@ -304,7 +304,7 @@ struct SpendTrendsView: View {
     private func insightCard(_ text: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "sparkles")
-                .foregroundStyle(Color.accentColor)
+                .foregroundStyle(TrolleyStyle.accent)
             Text(text)
                 .font(.subheadline)
                 .foregroundStyle(.primary)

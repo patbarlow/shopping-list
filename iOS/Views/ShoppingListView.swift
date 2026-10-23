@@ -11,8 +11,8 @@ struct ShoppingListView: View {
     @Environment(AppServices.self) private var services
     @State private var showSettings = false
     let voice: VoiceEntryController
-    var onCheckPrice: (() -> Void)? = nil
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var colorScheme
 
     // ── Inline add ─────────────────────────────────────────────────────────────
     @State private var isAdding  = false
@@ -91,8 +91,8 @@ struct ShoppingListView: View {
             }
             .task { showEmptyStateIfSettled() }
             .background(TrolleyStyle.canvas)
-            .navigationTitle("Your list")
-                .navigationBarTitleDisplayMode(.large)
+            .navigationTitle("")
+                .navigationBarTitleDisplayMode(.inline)
                 .toolbar { toolbarContent }
                 .sheet(isPresented: $showSettings) {
                     SettingsView(household: household).environment(services)
@@ -313,23 +313,12 @@ struct ShoppingListView: View {
     private var mainList: some View {
         Group {
             ScrollView {
-                LazyVStack(spacing: 24) {
-                    if let onCheckPrice {
-                        Button(action: onCheckPrice) {
-                            HStack(spacing: 12) {
-                                Image(systemName: "tag.fill").font(.body)
-                                    .foregroundStyle(Color.accentColor)
-                                Text("Check a price").font(.subheadline.weight(.semibold))
-                                Spacer()
-                                Image(systemName: "arrow.up.right").font(.subheadline)
-                            }.padding(18).background(TrolleyStyle.softGreen, in: RoundedRectangle(cornerRadius: 22))
-                        }.buttonStyle(.plain).accessibilityIdentifier("list-check-price")
-                    }
+                LazyVStack(spacing: 18) {
                     ForEach(store.groupedItems, id: \.category) { group in
                         let catKey = group.category.rawValue
                         let isCollapsed = collapsedSections.contains(catKey)
 
-                        VStack(spacing: 0) {
+                        VStack(spacing: 8) {
                             // ── Section header ────────────────────────────────
                             Button {
                                 withAnimation(.easeInOut(duration: 0.2)) {
@@ -342,40 +331,32 @@ struct ShoppingListView: View {
                                         .font(.title3)
                                         .frame(width: 28, alignment: .center)
                                     Text(catKey)
-                                        .font(.body.weight(.semibold))
-                                        .foregroundStyle(.secondary)
+                                        .font(.system(.body, design: .rounded, weight: .semibold))
+                                        .foregroundStyle(.primary)
                                     Spacer()
                                     Image(systemName: "chevron.down")
                                         .font(.caption.weight(.semibold))
-                                        .foregroundStyle(.tertiary)
+                                        .foregroundStyle(.secondary)
                                         .rotationEffect(isCollapsed ? .degrees(-90) : .zero)
                                         .animation(.easeInOut(duration: 0.2), value: isCollapsed)
                                 }
-                                .padding(.horizontal, 14)
+                                .padding(.horizontal, 12)
                                 .padding(.vertical, 10)
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
+                            .accessibilityIdentifier("list-section-\(catKey)")
 
                             // ── Items ─────────────────────────────────────────
                             if !isCollapsed {
-                                Divider()
-                                    .padding(.horizontal, 14)
-                                    .opacity(0.25)
-
-                                ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
+                                ForEach(group.items) { item in
                                     VStack(spacing: 0) {
-                                        if index > 0 {
-                                            Divider()
-                                                .padding(.leading, 52)
-                                                .opacity(0.15)
-                                        }
                                         let offset = swipeOffsets[item.id] ?? 0
                                         let progress = min(1.0, max(0, -offset / 100))
                                         unifiedItemRow(for: item)
                                             .padding(.horizontal, 14)
-                                            .padding(.vertical, 12)
-                                            .background(TrolleyStyle.canvas)
+                                            .padding(.vertical, 14)
+                                            .background(TrolleyStyle.canvas.opacity(colorScheme == .dark ? 0.6 : 0.9))
                                             .overlay { Color.red.opacity(progress) }
                                             .overlay(alignment: .trailing) {
                                                 Text("Delete")
@@ -384,6 +365,7 @@ struct ShoppingListView: View {
                                                     .padding(.trailing, 28)
                                                     .opacity(max(0, (progress - 0.3) / 0.4))
                                             }
+                                            .clipShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
                                             .offset(x: offset)
                                             .frame(maxWidth: .infinity)
                                             .gesture(swipeDeleteGesture(for: item))
@@ -396,10 +378,11 @@ struct ShoppingListView: View {
                                             }
                                     }
                                 }
-                                .padding(.bottom, 4)
                             }
                         }
-                        .clipShape(RoundedRectangle(cornerRadius: 24))
+                        .padding(10)
+                        .background(group.category.color.opacity(colorScheme == .dark ? 0.18 : 0.13), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
+                        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
                     }
 
                     Color.clear.frame(height: 16)
@@ -437,7 +420,7 @@ struct ShoppingListView: View {
         return VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .center, spacing: 10) {
                 Image(systemName: isVisuallyComplete ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isVisuallyComplete ? Color.accentColor : Color(.systemGray3))
+                    .foregroundStyle(isVisuallyComplete ? TrolleyStyle.accent : Color(.systemGray3))
                     .font(.title3)
                     .frame(width: 28, height: 28)
                     .contentShape(Circle())
@@ -449,7 +432,7 @@ struct ShoppingListView: View {
                     if let qty = item.quantity, !qty.isEmpty {
                         Text(qty)
                             .font(.subheadline)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.secondary)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -471,7 +454,7 @@ struct ShoppingListView: View {
         }
         .padding(.vertical, 1)
         .padding(.horizontal, 6)
-        .background(isEditing ? Color.accentColor.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 8))
+        .background(isEditing ? TrolleyStyle.accent.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 8))
         .padding(.horizontal, -6)
         .contentShape(Rectangle())
         .onTapGesture { if !isEditing { beginEditing(item) } }

@@ -154,7 +154,7 @@ struct ReceiptEditSheet: View {
                 } label: {
                     Image(systemName: value.isIncluded ? "checkmark.circle.fill" : "circle")
                         .font(.title2)
-                        .foregroundStyle(value.isIncluded ? Color.accentColor : Color.secondary.opacity(0.5))
+                        .foregroundStyle(value.isIncluded ? TrolleyStyle.accent : Color.secondary.opacity(0.5))
                         .contentTransition(.symbolEffect(.replace))
                 }
                 .buttonStyle(.plain)
@@ -175,8 +175,8 @@ struct ReceiptEditSheet: View {
                                 Text("NEW")
                                     .font(.caption2.bold())
                                     .padding(.horizontal, 5).padding(.vertical, 1)
-                                    .background(Color.accentColor.opacity(0.15), in: Capsule())
-                                    .foregroundStyle(Color.accentColor)
+                                    .background(TrolleyStyle.accent.opacity(0.15), in: Capsule())
+                                    .foregroundStyle(TrolleyStyle.accent)
                             }
                             Image(systemName: "chevron.right")
                                 .font(.caption2.weight(.semibold))

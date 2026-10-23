@@ -242,7 +242,7 @@ struct ReceiptPrintingView: View {
                     if line.isNew, line.productName != nil {
                         Text("NEW")
                             .font(.system(.caption2, design: .monospaced).weight(.bold))
-                            .foregroundStyle(Color.accentColor)
+                            .foregroundStyle(TrolleyStyle.accent)
                     }
                     if line.needsReview {
                         Image(systemName: "exclamationmark.triangle.fill")

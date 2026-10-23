@@ -16,7 +16,7 @@ struct HouseholdSetupView: View {
                 VStack(spacing: 8) {
                     Image(systemName: "house.fill")
                         .font(.system(size: 64))
-                        .foregroundStyle(Color.accentColor)
+                        .foregroundStyle(TrolleyStyle.accent)
                     Text("Your Household")
                         .font(.system(.largeTitle, design: .rounded, weight: .bold))
                     Text("Create a new household or join one with an invite code.")

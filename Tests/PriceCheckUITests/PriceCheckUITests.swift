@@ -1,14 +1,20 @@
 import XCTest
 
 final class PriceCheckUITests: XCTestCase {
-    @MainActor func testFullAppNavigationAndPriceShortcut() {
+    @MainActor func testFullAppNavigation() {
         let app = XCUIApplication()
         app.launchEnvironment["TROLLEY_UI_TEST"] = "app"
         app.launch()
         XCTAssertTrue(app.staticTexts["Bananas"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.tabBars.buttons["Check price"].exists)
+        XCTAssertFalse(app.navigationBars.staticTexts["Your list"].exists)
+        XCTAssertFalse(app.buttons["list-check-price"].exists)
         capture(app, named: "Full app shopping list")
-        app.buttons["list-check-price"].tap()
+        app.buttons["list-section-Fruit & Veg"].tap()
+        XCTAssertTrue(app.staticTexts["Bananas"].waitForNonExistence(timeout: 5))
+        app.buttons["list-section-Fruit & Veg"].tap()
+        XCTAssertTrue(app.staticTexts["Bananas"].waitForExistence(timeout: 5))
+        app.tabBars.buttons["Check price"].tap()
         XCTAssertTrue(app.staticTexts["Good price?\nLet’s find out."].waitForExistence(timeout: 5))
         XCTAssertTrue(app.tabBars.buttons["List"].isHittable)
         capture(app, named: "Full app price check welcome")

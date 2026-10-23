@@ -91,7 +91,7 @@ private struct CodeEntryView: View {
             VStack(spacing: 8) {
                 Image(systemName: "envelope.badge")
                     .font(.system(size: 64))
-                    .foregroundStyle(Color.accentColor)
+                    .foregroundStyle(TrolleyStyle.accent)
                 Text("Check your email")
                     .font(.system(.largeTitle, design: .rounded, weight: .bold))
                 Text("We sent a 6-digit code to\n**\(email)**")
