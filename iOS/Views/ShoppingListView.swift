@@ -13,6 +13,7 @@ struct ShoppingListView: View {
     let voice: VoiceEntryController
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // ── Inline add ─────────────────────────────────────────────────────────────
     @State private var isAdding  = false
@@ -32,6 +33,8 @@ struct ShoppingListView: View {
 
     // ── Collapsible sections ───────────────────────────────────────────────────
     @State private var collapsedSections: Set<String> = []
+    @State private var fadedSections: Set<String> = []
+    @State private var statusHeight: CGFloat = 0
 
     // ── Pending complete (brief fill animation before item leaves) ─────────────
     @State private var pendingCompleteIDs: Set<String> = []
@@ -66,10 +69,20 @@ struct ShoppingListView: View {
         NavigationStack {
             ZStack {
                 mainList
-                if store.items.allSatisfy(\.checked) {
-                    listStatus.ignoresSafeArea(.keyboard, edges: .bottom)
+                GeometryReader { geometry in
+                    if store.items.allSatisfy(\.checked), !isAdding, !isEditingItem, !voice.isActive {
+                        listStatus
+                            .frame(width: geometry.size.width, height: statusHeight > 0 ? statusHeight : geometry.size.height)
+                            .transition(.opacity)
+                    }
+                }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                    // Hold the introduction in place while it fades, even as
+                    // the composer and keyboard change the available height.
+                    if !isAdding, !isEditingItem, !voice.isActive { statusHeight = height }
                 }
             }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isAdding || isEditingItem || voice.isActive)
             .safeAreaInset(edge: .bottom, spacing: 0) { addItemAccessory }
             .background(TrolleyStyle.canvas)
             .navigationTitle("")
@@ -156,24 +169,16 @@ struct ShoppingListView: View {
             VStack(alignment: .leading, spacing: 0) {
                 // Name row
                 HStack(spacing: 12) {
-                    if isEditingItem {
-                        Image(hugeIcon: "pencil")
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(.tint)
-                            .frame(width: 24, height: 24)
-                    } else if isAdding {
-                        Image(hugeIcon: "circle")
-                            .foregroundStyle(.tertiary)
-                            .font(.body)
-                            .frame(width: 24, height: 24)
-                    } else {
-                        Image(hugeIcon: "plus")
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(.tint)
-                            .frame(width: 24, height: 24)
-                            .contentShape(Rectangle())
-                            .onTapGesture { startAdding() }
-                    }
+                    // Keep one icon in the layout so it travels with the card
+                    // instead of inserting a checkbox at its final position.
+                    Image(hugeIcon: isEditingItem ? "pencil" : isAdding ? "circle" : "plus")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(isAdding ? Color(.tertiaryLabel) : TrolleyStyle.accent)
+                        .frame(width: 24, height: 24)
+                        .contentTransition(.opacity)
+                        .contentShape(Circle())
+                        .onTapGesture { if !isEditingItem { startAdding() } }
+                        .accessibilityIdentifier("list-composer-icon")
                     if isEditingItem {
                         TextField("Item name", text: $editName)
                             .focused($focusedField, equals: .editName)
@@ -251,6 +256,7 @@ struct ShoppingListView: View {
             }
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
+            .geometryGroup()
             .trolleyComposer()
             .padding(.horizontal, 16)
             .padding(.bottom, 10)
@@ -303,11 +309,7 @@ struct ShoppingListView: View {
                         VStack(spacing: 8) {
                             // ── Section header ────────────────────────────────
                             Button {
-                                AppHaptics.selection()
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    if isCollapsed { collapsedSections.remove(catKey) }
-                                    else { collapsedSections.insert(catKey) }
-                                }
+                                toggleSection(catKey)
                             } label: {
                                 HStack(spacing: 10) {
                                     Text(group.category.emoji)
@@ -333,39 +335,15 @@ struct ShoppingListView: View {
                             // ── Items ─────────────────────────────────────────
                             if !isCollapsed {
                                 ForEach(group.items) { item in
-                                    VStack(spacing: 0) {
-                                        let offset = swipeOffsets[item.id] ?? 0
-                                        let progress = min(1.0, max(0, -offset / 100))
-                                        unifiedItemRow(for: item)
-                                            .padding(.horizontal, 14)
-                                            .padding(.vertical, 14)
-                                            .background(TrolleyStyle.canvas.opacity(colorScheme == .dark ? 0.6 : 0.9))
-                                            .overlay { Color.red.opacity(progress) }
-                                            .overlay(alignment: .trailing) {
-                                                Text("Delete")
-                                                    .font(.footnote.weight(.semibold))
-                                                    .foregroundStyle(.white)
-                                                    .padding(.trailing, 28)
-                                                    .opacity(max(0, (progress - 0.3) / 0.4))
-                                            }
-                                            .clipShape(RoundedRectangle(cornerRadius: 19, style: .continuous))
-                                            .offset(x: offset)
-                                            .frame(maxWidth: .infinity)
-                                            .gesture(swipeDeleteGesture(for: item))
-                                            .contextMenu {
-                                                Button(role: .destructive) {
-                                                    Task { await store.deleteItem(item) }
-                                                } label: {
-                                                    Label("Delete", hugeIcon: "trash")
-                                                }
-                                            }
-                                    }
+                                    shoppingRow(for: item)
+                                        .opacity(fadedSections.contains(catKey) ? 0 : 1)
+                                        .allowsHitTesting(!fadedSections.contains(catKey))
+                                        .transition(.opacity)
                                 }
                             }
                         }
                         .padding(10)
                         .background(group.category.color.opacity(colorScheme == .dark ? 0.18 : 0.13), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
-                        .clipShape(RoundedRectangle(cornerRadius: 28, style: .continuous))
                     }
 
                     Color.clear.frame(height: 16)
@@ -396,8 +374,63 @@ struct ShoppingListView: View {
 
     // MARK: - Unified item row (display + edit in one persistent view)
 
+    private func toggleSection(_ category: String) {
+        guard !fadedSections.contains(category) || collapsedSections.contains(category) else { return }
+        AppHaptics.selection()
+        if collapsedSections.contains(category) {
+            fadedSections.remove(category)
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                collapsedSections.remove(category)
+            }
+        } else {
+            // Fade the full-size rows before shrinking the section, so neither
+            // a changing mask nor the next aisle can reshape their corners.
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.09), completionCriteria: .removed) {
+                fadedSections.insert(category)
+            } completion: {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+                    collapsedSections.insert(category)
+                }
+            }
+        }
+    }
+
+    private func shoppingRow(for item: ShoppingItem) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 19, style: .continuous)
+        let offset = swipeOffsets[item.id] ?? 0
+        let progress = min(1, max(0, -offset / 100))
+        return unifiedItemRow(for: item)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                shape.fill(TrolleyStyle.canvas)
+                if editingItemID == item.id { shape.fill(TrolleyStyle.accent.opacity(0.12)) }
+            }
+            .clipShape(shape)
+            .compositingGroup()
+            .offset(x: offset)
+            .background {
+                ZStack(alignment: .trailing) {
+                    shape.fill(.red).opacity(offset < 0 ? 1 : 0)
+                    Text("Delete").font(.footnote.weight(.semibold)).foregroundStyle(.white)
+                        .padding(.trailing, 20).opacity(progress)
+                }
+            }
+            .clipShape(shape)
+            .contentShape(shape)
+            .fixedSize(horizontal: false, vertical: true)
+            .geometryGroup()
+            .accessibilityIdentifier("list-row-\(item.name)")
+            .gesture(swipeDeleteGesture(for: item))
+            .contextMenu {
+                Button(role: .destructive) { Task { await store.deleteItem(item) } } label: {
+                    Label("Delete", hugeIcon: "trash")
+                }
+            }
+    }
+
     private func unifiedItemRow(for item: ShoppingItem) -> some View {
-        let isEditing = editingItemID == item.id
         let isComplete = item.checked
         let isVisuallyComplete = isComplete || pendingCompleteIDs.contains(item.id)
         return VStack(alignment: .leading, spacing: 2) {
@@ -436,11 +469,8 @@ struct ShoppingListView: View {
             }
         }
         .padding(.vertical, 1)
-        .padding(.horizontal, 6)
-        .background(isEditing ? TrolleyStyle.accent.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 8))
-        .padding(.horizontal, -6)
         .contentShape(Rectangle())
-        .onTapGesture { if !isEditing { beginEditing(item) } }
+        .onTapGesture { if editingItemID != item.id { beginEditing(item) } }
     }
 
     /// A faded in-aisle reference price — the number is what matters, so it
@@ -706,7 +736,7 @@ struct ShoppingListView: View {
                 if translation < 0 {
                     swipeOffsets[item.id] = translation
                     if translation < -100 {
-                        swipePassedThreshold.insert(item.id)
+                        if swipePassedThreshold.insert(item.id).inserted { AppHaptics.selection() }
                     } else {
                         swipePassedThreshold.remove(item.id)
                     }

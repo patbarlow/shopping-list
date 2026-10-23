@@ -210,7 +210,7 @@ final class PriceCheckUITests: XCTestCase {
         app.tabBars.buttons["Check price"].tap()
         app.buttons["Photos"].tap()
         waitForPhotoGrid(app)
-        app.images.matching(identifier: "PXGGridLayout-Info").firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        selectVisiblePhoto(app)
         XCTAssertTrue(app.buttons["Remove photo"].waitForExistence(timeout: 10))
         capture(app, named: "Photo attached to price check")
         app.buttons["Remove photo"].tap()
@@ -220,7 +220,7 @@ final class PriceCheckUITests: XCTestCase {
         app.buttons["Import receipt"].tap()
         app.buttons["Photo Library"].tap()
         waitForPhotoGrid(app)
-        app.images.matching(identifier: "PXGGridLayout-Info").firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        selectVisiblePhoto(app)
         XCTAssertTrue(app.buttons["Edit"].waitForExistence(timeout: 15))
         capture(app, named: "Photo receipt review from Insights")
         app.buttons["Cancel"].tap()
@@ -235,6 +235,8 @@ final class PriceCheckUITests: XCTestCase {
         app.staticTexts["Add item…"].tap()
         let input = app.textFields["list-add-input"]
         XCTAssertTrue(input.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["A fresh start."].waitForNonExistence(timeout: 5))
+        capture(app, named: "List composer with empty introduction faded out")
         input.typeText("Apples\n")
         XCTAssertTrue(app.staticTexts["Apples"].waitForExistence(timeout: 5))
         XCTAssertTrue(app.keyboards.firstMatch.exists)
@@ -272,7 +274,19 @@ final class PriceCheckUITests: XCTestCase {
         capture(app, named: "Attachment menu overlapping plus above keyboard")
         photos.tap()
         waitForPhotoGrid(app)
-        app.images.matching(identifier: "PXGGridLayout-Info").firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        // Back returns to the source menu, confirming this picker belongs to
+        // the menu's presentation rather than the plus button's separate sheet.
+        app.buttons["Close photos"].tap()
+        XCTAssertTrue(photos.waitForExistence(timeout: 5))
+        menu.buttons["Camera"].tap()
+        XCTAssertTrue(app.buttons["Camera options"].waitForExistence(timeout: 5))
+        capture(app, named: "Camera expanded from attachment menu")
+        app.buttons["Close camera"].tap()
+        XCTAssertTrue(photos.waitForExistence(timeout: 5))
+        photos.tap()
+        waitForPhotoGrid(app)
+        capture(app, named: "Photos expanded from attachment menu")
+        selectVisiblePhoto(app)
         XCTAssertTrue(app.buttons["Remove photo"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
         XCTAssertFalse(app.staticTexts["Good price?\nLet’s find out."].exists)
@@ -341,13 +355,69 @@ final class PriceCheckUITests: XCTestCase {
         app.launch()
         app.buttons["Photos"].tap()
         waitForPhotoGrid(app)
-        app.images.matching(identifier: "PXGGridLayout-Info").firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        selectVisiblePhoto(app)
         XCTAssertTrue(app.buttons["Remove photo"].waitForExistence(timeout: 10))
         app.buttons["price-check-send"].tap()
         XCTAssertTrue(app.staticTexts["The price reader is unavailable just now. Your photo is ready to retry."].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["Remove photo"].exists)
         XCTAssertTrue(app.buttons["price-check-send"].isEnabled)
         XCTAssertFalse(app.staticTexts["Good price?\nLet’s find out."].exists)
+    }
+
+    @MainActor private func selectVisiblePhoto(_ app: XCUIApplication) {
+        let grid = app.otherElements["photo-grid"].firstMatch.frame
+        let visibleArea = grid.insetBy(dx: 12, dy: 70)
+        let photo = app.images.matching(identifier: "PXGGridLayout-Info").allElementsBoundByIndex.first {
+            visibleArea.contains(CGPoint(x: $0.frame.midX, y: $0.frame.midY))
+        }
+        XCTAssertNotNil(photo, "Expected a photo whose centre is inside the visible grid")
+        photo?.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+    }
+
+    @MainActor func testListEditingCollapseAndCancelledSwipeKeepRowLayout() {
+        let app = XCUIApplication()
+        app.launchEnvironment["TROLLEY_UI_TEST"] = "app"
+        app.launch()
+        let item = app.staticTexts["Bananas"]
+        XCTAssertTrue(item.waitForExistence(timeout: 10))
+        item.tap()
+        let input = app.textFields["Item name"]
+        XCTAssertTrue(input.waitForExistence(timeout: 5))
+        capture(app, named: "Whole row editing highlight")
+        swipeComposerDown(input)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        let section = app.buttons["list-section-Fruit & Veg"]
+        section.tap()
+        XCTAssertTrue(item.waitForNonExistence(timeout: 5))
+        section.tap()
+        XCTAssertTrue(item.waitForExistence(timeout: 5))
+        let row = app.descendants(matching: .any)["list-row-Bananas"].firstMatch
+        let original = row.frame
+        let start = row.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: -65, dy: 0)), withVelocity: .slow, thenHoldForDuration: 0.8)
+        XCTAssertTrue(item.exists)
+        XCTAssertEqual(row.frame.width, original.width, accuracy: 1)
+        XCTAssertEqual(row.frame.height, original.height, accuracy: 1)
+        capture(app, named: "Row after collapsing and cancelling a delete swipe")
+    }
+
+    @MainActor func testPriceTabAfterReactivation() {
+        let app = XCUIApplication()
+        app.launchEnvironment["TROLLEY_UI_TEST"] = "app"
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Bananas"].waitForExistence(timeout: 10))
+        for _ in 0..<2 {
+            XCUIDevice.shared.press(.home)
+            app.activate()
+            app.tabBars.buttons["Check price"].tap()
+            XCTAssertTrue(app.staticTexts["Good price?\nLet’s find out."].waitForExistence(timeout: 3))
+            let input = app.descendants(matching: .any)["price-check-input"].firstMatch
+            input.tap()
+            XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 3))
+            swipeComposerDown(input)
+            app.tabBars.buttons["List"].tap()
+            XCTAssertTrue(app.staticTexts["Bananas"].waitForExistence(timeout: 3))
+        }
     }
 
     @MainActor private func waitForPhotoGrid(_ app: XCUIApplication) {

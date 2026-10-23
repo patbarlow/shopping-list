@@ -128,13 +128,12 @@ struct PriceCheckView: View {
             .navigationTransition(.zoom(sourceID: mediaOrigin, in: mediaTransition))
         }
         .sheet(isPresented: $showProducts) { productSheet }
-        .onChange(of: scenePhase) { _, phase in
-            if phase == .active { Task { await loadRecent() } }
-            else { speech.stop(flush: true) }
-        }
         .task {
             speech.onUtterance = { phrase in text += (text.isEmpty ? "" : " ") + phrase }
-            await loadRecent(requestPermission: true)
+        }
+        .task(id: scenePhase) {
+            if scenePhase == .active { await loadRecent(requestPermission: true) }
+            else { speech.stop(flush: true) }
         }
         .task(id: recentID) {
             guard let recentDate else { return }
@@ -230,11 +229,13 @@ struct PriceCheckView: View {
                             .contentShape(Circle())
                     }
                         .buttonStyle(.plain)
-                        .matchedTransitionSource(id: "attachments", in: mediaTransition)
                         .background {
-                            AttachmentMenuPresenter(isPresented: $showAttachments) { source in
-                                openMedia(source, origin: "attachments")
-                            }
+                            AttachmentMenuPresenter(isPresented: $showAttachments,
+                                // Keep the source menu in place during its zoom;
+                                // dismissing the keyboard here would move it first.
+                                onOpenMedia: { speech.stop(flush: true) },
+                                onSelect: attach,
+                                onFinish: { focused = true; focusAfterMedia = false })
                         }
                         .accessibilityLabel("Attach photo").accessibilityIdentifier("price-check-attachments")
                     Spacer()
@@ -412,12 +413,33 @@ struct PriceCheckView: View {
             recentImage = nil; recentID = nil
             return
         }
+        let photo = await RecentPhotoLoader.shared.latest()
+        guard !Task.isCancelled else { return }
+        guard let photo, RecentPhotoPolicy.isEligible(photo.date) else { recentID = nil; recentImage = nil; return }
+        if !text.isEmpty || attachment != nil || busy { dismissedRecentID = photo.id }
+        recentDate = photo.date
+        recentID = photo.id; recentImage = photo.image
+    }
+}
+
+/// Photo-library queries can synchronously connect to the Photos daemon after
+/// idle. Keep them off the main actor, and reuse the image while its asset matches.
+private actor RecentPhotoLoader {
+    struct Photo: Sendable {
+        let id: String
+        let date: Date?
+        let image: UIImage
+    }
+    static let shared = RecentPhotoLoader()
+    private var cached: Photo?
+
+    func latest() async -> Photo? {
         let options = PHFetchOptions()
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
         options.fetchLimit = 1
         options.predicate = NSPredicate(format: "creationDate > %@ AND creationDate <= %@", Date().addingTimeInterval(-RecentPhotoPolicy.maxAge) as NSDate, Date() as NSDate)
-        guard let asset = PHAsset.fetchAssets(with: .image, options: options).firstObject else { recentImage = nil; recentID = nil; return }
-        guard asset.localIdentifier != recentID else { return }
+        guard let asset = PHAsset.fetchAssets(with: .image, options: options).firstObject else { cached = nil; return nil }
+        if cached?.id == asset.localIdentifier { return cached }
         let request = PHImageRequestOptions()
         request.deliveryMode = .highQualityFormat
         request.isNetworkAccessAllowed = true
@@ -427,11 +449,10 @@ struct PriceCheckView: View {
                 continuation.resume(returning: image)
             }
         }
-        guard !Task.isCancelled else { return }
-        guard RecentPhotoPolicy.isEligible(asset.creationDate) else { recentID = nil; recentImage = nil; return }
-        if !text.isEmpty || attachment != nil || busy { dismissedRecentID = asset.localIdentifier }
-        recentDate = asset.creationDate
-        recentID = image == nil ? nil : asset.localIdentifier; recentImage = image
+        guard let image, RecentPhotoPolicy.isEligible(asset.creationDate) else { cached = nil; return nil }
+        let photo = Photo(id: asset.localIdentifier, date: asset.creationDate, image: image)
+        cached = photo
+        return photo
     }
 }
 

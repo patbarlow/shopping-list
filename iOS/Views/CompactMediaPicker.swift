@@ -115,7 +115,10 @@ private final class PhotoGridController: UIViewController, PHPickerViewControlle
         view.addSubview(picker.view)
         NSLayoutConstraint.activate([
             picker.view.leadingAnchor.constraint(equalTo: view.leadingAnchor),
-            picker.view.trailingAnchor.constraint(equalTo: view.trailingAnchor),
+            // PHPicker is a separate system process and has no public scroll-
+            // indicator switch. Clip its narrow trailing gutter at our boundary
+            // without inspecting or changing the picker's private view tree.
+            picker.view.trailingAnchor.constraint(equalTo: view.trailingAnchor, constant: 8),
             picker.view.topAnchor.constraint(equalTo: view.topAnchor),
             picker.view.bottomAnchor.constraint(equalTo: view.bottomAnchor)
         ])
@@ -273,15 +276,37 @@ private enum CameraFlash: String {
 
 /// Generous attachment rows without UIKit Menu's square pressed highlight.
 struct MediaSourceMenu: View {
-    let onSelect: (MediaPickerSource) -> Void
+    let onOpen: () -> Void
+    let onSelect: (UIImage) -> Void
+    let onFinish: () -> Void
+    @Namespace private var transition
+    @State private var source: MediaPickerSource?
+    @State private var attached = false
     var body: some View {
         VStack(spacing: 2) {
             row("Camera", icon: "camera", source: .camera)
             row("Photos", icon: "photo", source: .photos)
         }.padding(12).frame(width: 280)
+            .matchedTransitionSource(id: "attachment-menu", in: transition)
+            .sheet(item: $source, onDismiss: {
+                if attached { onFinish() }
+            }) { source in
+                Group {
+                    switch source {
+                    case .camera, .scan: CompactCameraPicker(scan: source == .scan, onCapture: attach)
+                    case .photos: CompactPhotoPicker(onSelect: attach)
+                    }
+                }
+                .navigationTransition(.zoom(sourceID: "attachment-menu", in: transition))
+            }
     }
+    private func attach(_ image: UIImage) { attached = true; onSelect(image) }
     private func row(_ title: String, icon: String, source: MediaPickerSource) -> some View {
-        Button { onSelect(source) } label: {
+        Button {
+            AppHaptics.tap()
+            onOpen()
+            self.source = source
+        } label: {
             HStack(spacing: 16) {
                 Image(hugeIcon: icon).frame(width: 44, height: 44)
                     .background(TrolleyStyle.surface, in: Circle())
@@ -296,7 +321,9 @@ struct MediaSourceMenu: View {
 /// arrow is disabled, and its anchor sits over the invoking circular button.
 struct AttachmentMenuPresenter: UIViewControllerRepresentable {
     @Binding var isPresented: Bool
-    let onSelect: (MediaPickerSource) -> Void
+    let onOpenMedia: () -> Void
+    let onSelect: (UIImage) -> Void
+    let onFinish: () -> Void
     func makeCoordinator() -> Coordinator { Coordinator(parent: self) }
     func makeUIViewController(context: Context) -> UIViewController {
         let controller = UIViewController()
@@ -313,9 +340,11 @@ struct AttachmentMenuPresenter: UIViewControllerRepresentable {
         }
         guard isPresented, context.coordinator.host == nil, controller.view.window != nil else { return }
         let coordinator = context.coordinator
-        let host = UIHostingController(rootView: MediaSourceMenu { source in
-            coordinator.dismiss(selecting: source)
-        }.fontDesign(.rounded))
+        let host = UIHostingController(rootView: MediaSourceMenu(
+            onOpen: { [weak coordinator] in coordinator?.openMedia() },
+            onSelect: { [weak coordinator] in coordinator?.parent.onSelect($0) },
+            onFinish: { [weak coordinator] in coordinator?.finishAttachment() }
+        ).fontDesign(.rounded))
         host.view.backgroundColor = .clear
         host.view.accessibilityIdentifier = "price-check-attachment-menu"
         host.preferredContentSize = CGSize(width: 280, height: 162)
@@ -339,11 +368,22 @@ struct AttachmentMenuPresenter: UIViewControllerRepresentable {
             host = nil
             parent.isPresented = false
         }
-        func dismiss(selecting source: MediaPickerSource) {
+        func openMedia() {
+            // UIKit dismisses the keyboard during the zoom. Freeze the menu's
+            // anchor in window coordinates before its source composer moves.
+            if let popover = host?.popoverPresentationController,
+               let source = popover.sourceView, let window = source.window {
+                let anchor = source.convert(popover.sourceRect, to: window)
+                popover.sourceView = window
+                popover.sourceRect = anchor
+            }
+            parent.onOpenMedia()
+        }
+        func finishAttachment() {
             host?.dismiss(animated: true) { [self] in
                 host = nil
                 parent.isPresented = false
-                parent.onSelect(source)
+                parent.onFinish()
             }
         }
     }
