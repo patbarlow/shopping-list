@@ -56,3 +56,43 @@ struct ReceiptTests {
         #expect(printer.lines.first?.isIncluded == false)
     }
 }
+
+struct ReceiptStreamRegressionTests {
+    @Test func preservesEmptyDelimitersAndUnicode() throws {
+        let wire = "event: store\r\ndata: {\"store_name\":\"Café\"}\r\n\r\nevent: matched\ndata: {\"items\": []}\n\n"
+        var parser = ServerSentEvents()
+        let events = try wire.utf8.compactMap { try parser.append($0) }
+        #expect(events.map(\.name) == ["store", "matched"])
+        #expect(String(decoding: events[0].data, as: UTF8.self) == #"{"store_name":"Café"}"#)
+    }
+    @Test func joinsDataLinesAndDoesNotDispatchIncompleteFrames() throws {
+        var parser = ServerSentEvents()
+        let wire = ": heartbeat\nevent: matched\ndata: {\ndata: \"items\": []}\n\nevent: item\ndata: truncated"
+        let events = try wire.utf8.compactMap { try parser.append($0) }
+        #expect(events.count == 1)
+        #expect(String(decoding: events[0].data, as: UTF8.self) == "{\n\"items\": []}")
+    }
+}
+
+struct PriceComparisonTests {
+    private func purchase(value: Double?, unit: String?) throws -> ProductPurchase {
+        let json: [String: Any] = ["id": "receipt-red-bull", "purchased_at": "2026-10-17", "price_paid": 7.8,
+            "unit_price": value as Any? ?? NSNull(), "unit_price_unit": unit as Any? ?? NSNull()]
+        return try JSONDecoder().decode(ProductPurchase.self, from: JSONSerialization.data(withJSONObject: json))
+    }
+    @Test func redBullAcceptanceCase() throws {
+        let offer = PriceOffer(name: "Red Bull 4 × 250mL", price: 9.83, size: 1000, unit: "mL")
+        let comparison = PriceComparison(offer: offer, purchases: [try purchase(value: 0.78, unit: "100mL")])
+        #expect(offer.packSizeLabel == "1 L")
+        #expect(abs(offer.baseline!.value - 0.983) < 0.00001)
+        #expect(abs(comparison.changeFromLast! - 26.025641) < 0.00001)
+        #expect(comparison.comparable.count == 1)
+    }
+    @Test func missingSizesAndDifferentDimensionsNeverCompare() throws {
+        let offer = PriceOffer(name: "Red Bull", price: 9.83, size: 1000, unit: "mL")
+        let comparison = PriceComparison(offer: offer, purchases: [try purchase(value: nil, unit: nil), try purchase(value: 0.78, unit: "100g")])
+        #expect(comparison.changeFromLast == nil)
+        #expect(PriceOffer(name: "Unknown", price: 9.83, size: nil, unit: "mL").baseline == nil)
+        #expect(PriceOffer(name: "Invalid", price: 9.83, size: 0, unit: "mL").baseline == nil)
+    }
+}

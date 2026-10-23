@@ -9,6 +9,8 @@ struct ProductsListView: View {
     @State private var products: [ProductInsight] = []
     @State private var isLoading = true
     @State private var errorMessage: String? = nil
+    @State private var search = ""
+    @State private var displayed: [ProductInsight] = []
     @State private var sort: Sort = .frequency
 
     enum Sort: String, CaseIterable, Identifiable {
@@ -33,12 +35,20 @@ struct ProductsListView: View {
         endPoint: .bottom
     )
 
-    private var sorted: [ProductInsight] {
-        switch sort {
-        case .frequency: return products.sorted { $0.timesPurchased > $1.timesPurchased }
-        case .spend:     return products.sorted { ($0.totalSpend ?? 0) > ($1.totalSpend ?? 0) }
-        case .recent:    return products.sorted { ($0.lastPurchasedAt ?? "") > ($1.lastPurchasedAt ?? "") }
-        case .name:      return products.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    private func updateDisplayed() {
+        let filtered = search.isEmpty ? products : products.filter { $0.name.localizedCaseInsensitiveContains(search) }
+        displayed = filtered.sorted {
+            switch sort {
+            case .frequency:
+                if $0.timesPurchased != $1.timesPurchased { return $0.timesPurchased > $1.timesPurchased }
+            case .spend:
+                if $0.totalSpend != $1.totalSpend { return ($0.totalSpend ?? 0) > ($1.totalSpend ?? 0) }
+            case .recent:
+                if $0.lastPurchasedAt != $1.lastPurchasedAt { return ($0.lastPurchasedAt ?? "") > ($1.lastPurchasedAt ?? "") }
+            case .name: break
+            }
+            let order = $0.name.localizedCaseInsensitiveCompare($1.name)
+            return order == .orderedSame ? $0.id < $1.id : order == .orderedAscending
         }
     }
 
@@ -55,26 +65,18 @@ struct ProductsListView: View {
                     description: Text("Scan a receipt and the things you buy will show up here with prices and how often you buy them.")
                 )
             } else {
-                ScrollView {
-                    card {
-                        LazyVStack(spacing: 0) {
-                            ForEach(Array(sorted.enumerated()), id: \.element.id) { i, product in
-                                if i > 0 { Divider().padding(.leading, 16) }
-                                NavigationLink {
-                                    ProductDetailView(householdId: householdId, productId: product.id, fallbackName: product.name)
-                                        .environment(services)
-                                } label: {
-                                    row(product)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 16)
+                List(displayed) { product in
+                    NavigationLink {
+                        ProductDetailView(householdId: householdId, productId: product.id, fallbackName: product.name)
+                            .environment(services)
+                    } label: { row(product) }
+                    .listRowInsets(EdgeInsets(top: 4, leading: 16, bottom: 4, trailing: 16))
                 }
+                .listStyle(.insetGrouped)
                 .scrollContentBackground(.hidden)
+                .overlay {
+                    if displayed.isEmpty { ContentUnavailableView.search(text: search) }
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -94,6 +96,9 @@ struct ProductsListView: View {
                     .ignoresSafeArea(edges: .top)
             }
         }
+        .searchable(text: $search, prompt: "Find a product")
+        .onChange(of: search) { _, _ in updateDisplayed() }
+        .onChange(of: sort) { _, _ in updateDisplayed() }
         .navigationTitle("Products")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
@@ -116,6 +121,7 @@ struct ProductsListView: View {
         .task {
             do {
                 products = try await services.api.fetchProductInsights(householdId: householdId)
+                updateDisplayed()
             } catch {
                 errorMessage = "Please try again."
             }
@@ -127,18 +133,10 @@ struct ProductsListView: View {
             Task {
                 if let fresh = try? await services.api.fetchProductInsights(householdId: householdId) {
                     products = fresh
+                    updateDisplayed()
                 }
             }
         }
-    }
-
-    // MARK: - Card container
-
-    private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
-            .padding(.vertical, 6)
-            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .shadow(color: .black.opacity(0.05), radius: 8, y: 3)
     }
 
     // MARK: - Row
@@ -171,7 +169,6 @@ struct ProductsListView: View {
                 }
             }
         }
-        .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .contentShape(Rectangle())
     }
@@ -197,9 +194,7 @@ struct ProductsListView: View {
     private func subtitle(_ product: ProductInsight) -> String {
         var parts = ["\(product.timesPurchased)×"]
         if let last = product.lastPurchasedAt, let d = Self.dayFormatter.date(from: String(last.prefix(10))) {
-            let f = DateFormatter()
-            f.setLocalizedDateFormatFromTemplate("d MMM")
-            parts.append("last \(f.string(from: d))")
+            parts.append("last \(d.formatted(.dateTime.day().month(.abbreviated)))")
         }
         return parts.joined(separator: " · ")
     }

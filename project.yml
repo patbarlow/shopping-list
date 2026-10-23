@@ -53,6 +53,8 @@ targets:
           - UIInterfaceOrientationPortraitUpsideDown
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
+        NSCameraUsageDescription: "Take a receipt or price photo to check your shopping. Photos are not saved to your library."
+        NSPhotoLibraryUsageDescription: "Suggest your latest screenshot or photo for a price check when you enable recent photos."
         NSMicrophoneUsageDescription: "Used for voice input when adding items to your shopping list."
         NSSpeechRecognitionUsageDescription: "Used to convert your voice into shopping list items."
         NSSiriUsageDescription: "Used to add items to your shopping list hands-free."
@@ -105,6 +107,19 @@ targets:
         com.apple.security.application-groups:
           - group.com.patbarlow.shoppinglist
 
+  PriceCheckUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "26.0"
+    sources:
+      - path: Tests/PriceCheckUITests
+    dependencies:
+      - target: "Shopping List"
+    settings:
+      base:
+        GENERATE_INFOPLIST_FILE: YES
+        PRODUCT_BUNDLE_IDENTIFIER: com.patbarlow.shoppinglist.price-ui-tests
+
   ReceiptTests:
     type: bundle.unit-test
     platform: iOS
@@ -113,6 +128,9 @@ targets:
       - path: Tests/ReceiptTests
       - path: Shared/Models/Recipe.swift
       - path: Shared/Models/ReceiptPrinter.swift
+      - path: Shared/Models/ServerSentEvents.swift
+      - path: Shared/Models/PriceCheck.swift
+      - path: Shared/Models/Insights.swift
       - path: Shared/Models/ShoppingInputParser.swift
     settings:
       base:
@@ -169,6 +187,7 @@ schemes:
       config: Debug
       targets:
         - ReceiptTests
+        - PriceCheckUITests
     run:
       config: Debug
     archive:

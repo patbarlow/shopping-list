@@ -11,13 +11,31 @@ final class APIService {
     private(set) var authToken: String?
     private(set) var currentUser: User?
 
-    private let session = URLSession.shared
+    private let session: URLSession
     private let decoder = JSONDecoder()
 
     init() {
+        #if DEBUG
+        if ProcessInfo.processInfo.environment["TROLLEY_UI_TEST"] != nil {
+            let config = URLSessionConfiguration.ephemeral
+            config.protocolClasses = [PriceCheckFixtureProtocol.self]
+            session = URLSession(configuration: config)
+        } else { session = .shared }
+        #else
+        session = .shared
+        #endif
         authToken   = UserDefaults.sharedGroup.string(forKey: "sl_token")
         currentUser = UserDefaults.sharedGroup.data(forKey: "sl_user")
             .flatMap { try? decoder.decode(User.self, from: $0) }
+    }
+
+    func readPriceOffer(householdId: String, text: String, image: Data?, previous: PriceOffer?) async throws -> PriceOffer {
+        var body: [String: Any] = ["household_id": householdId, "text": text]
+        if let image { body["image_base64"] = image.base64EncodedString() }
+        if let previous, let data = try? JSONEncoder().encode(previous) {
+            body["previous"] = try? JSONSerialization.jsonObject(with: data)
+        }
+        return try await post("/v1/price-check/", body: body)
     }
 
     // MARK: - Auth
@@ -187,22 +205,12 @@ final class APIService {
                         if http.statusCode >= 400 { throw APIError.serverError("HTTP \(http.statusCode)") }
                     }
 
-                    // Server-sent events: "event: <name>", "data: <json>", blank line.
-                    var eventName = ""
-                    var payload = ""
-                    for try await line in bytes.lines {
-                        if line.isEmpty {
-                            if !eventName.isEmpty, let data = payload.data(using: .utf8),
-                               let event = ReceiptScanEvent.decode(event: eventName, data: data, using: decoder) {
-                                continuation.yield(event)
-                            }
-                            eventName = ""
-                            payload = ""
-                        } else if line.hasPrefix("event:") {
-                            eventName = line.dropFirst(6).trimmingCharacters(in: .whitespaces)
-                        } else if line.hasPrefix("data:") {
-                            // A payload split over several data: lines is rejoined.
-                            payload += line.dropFirst(5).trimmingCharacters(in: .whitespaces)
+                    var parser = ServerSentEvents()
+                    for try await byte in bytes {
+                        try Task.checkCancellation()
+                        if let frame = try parser.append(byte),
+                           let event = ReceiptScanEvent.decode(event: frame.name, data: frame.data, using: decoder) {
+                            continuation.yield(event)
                         }
                     }
                     continuation.finish()

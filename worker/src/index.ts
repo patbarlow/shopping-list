@@ -8,6 +8,7 @@ import householdsRoutes from "./routes/households";
 import realtimeRoutes from "./routes/realtime";
 import recipesRoutes from "./routes/recipes";
 import receiptsRoutes from "./routes/receipts";
+import priceCheckRoutes from "./routes/price-check";
 import insightsRoutes from "./routes/insights";
 import { errorCode, logError } from "./log";
 
@@ -26,6 +27,7 @@ app.route("/v1/households", realtimeRoutes);
 app.route("/v1/recipes", recipesRoutes);
 app.route("/v1/receipts", receiptsRoutes);
 app.route("/v1/insights", insightsRoutes);
+app.route("/v1/price-check", priceCheckRoutes);
 
 app.onError((err, c) => {
   logError("request_failed", {

@@ -354,7 +354,7 @@ struct ReceiptScannerView: View {
                 case .failed(let error):             throw APIError.serverError(error)
                 }
             }
-            guard let matched else { throw APIError.serverError(Self.unreadable) }
+            guard let matched else { throw APIError.serverError("incomplete_stream") }
             await present(matched)
             return true
         } catch let error as APIError where error == .serverError(Self.unreadable) {
@@ -363,7 +363,10 @@ struct ReceiptScannerView: View {
             // for the same answer twice.
             fail("Couldn't find any items on that receipt.")
             return false
+        } catch is CancellationError {
+            return false
         } catch {
+            guard !Task.isCancelled else { return false }
             return await scanWithoutStreaming(source)
         }
     }

@@ -10,11 +10,15 @@
 		00E840CAF6B064828DF9FBAB /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7462B86AD882C4C18C4DF1DF /* APIService.swift */; };
 		010469D2A36391D5757546FC /* History.swift in Sources */ = {isa = PBXBuildFile; fileRef = 663DBFAB12E403F8ABFC8AA5 /* History.swift */; };
 		06920F9DB22EBD8F0CECC210 /* Config.plist in Resources */ = {isa = PBXBuildFile; fileRef = 51AC4475E61BFC0BEDF456BE /* Config.plist */; };
+		114ADBE91EF7E2990DE6243E /* ServerSentEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2349E79D522F84098D7743C /* ServerSentEvents.swift */; };
+		11573C5AF4501F2E03D3935C /* ServerSentEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2349E79D522F84098D7743C /* ServerSentEvents.swift */; };
 		1598DCABCC7B5E1DE531100A /* ProductDetailView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B0284364C2BFC974B6B5E75 /* ProductDetailView.swift */; };
 		16C06EF5EEAC5E86E2651BD4 /* ShoppingListStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AF17166DF5B1CFFFE31976C /* ShoppingListStore.swift */; };
 		1AF982FB6A6A18F6D34A77BA /* ShoppingItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B06687513055194F342B4B7 /* ShoppingItem.swift */; };
 		1B39CC9B68D8B19A0AEBD25A /* ShoppingShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35810A47D0E0633BD5C86836 /* ShoppingShortcuts.swift */; };
+		23F7F290999F820638D40FE7 /* PriceCheck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7625ED8A089438C8BDB01BDF /* PriceCheck.swift */; };
 		260512F6E3EB7B161DB155B1 /* Recipe.swift in Sources */ = {isa = PBXBuildFile; fileRef = D23ADCBB565D2A872DBAB12E /* Recipe.swift */; };
+		28617B8C4337EDCED1D6930A /* PriceCheckFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = B42A2458FB3EBB63509FFCC5 /* PriceCheckFixtures.swift */; };
 		297C12E0C0BEE7509B62C2C5 /* ShoppingListApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA8B96E24E24BE3D331C9B22 /* ShoppingListApp.swift */; };
 		2C36EC36416D61A580C4999F /* AuthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F61A9645A5D8A828A41FF627 /* AuthStore.swift */; };
 		2CB334C874C3D08D8D49DBD8 /* RecipeImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 062C0A12F70785A98F6A0CA8 /* RecipeImportView.swift */; };
@@ -30,9 +34,12 @@
 		50E9A8720A20B92565161300 /* ReceiptTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13AA957076815F07770DD059 /* ReceiptTests.swift */; };
 		5541F33E0D7E05FF861C63CC /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A479A9C18E0C1534C48FC1B /* AppServices.swift */; };
 		55E0FEE49D7F939D7E43BEA0 /* SentryHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97B1734E7407EC373454F34A /* SentryHelpers.swift */; };
+		56EF49C2BCEEDA7EE9643464 /* PriceCheckUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 06F2BB5B6C31DA284866EB49 /* PriceCheckUITests.swift */; };
 		56F3C828706BD15721AA471B /* ShoppingItemEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C64433691FD9E88F95570581 /* ShoppingItemEntity.swift */; };
+		57651823F6BBD55B8E8417BF /* Insights.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79DB2369B34A78C39BAA22A9 /* Insights.swift */; };
 		583C7A3955E416FED458D5E6 /* AuthStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F61A9645A5D8A828A41FF627 /* AuthStore.swift */; };
 		5B08B6EA1A58325E5B82E5D3 /* AppServices.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A479A9C18E0C1534C48FC1B /* AppServices.swift */; };
+		5EF900C113554B153E366C35 /* PriceCheck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7625ED8A089438C8BDB01BDF /* PriceCheck.swift */; };
 		5F955F0F95DCF9384020D382 /* VoiceShoppingParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = E69802945D406EBD8113A863 /* VoiceShoppingParser.swift */; };
 		6844FE9AEEF9464DDFEF2AD2 /* AddItemIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 472F1E2215F1364F1486B646 /* AddItemIntents.swift */; };
 		6C5B8151613D48A138177D19 /* History.swift in Sources */ = {isa = PBXBuildFile; fileRef = 663DBFAB12E403F8ABFC8AA5 /* History.swift */; };
@@ -48,6 +55,7 @@
 		87A3E29EC1A69EA55B4EC3BE /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 85497421D6E5CB97F590B0D9 /* Assets.xcassets */; };
 		8AA6C0CBD1A9A1553BC0DF3B /* Sentry in Frameworks */ = {isa = PBXBuildFile; productRef = 0446326B7167B228FB08A0E0 /* Sentry */; };
 		8AB77FA464BFFD54D173DEDA /* VoiceShoppingParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = E69802945D406EBD8113A863 /* VoiceShoppingParser.swift */; };
+		8E670199643B221751688947 /* ServerSentEvents.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2349E79D522F84098D7743C /* ServerSentEvents.swift */; };
 		92C77C8200BFCAEBBCD05158 /* RecipeHubView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A1A666E10637E9465B6733A2 /* RecipeHubView.swift */; };
 		94CFD6FD94772818C79FBC8F /* Household.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBEC057EB44C2C3C2778B9C3 /* Household.swift */; };
 		962D7B364296F9A3FDAB9912 /* ReceiptImportToolbarButton.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA506A539E6FBA7DA2156F4B /* ReceiptImportToolbarButton.swift */; };
@@ -65,6 +73,7 @@
 		BB854FA51974F86190EEB55E /* SentryHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97B1734E7407EC373454F34A /* SentryHelpers.swift */; };
 		BC032B773815D22A3A604589 /* ShoppingListStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AF17166DF5B1CFFFE31976C /* ShoppingListStore.swift */; };
 		BCBD961F5DE1628DBF9343C1 /* Recipe.swift in Sources */ = {isa = PBXBuildFile; fileRef = D23ADCBB565D2A872DBAB12E /* Recipe.swift */; };
+		C034A449B3BA2DDE332A27CD /* PriceCheck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7625ED8A089438C8BDB01BDF /* PriceCheck.swift */; };
 		C2066F40B513F05484129B77 /* Config.plist in Resources */ = {isa = PBXBuildFile; fileRef = 51AC4475E61BFC0BEDF456BE /* Config.plist */; };
 		C353F7364DD8CD159053DFD2 /* ShoppingListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 073DB8A85B43FA938555C6E5 /* ShoppingListView.swift */; };
 		C949EB6936EACF8E22E8CE3F /* Household.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBEC057EB44C2C3C2778B9C3 /* Household.swift */; };
@@ -77,6 +86,8 @@
 		D5535070061E155E337D72F5 /* ProductsListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D92A6A07E4C83E87B03CB539 /* ProductsListView.swift */; };
 		D6B230430BCA6A21F9320D47 /* ShoppingItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B06687513055194F342B4B7 /* ShoppingItem.swift */; };
 		D6CD7C706D093130D988E02E /* ReceiptEditSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = E91E92FF7A8B3E65DC80FCF9 /* ReceiptEditSheet.swift */; };
+		E4938D3362D64E4375E49E46 /* PriceCheckView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F29AFAF6A99052306BCD282A /* PriceCheckView.swift */; };
+		EC5947CB88E0F15ECD8CB4F0 /* PriceCheckFixtures.swift in Sources */ = {isa = PBXBuildFile; fileRef = B42A2458FB3EBB63509FFCC5 /* PriceCheckFixtures.swift */; };
 		EDCE007E0E6C47CDB08CAD02 /* AddItemView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 24D8C95D29F673B68DFBD8A7 /* AddItemView.swift */; };
 		EF5D3E6878006FCEDB32EDEC /* ShoppingInputParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DB7234E1985A5C9AC38A447 /* ShoppingInputParser.swift */; };
 		F07175691572D0CBD85C95F9 /* HouseholdSetupView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F6D38131D7D37EDAF28861CE /* HouseholdSetupView.swift */; };
@@ -84,10 +95,21 @@
 		F9842BDA56D48EBDEF84E491 /* RealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 145A5C2183790DA7F940227E /* RealtimeService.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		26BF0725B69235C42F188D4E /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 219416B8DB44731BBF8D4DE7 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 56F4EBBC2A132D7A4679FB64;
+			remoteInfo = "Shopping List";
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		00D4833C3DEA4099449458E8 /* Shopping List macOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Shopping List macOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		03B12B46E2B858336A3FBEE9 /* VoiceEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceEntryView.swift; sourceTree = "<group>"; };
 		062C0A12F70785A98F6A0CA8 /* RecipeImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeImportView.swift; sourceTree = "<group>"; };
+		06F2BB5B6C31DA284866EB49 /* PriceCheckUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PriceCheckUITests.swift; sourceTree = "<group>"; };
 		073DB8A85B43FA938555C6E5 /* ShoppingListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingListView.swift; sourceTree = "<group>"; };
 		13AA957076815F07770DD059 /* ReceiptTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptTests.swift; sourceTree = "<group>"; };
 		13FCB4E52C2CC8ED4718D346 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
@@ -95,6 +117,7 @@
 		199A94407A8F361452039A05 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		1B06687513055194F342B4B7 /* ShoppingItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingItem.swift; sourceTree = "<group>"; };
 		1BB14EC7B4D7B674889213B7 /* VoiceEntryController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceEntryController.swift; sourceTree = "<group>"; };
+		1DD026372F8C9BE954EBDBD7 /* PriceCheckUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = PriceCheckUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		211B897E937C23B444C3DFAC /* PredictedListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PredictedListView.swift; sourceTree = "<group>"; };
 		24D8C95D29F673B68DFBD8A7 /* AddItemView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddItemView.swift; sourceTree = "<group>"; };
 		266701578D7DB0B386E52AC6 /* ReceiptPrinter.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptPrinter.swift; sourceTree = "<group>"; };
@@ -113,6 +136,7 @@
 		663DBFAB12E403F8ABFC8AA5 /* History.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = History.swift; sourceTree = "<group>"; };
 		6C3F48ABA864A02F896576EE /* ShoppingInputTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingInputTests.swift; sourceTree = "<group>"; };
 		7462B86AD882C4C18C4DF1DF /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
+		7625ED8A089438C8BDB01BDF /* PriceCheck.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PriceCheck.swift; sourceTree = "<group>"; };
 		79DB2369B34A78C39BAA22A9 /* Insights.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Insights.swift; sourceTree = "<group>"; };
 		7A479A9C18E0C1534C48FC1B /* AppServices.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppServices.swift; sourceTree = "<group>"; };
 		85497421D6E5CB97F590B0D9 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -122,8 +146,10 @@
 		97B1734E7407EC373454F34A /* SentryHelpers.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SentryHelpers.swift; sourceTree = "<group>"; };
 		A1A666E10637E9465B6733A2 /* RecipeHubView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeHubView.swift; sourceTree = "<group>"; };
 		A1FF7F0A82CA6C88EA34F90C /* Shopping List macOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = "Shopping List macOS.entitlements"; sourceTree = "<group>"; };
+		A2349E79D522F84098D7743C /* ServerSentEvents.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerSentEvents.swift; sourceTree = "<group>"; };
 		AA506A539E6FBA7DA2156F4B /* ReceiptImportToolbarButton.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptImportToolbarButton.swift; sourceTree = "<group>"; };
 		AA8B96E24E24BE3D331C9B22 /* ShoppingListApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingListApp.swift; sourceTree = "<group>"; };
+		B42A2458FB3EBB63509FFCC5 /* PriceCheckFixtures.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PriceCheckFixtures.swift; sourceTree = "<group>"; };
 		B9A16E63C949B3C693249DA3 /* Shopping List.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = "Shopping List.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		BE7C88D1E1D959B22BB226D5 /* ReceiptScannerView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptScannerView.swift; sourceTree = "<group>"; };
 		C64433691FD9E88F95570581 /* ShoppingItemEntity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingItemEntity.swift; sourceTree = "<group>"; };
@@ -135,6 +161,7 @@
 		E85DFD5490ED526B000DC300 /* TripReceiptView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TripReceiptView.swift; sourceTree = "<group>"; };
 		E91E92FF7A8B3E65DC80FCF9 /* ReceiptEditSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReceiptEditSheet.swift; sourceTree = "<group>"; };
 		EBEC057EB44C2C3C2778B9C3 /* Household.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Household.swift; sourceTree = "<group>"; };
+		F29AFAF6A99052306BCD282A /* PriceCheckView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PriceCheckView.swift; sourceTree = "<group>"; };
 		F35CA9A2CAC50DD6E1FD1145 /* ShoppingCore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingCore.swift; sourceTree = "<group>"; };
 		F61A9645A5D8A828A41FF627 /* AuthStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthStore.swift; sourceTree = "<group>"; };
 		F6D38131D7D37EDAF28861CE /* HouseholdSetupView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HouseholdSetupView.swift; sourceTree = "<group>"; };
@@ -201,6 +228,7 @@
 		4E31BB7969D745AC6108B6BF /* Tests */ = {
 			isa = PBXGroup;
 			children = (
+				B0D370943D594D58D7471006 /* PriceCheckUITests */,
 				61641B158A22CD7785ABE561 /* ReceiptTests */,
 			);
 			path = Tests;
@@ -227,6 +255,7 @@
 		7158AF20EF0D139F49F9F719 /* Products */ = {
 			isa = PBXGroup;
 			children = (
+				1DD026372F8C9BE954EBDBD7 /* PriceCheckUITests.xctest */,
 				C9105C170CF961D4742FC809 /* ReceiptTests.xctest */,
 				00D4833C3DEA4099449458E8 /* Shopping List macOS.app */,
 				B9A16E63C949B3C693249DA3 /* Shopping List.app */,
@@ -257,6 +286,14 @@
 			path = macOS;
 			sourceTree = "<group>";
 		};
+		B0D370943D594D58D7471006 /* PriceCheckUITests */ = {
+			isa = PBXGroup;
+			children = (
+				06F2BB5B6C31DA284866EB49 /* PriceCheckUITests.swift */,
+			);
+			path = PriceCheckUITests;
+			sourceTree = "<group>";
+		};
 		C3662CED1169BDFD5AB7088C /* AppIntents */ = {
 			isa = PBXGroup;
 			children = (
@@ -283,6 +320,7 @@
 				F6D38131D7D37EDAF28861CE /* HouseholdSetupView.swift */,
 				93583231B106C19E6541BDB4 /* LoginView.swift */,
 				211B897E937C23B444C3DFAC /* PredictedListView.swift */,
+				F29AFAF6A99052306BCD282A /* PriceCheckView.swift */,
 				4B0284364C2BFC974B6B5E75 /* ProductDetailView.swift */,
 				D92A6A07E4C83E87B03CB539 /* ProductsListView.swift */,
 				E91E92FF7A8B3E65DC80FCF9 /* ReceiptEditSheet.swift */,
@@ -313,8 +351,10 @@
 				663DBFAB12E403F8ABFC8AA5 /* History.swift */,
 				EBEC057EB44C2C3C2778B9C3 /* Household.swift */,
 				79DB2369B34A78C39BAA22A9 /* Insights.swift */,
+				7625ED8A089438C8BDB01BDF /* PriceCheck.swift */,
 				266701578D7DB0B386E52AC6 /* ReceiptPrinter.swift */,
 				D23ADCBB565D2A872DBAB12E /* Recipe.swift */,
+				A2349E79D522F84098D7743C /* ServerSentEvents.swift */,
 				5DB7234E1985A5C9AC38A447 /* ShoppingInputParser.swift */,
 				1B06687513055194F342B4B7 /* ShoppingItem.swift */,
 			);
@@ -325,6 +365,7 @@
 			isa = PBXGroup;
 			children = (
 				7462B86AD882C4C18C4DF1DF /* APIService.swift */,
+				B42A2458FB3EBB63509FFCC5 /* PriceCheckFixtures.swift */,
 				145A5C2183790DA7F940227E /* RealtimeService.swift */,
 				97B1734E7407EC373454F34A /* SentryHelpers.swift */,
 				611148128D2D216B5C6F751B /* SpeechService.swift */,
@@ -379,6 +420,24 @@
 			productReference = 00D4833C3DEA4099449458E8 /* Shopping List macOS.app */;
 			productType = "com.apple.product-type.application";
 		};
+		E3F42C45E73BE2F5B001F2C7 /* PriceCheckUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3B85F0AFAA4D4CE6746A86B4 /* Build configuration list for PBXNativeTarget "PriceCheckUITests" */;
+			buildPhases = (
+				E85DC4DAB34839404EBC932E /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				73FB528A4B36312BB480AF4E /* PBXTargetDependency */,
+			);
+			name = PriceCheckUITests;
+			packageProductDependencies = (
+			);
+			productName = PriceCheckUITests;
+			productReference = 1DD026372F8C9BE954EBDBD7 /* PriceCheckUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 		EA05A32E83D9B39FAEB0F017 /* ReceiptTests */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = EBAA1EB049DE353925408824 /* Build configuration list for PBXNativeTarget "ReceiptTests" */;
@@ -413,6 +472,10 @@
 						DevelopmentTeam = T544U3WVL6;
 						ProvisioningStyle = Automatic;
 					};
+					E3F42C45E73BE2F5B001F2C7 = {
+						DevelopmentTeam = T544U3WVL6;
+						TestTargetID = 56F4EBBC2A132D7A4679FB64;
+					};
 					EA05A32E83D9B39FAEB0F017 = {
 						DevelopmentTeam = T544U3WVL6;
 					};
@@ -436,6 +499,7 @@
 			projectDirPath = "";
 			projectRoot = "";
 			targets = (
+				E3F42C45E73BE2F5B001F2C7 /* PriceCheckUITests */,
 				EA05A32E83D9B39FAEB0F017 /* ReceiptTests */,
 				56F4EBBC2A132D7A4679FB64 /* Shopping List */,
 				686FC9607845D061A9A05228 /* Shopping List macOS */,
@@ -491,9 +555,12 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				57651823F6BBD55B8E8417BF /* Insights.swift in Sources */,
+				5EF900C113554B153E366C35 /* PriceCheck.swift in Sources */,
 				46CE688C534A27EB2F44D373 /* ReceiptPrinter.swift in Sources */,
 				50E9A8720A20B92565161300 /* ReceiptTests.swift in Sources */,
 				260512F6E3EB7B161DB155B1 /* Recipe.swift in Sources */,
+				11573C5AF4501F2E03D3935C /* ServerSentEvents.swift in Sources */,
 				31F67DAD2CF7D982B130E2C7 /* ShoppingInputParser.swift in Sources */,
 				866D18987DC91A573350366E /* ShoppingInputTests.swift in Sources */,
 			);
@@ -515,6 +582,9 @@
 				CDA3928406BC48D0C5022A6F /* Insights.swift in Sources */,
 				F0D12864AB22E27DA257D027 /* LoginView.swift in Sources */,
 				464010A1B761C78AA85EE4F7 /* PredictedListView.swift in Sources */,
+				23F7F290999F820638D40FE7 /* PriceCheck.swift in Sources */,
+				28617B8C4337EDCED1D6930A /* PriceCheckFixtures.swift in Sources */,
+				E4938D3362D64E4375E49E46 /* PriceCheckView.swift in Sources */,
 				1598DCABCC7B5E1DE531100A /* ProductDetailView.swift in Sources */,
 				D5535070061E155E337D72F5 /* ProductsListView.swift in Sources */,
 				D24ACFBE02D2890078E1C101 /* QuickAddIntent.swift in Sources */,
@@ -528,6 +598,7 @@
 				92C77C8200BFCAEBBCD05158 /* RecipeHubView.swift in Sources */,
 				2CB334C874C3D08D8D49DBD8 /* RecipeImportView.swift in Sources */,
 				55E0FEE49D7F939D7E43BEA0 /* SentryHelpers.swift in Sources */,
+				114ADBE91EF7E2990DE6243E /* ServerSentEvents.swift in Sources */,
 				9D6EB5D8BB64F807F475B666 /* SettingsView.swift in Sources */,
 				40C0B4FEFA74C52440E526B5 /* ShoppingCore.swift in Sources */,
 				EF5D3E6878006FCEDB32EDEC /* ShoppingInputParser.swift in Sources */,
@@ -557,12 +628,15 @@
 				94CFD6FD94772818C79FBC8F /* Household.swift in Sources */,
 				A7D5D6BA419F4B8D3C3852DE /* Insights.swift in Sources */,
 				97184F439951502A053845E6 /* MenuBarView.swift in Sources */,
+				C034A449B3BA2DDE332A27CD /* PriceCheck.swift in Sources */,
+				EC5947CB88E0F15ECD8CB4F0 /* PriceCheckFixtures.swift in Sources */,
 				84F91FFA458ACB2F5CD27AA0 /* QuickAddIntent.swift in Sources */,
 				3006F1C130CE6774B3CFB412 /* RealtimeService.swift in Sources */,
 				4546E7FEB8ABBFCE7411E9CE /* ReceiptPrinter.swift in Sources */,
 				BCBD961F5DE1628DBF9343C1 /* Recipe.swift in Sources */,
 				A1DF69D966DC26AD8E323C0E /* RecipeImportView.swift in Sources */,
 				BB854FA51974F86190EEB55E /* SentryHelpers.swift in Sources */,
+				8E670199643B221751688947 /* ServerSentEvents.swift in Sources */,
 				2D3515C3F0FDFBCE06187D00 /* ShoppingCore.swift in Sources */,
 				ADC5B8146523EAB681CBEB9F /* ShoppingInputParser.swift in Sources */,
 				D6B230430BCA6A21F9320D47 /* ShoppingItem.swift in Sources */,
@@ -576,7 +650,23 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		E85DC4DAB34839404EBC932E /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				56EF49C2BCEEDA7EE9643464 /* PriceCheckUITests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		73FB528A4B36312BB480AF4E /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 56F4EBBC2A132D7A4679FB64 /* Shopping List */;
+			targetProxy = 26BF0725B69235C42F188D4E /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		2655ED467CB696A1A84F250D /* Debug */ = {
@@ -745,6 +835,42 @@
 			};
 			name = Release;
 		};
+		87052AF5A19794CAC6B43F71 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.patbarlow.shoppinglist.price-ui-tests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = "Shopping List";
+			};
+			name = Debug;
+		};
+		9D6AF05FABAC805E7A89EA30 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 26.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.patbarlow.shoppinglist.price-ui-tests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = "Shopping List";
+			};
+			name = Release;
+		};
 		E5ADE1D9B985114B0203263C /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -832,6 +958,15 @@
 			buildConfigurations = (
 				2655ED467CB696A1A84F250D /* Debug */,
 				52D5C16811C7A722FC84BB2A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		3B85F0AFAA4D4CE6746A86B4 /* Build configuration list for PBXNativeTarget "PriceCheckUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				87052AF5A19794CAC6B43F71 /* Debug */,
+				9D6AF05FABAC805E7A89EA30 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

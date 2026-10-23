@@ -9,8 +9,35 @@ struct ContentView: View {
         // A local @Bindable shadow of the environment object — the standard
         // way to get a two-way Binding (for .sheet(item:)) out of something
         // injected via .environment(...) rather than owned as local @State.
-        @Bindable var receiptImportCoordinator = receiptImportCoordinator
         Group {
+            #if DEBUG
+            if let scenario = ProcessInfo.processInfo.environment["TROLLEY_UI_TEST"] {
+                NavigationStack {
+                    if scenario == "receipt" {
+                        ReceiptScannerView(householdId: "fixture", initialCapture: .pdfData(Self.receiptFixture))
+                    } else if scenario == "products" { ProductsListView(householdId: "fixture") }
+                    else { PriceCheckView(householdId: "fixture") }
+                }
+            } else { authenticatedContent }
+            #else
+            authenticatedContent
+            #endif
+        }
+    }
+
+    #if DEBUG
+    private static var receiptFixture: Data {
+        UIGraphicsPDFRenderer(bounds: CGRect(x: 0, y: 0, width: 300, height: 500)).pdfData { context in
+            context.beginPage()
+            ("Woolworths Marrickville Metro\nRed Bull Energy Drink 4x250ml $7.80\nTOTAL $7.80" as NSString)
+                .draw(in: CGRect(x: 20, y: 20, width: 260, height: 400), withAttributes: [.font: UIFont.systemFont(ofSize: 16)])
+        }
+    }
+    #endif
+
+    private var authenticatedContent: some View {
+        @Bindable var receiptImportCoordinator = receiptImportCoordinator
+        return Group {
             if services.auth.isLoggedIn {
                 if let household = services.auth.household {
                     TabView {
@@ -19,6 +46,9 @@ struct ContentView: View {
                         }
                         Tab("Insights", systemImage: "chart.bar") {
                             SpendTrendsView(household: household)
+                        }
+                        Tab("Check price", systemImage: "tag") {
+                            NavigationStack { PriceCheckView(householdId: household.id) }
                         }
                         Tab("Forecast", systemImage: "calendar.badge.clock") {
                             NavigationStack {
