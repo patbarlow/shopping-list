@@ -96,3 +96,30 @@ struct PriceComparisonTests {
         #expect(PriceOffer(name: "Invalid", price: 9.83, size: 0, unit: "mL").baseline == nil)
     }
 }
+
+struct PriceSummaryTests {
+    private func purchase(_ value: Double, unit: String = "100mL") throws -> ProductPurchase {
+        let data = try JSONSerialization.data(withJSONObject: ["id": UUID().uuidString, "purchased_at": "2026-10-17", "unit_price": value, "unit_price_unit": unit])
+        return try JSONDecoder().decode(ProductPurchase.self, from: data)
+    }
+    @Test func averageAndModeUseCompatiblePrices() throws {
+        let offer = PriceOffer(name: "Red Bull", price: 9.83, size: 1000, unit: "mL")
+        let comparison = PriceComparison(offer: offer, purchases: try [purchase(0.78), purchase(0.78), purchase(0.9), purchase(20, unit: "100g")])
+        #expect(abs(comparison.average! - 0.82) < 0.00001)
+        #expect(comparison.usual == 0.78)
+        #expect(abs(comparison.priceForOfferPack(comparison.average!)! - 8.2) < 0.00001)
+        #expect(abs(comparison.changeFromAverage! - 19.8780488) < 0.00001)
+    }
+    @Test func singleOrTiedModeDoesNotInventUsualPrice() throws {
+        let offer = PriceOffer(name: "Milk", price: 3, size: 1000, unit: "mL")
+        #expect(PriceComparison(offer: offer, purchases: [try purchase(0.3)]).usual == nil)
+        #expect(PriceComparison(offer: offer, purchases: try [purchase(0.3), purchase(0.3), purchase(0.4), purchase(0.4)]).usual == nil)
+    }
+    @Test func exactMatchingKeepsVariantsSeparate() throws {
+        let data = Data(#"[{"id":"1","name":"Red Bull Energy Drink","category":"Drinks","times_purchased":1},{"id":"2","name":"Red Bull Sugar Free","category":"Drinks","times_purchased":1}]"#.utf8)
+        let products = try JSONDecoder().decode([ProductInsight].self, from: data)
+        #expect(PriceProductMatcher.exactMatch(name: "Red Bull Energy Drink", products: products)?.id == "1")
+        #expect(PriceProductMatcher.exactMatch(name: "Red Bull", products: products) == nil)
+        #expect(PriceProductMatcher.exactMatch(name: "Red Bull Energy Drink", products: products + products) == nil)
+    }
+}

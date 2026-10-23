@@ -7,12 +7,14 @@ struct PriceCheckView: View {
     let householdId: String
     @Environment(AppServices.self) private var services
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var speech = SpeechService()
     @State private var text = ""
     @State private var attachment: UIImage?
     @State private var photo: PhotosPickerItem?
     @State private var showPhotos = false
     @State private var showCamera = false
+    @State private var showProducts = false
     @State private var busy = false
     @State private var error: String?
     @State private var offer: PriceOffer?
@@ -32,50 +34,71 @@ struct PriceCheckView: View {
         let text: String
         let image: UIImage?
         var isUser = true
+        var comparison: PriceComparison?
+        var product: ProductInsight?
     }
 
     private var candidates: [ProductInsight] {
-        let terms = search.lowercased().split(separator: " ").map(String.init)
-        guard !terms.isEmpty else { return Array(products.prefix(12)) }
-        return Array(products.filter { p in terms.allSatisfy { p.name.localizedCaseInsensitiveContains($0) } }.prefix(20))
+        let terms = (offer?.name ?? "").lowercased().split(separator: " ").prefix(2).map(String.init)
+        return matchingProducts(terms)
+    }
+
+    private var searchResults: [ProductInsight] {
+        matchingProducts(search.lowercased().split(separator: " ").map(String.init))
+    }
+
+    private func matchingProducts(_ terms: [String]) -> [ProductInsight] {
+        products.filter { p in terms.allSatisfy { p.name.localizedCaseInsensitiveContains($0) } }
     }
 
     var body: some View {
         ScrollViewReader { proxy in
             ScrollView {
-                LazyVStack(alignment: .leading, spacing: 20) {
+                LazyVStack(alignment: .leading, spacing: 30) {
                     if messages.isEmpty { introduction }
                     ForEach(messages) { message in
-                        VStack(alignment: message.isUser ? .trailing : .leading, spacing: 8) {
-                            if let image = message.image {
-                                Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 160).clipShape(RoundedRectangle(cornerRadius: 16))
-                            }
-                            if !message.text.isEmpty { Text(message.text).padding(14).background(message.isUser ? Color.accentColor.opacity(0.1) : Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20)) }
-                        }.frame(maxWidth: .infinity, alignment: message.isUser ? .trailing : .leading)
+                        if message.isUser {
+                            userMessage(message)
+                        } else if let result = message.comparison, let product = message.product {
+                            PriceCheckReply(comparison: result, product: product)
+                        } else {
+                            Text(message.text).font(.body).lineSpacing(5)
+                        }
                     }
-                    if busy { ProgressView("Checking…").frame(maxWidth: .infinity) }
-                    if let offer { offerCard(offer) }
-                    if let comparison, let selected { comparisonCard(comparison, product: selected).id("comparison") }
-                    if offer != nil && !busy { productPicker }
-                    if let error {
-                        Label(error, systemImage: "exclamationmark.circle").font(.callout).foregroundStyle(.secondary)
+                    if busy {
+                        HStack(spacing: 10) {
+                            ProgressView().controlSize(.small)
+                            Text("Checking your prices…").font(.subheadline).foregroundStyle(.secondary)
+                        }.padding(.vertical, 10)
+                    } else if let comparison, let selected {
+                        PriceCheckReply(comparison: comparison, product: selected) { search = ""; showProducts = true }
+                            .id("reply")
+                    } else if let offer {
+                        pendingReply(offer).id("reply")
                     }
+                    if let error { Text(error).font(.callout).foregroundStyle(.secondary) }
                     Color.clear.frame(height: 1).id("bottom")
                 }
-                .padding(20)
+                .padding(.horizontal, 24).padding(.top, 24).padding(.bottom, 16)
             }
             .scrollDismissesKeyboard(.interactively)
-            .onChange(of: selected?.id) { _, id in
-                if id != nil { withAnimation { proxy.scrollTo("comparison", anchor: .top) } }
+            .onChange(of: messages.count) { _, _ in
+                withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
-            .onChange(of: messages.count) { _, _ in withAnimation { proxy.scrollTo("bottom", anchor: .bottom) } }
+            .onChange(of: busy) { _, value in
+                if !value {
+                    withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo("reply", anchor: .top) }
+                }
+            }
         }
-        .background(Color(.systemGroupedBackground))
-        .navigationTitle("Check price")
+        .background(Color(.systemBackground))
+        .navigationTitle("Price check")
+        .navigationBarTitleDisplayMode(.inline)
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Button("New comparison", systemImage: "square.and.pencil") {
+                    Button("New chat", systemImage: "square.and.pencil") {
+                        speech.stop(flush: false)
                         messages = []; offer = nil; comparison = nil; selected = nil; attachment = nil; text = ""; error = nil
                     }.disabled(busy)
                     Button(recentEnabled ? "Turn off recent photos" : "Enable recent photo suggestion", systemImage: "photo.badge.clock") {
@@ -88,9 +111,9 @@ struct PriceCheckView: View {
         .safeAreaInset(edge: .bottom, spacing: 0) { composer }
         .photosPicker(isPresented: $showPhotos, selection: $photo, matching: .images)
         .sheet(isPresented: $showCamera) {
-            PriceCheckCamera { image in attachment = image; showCamera = false }
-                .ignoresSafeArea()
+            PriceCheckCamera { image in attachment = image; showCamera = false }.ignoresSafeArea()
         }
+        .sheet(isPresented: $showProducts) { productSheet }
         .onChange(of: photo) { _, item in
             Task {
                 do {
@@ -112,156 +135,161 @@ struct PriceCheckView: View {
     }
 
     private var introduction: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            Image(systemName: "tag").font(.system(size: 36)).foregroundStyle(.tint)
-            Text("Worth picking up?").font(.largeTitle.bold())
-            Text("Show me a price. I'll compare it with what you've paid before, using the same pack size or unit price.")
-                .foregroundStyle(.secondary)
-            Button { text = "Is Red Bull 4 × 250mL for $9.83 a good price?"; focused = true } label: {
-                Label("Is this Red Bull a good price?", systemImage: "bubble.left")
-                    .padding(14).frame(maxWidth: .infinity, alignment: .leading)
-                    .background(.background, in: RoundedRectangle(cornerRadius: 18))
+        VStack(spacing: 24) {
+            ZStack {
+                Circle().fill(Color.mint.opacity(0.13)).frame(width: 112, height: 112)
+                Image(systemName: "tag.fill")
+                    .font(.system(size: 54, weight: .medium)).rotationEffect(.degrees(-15))
+                    .foregroundStyle(Color(red: 0.16, green: 0.52, blue: 0.39))
+                Image(systemName: "sparkle").font(.system(size: 23, weight: .medium))
+                    .foregroundStyle(Color(red: 0.67, green: 0.75, blue: 0.26)).offset(x: 44, y: -33)
+            }.accessibilityHidden(true)
+            VStack(spacing: 12) {
+                Text("Good price?\nLet’s find out.")
+                    .font(.system(.largeTitle, design: .rounded, weight: .bold)).tracking(-1)
+                Text("Show me what you’re looking at.")
+                    .font(.body).foregroundStyle(.secondary)
+            }.multilineTextAlignment(.center)
+            HStack(spacing: 12) {
+                Button { openCamera() } label: { Label("Camera", systemImage: "camera") }
+                    .disabled(!UIImagePickerController.isSourceTypeAvailable(.camera))
+                Button { showPhotos = true } label: { Label("Photos", systemImage: "photo") }
             }
-            if !recentEnabled {
-                Button("Enable recent photo suggestion") { Task { await enableRecent() } }
-                    .font(.footnote)
+            .font(.subheadline.weight(.medium)).buttonStyle(.bordered).buttonBorderShape(.capsule).tint(.primary)
+        }
+        .frame(maxWidth: .infinity).padding(.top, 64).padding(.bottom, 24)
+    }
+
+    private func userMessage(_ message: Message) -> some View {
+        VStack(alignment: .trailing, spacing: 10) {
+            if let image = message.image {
+                Image(uiImage: image).resizable().scaledToFit().frame(maxHeight: 180)
+                    .clipShape(RoundedRectangle(cornerRadius: 20))
             }
-        }.padding(.vertical, 16)
+            if !message.text.isEmpty {
+                Text(message.text).font(.body).lineSpacing(3)
+                    .padding(.horizontal, 18).padding(.vertical, 14)
+                    .background(Color(.secondarySystemBackground), in: RoundedRectangle(cornerRadius: 24))
+            }
+        }
+        .padding(.leading, 40).frame(maxWidth: .infinity, alignment: .trailing)
+    }
+
+    private var canSend: Bool {
+        !text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || attachment != nil || !speech.transcript.isEmpty
     }
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 10) {
             if let recentImage, attachment == nil, recentID != dismissedRecentID {
-                HStack {
-                    Button {
-                        attachment = recentImage; dismissedRecentID = recentID
-                    } label: {
-                        HStack {
-                            Image(uiImage: recentImage).resizable().scaledToFill().frame(width: 34, height: 34).clipped().clipShape(RoundedRectangle(cornerRadius: 7))
+                HStack(spacing: 10) {
+                    Button { attachment = recentImage; dismissedRecentID = recentID } label: {
+                        HStack(spacing: 8) {
+                            Image(uiImage: recentImage).resizable().scaledToFill().frame(width: 30, height: 30)
+                                .clipped().clipShape(RoundedRectangle(cornerRadius: 8))
                             Text("Attach recent photo").font(.subheadline)
                         }
-                    }
-                    Spacer()
-                    Button { dismissedRecentID = recentID } label: { Image(systemName: "xmark") }.accessibilityLabel("Hide recent photo")
+                    }.tint(.primary)
+                    Button { dismissedRecentID = recentID } label: { Image(systemName: "xmark").font(.caption) }
+                        .tint(.secondary).accessibilityLabel("Hide recent photo")
+                }.padding(.horizontal, 8)
+            }
+            VStack(alignment: .leading, spacing: 12) {
+                if let attachment {
+                    HStack(spacing: 8) {
+                        Image(uiImage: attachment).resizable().scaledToFill().frame(width: 44, height: 44)
+                            .clipped().clipShape(RoundedRectangle(cornerRadius: 10))
+                        Text("Photo").font(.subheadline)
+                        Button { self.attachment = nil } label: { Image(systemName: "xmark").font(.caption.weight(.semibold)) }
+                            .accessibilityLabel("Remove photo")
+                    }.padding(6).padding(.trailing, 8).background(.quaternary.opacity(0.4), in: Capsule())
                 }
-            }
-            if let attachment {
-                HStack {
-                    Image(uiImage: attachment).resizable().scaledToFit().frame(height: 64).clipShape(RoundedRectangle(cornerRadius: 10))
-                    Text("Ready to check").font(.caption).foregroundStyle(.secondary)
-                    Spacer()
-                    Button { self.attachment = nil } label: { Image(systemName: "xmark.circle.fill") }.accessibilityLabel("Remove photo")
+                TextField("Is this a good price?", text: $text, axis: .vertical)
+                    .font(.body).lineLimit(1...5).focused($focused)
+                    .accessibilityIdentifier("price-check-input").padding(.horizontal, 4).padding(.top, 4)
+                if speech.isRecording {
+                    Text(speech.transcript.isEmpty ? "Listening…" : speech.transcript)
+                        .font(.subheadline).foregroundStyle(.secondary)
                 }
-            }
-            if speech.isRecording { Text(speech.transcript.isEmpty ? "Listening…" : speech.transcript).font(.callout).foregroundStyle(.secondary) }
-            if let error = speech.error { Text(error).font(.caption).foregroundStyle(.secondary) }
-            HStack(alignment: .bottom, spacing: 12) {
-                Menu {
-                    Button("Camera", systemImage: "camera") {
-                        speech.stop(flush: true)
-                        Task {
-                            if await AVCaptureDevice.requestAccess(for: .video) { showCamera = true }
-                            else { error = "Allow camera access in Settings, or choose a photo instead." }
-                        }
+                if let error = speech.error { Text(error).font(.caption).foregroundStyle(.secondary) }
+                HStack(spacing: 4) {
+                    Menu {
+                        Button("Camera", systemImage: "camera") { openCamera() }
+                            .disabled(!UIImagePickerController.isSourceTypeAvailable(.camera))
+                        Button("Photos", systemImage: "photo") { showPhotos = true }
+                    } label: { Image(systemName: "plus").font(.system(size: 22)).frame(width: 44, height: 44) }
+                        .accessibilityLabel("Attach photo")
+                    Spacer()
+                    Button {
+                        if speech.isRecording { speech.stop(flush: true) }
+                        else { focused = false; Task { await speech.start() } }
+                    } label: {
+                        Image(systemName: speech.isRecording ? "stop.fill" : "waveform")
+                            .font(.system(size: 19, weight: .medium)).frame(width: 44, height: 44)
+                    }.accessibilityLabel(speech.isRecording ? "Stop dictation" : "Dictate question")
+                    Button { Task { await check() } } label: {
+                        Image(systemName: "arrow.up").font(.system(size: 19, weight: .semibold))
+                            .foregroundStyle(Color(.systemBackground))
+                            .frame(width: 40, height: 40)
+                            .background(Color.primary.opacity(canSend && !busy ? 1 : 0.22), in: Circle())
                     }
-                        .disabled(!UIImagePickerController.isSourceTypeAvailable(.camera))
-                    Button("Photos", systemImage: "photo") { showPhotos = true }
-                } label: { Image(systemName: "plus").font(.title2).frame(width: 30, height: 36) }
-                .accessibilityLabel("Attach photo")
-                TextField("Ask about a price…", text: $text, axis: .vertical)
-                    .lineLimit(1...4).focused($focused).accessibilityIdentifier("price-check-input")
-                    .padding(.vertical, 7)
-                Button {
-                    if speech.isRecording { speech.stop(flush: true) }
-                    else { focused = false; Task { await speech.start() } }
-                } label: { Image(systemName: speech.isRecording ? "stop.circle.fill" : "mic").font(.title2).frame(height: 36) }
-                    .accessibilityLabel(speech.isRecording ? "Stop dictation" : "Dictate question")
-                Button { Task { await check() } } label: {
-                    Image(systemName: "arrow.up.circle.fill").font(.system(size: 32))
-                }.disabled(busy || (text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && attachment == nil && speech.transcript.isEmpty))
-                    .accessibilityLabel("Check price").accessibilityIdentifier("price-check-send")
+                    .disabled(busy || !canSend).accessibilityLabel("Check price").accessibilityIdentifier("price-check-send")
+                }.tint(.primary)
             }
+            .padding(14)
+            .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 28))
+            .overlay(RoundedRectangle(cornerRadius: 28).strokeBorder(Color.primary.opacity(0.06), lineWidth: 0.5))
+            .shadow(color: .black.opacity(0.04), radius: 18, y: 5)
         }
-        .padding(14)
-        .background(.regularMaterial, in: RoundedRectangle(cornerRadius: 26))
-        .padding(.horizontal, 12).padding(.bottom, 8)
+        .padding(.horizontal, 16).padding(.bottom, 10).padding(.top, 8)
         .disabled(busy)
     }
 
-    private func offerCard(_ offer: PriceOffer) -> some View {
-        VStack(alignment: .leading, spacing: 8) {
-            Text(offer.name).font(.headline)
-            if let price = offer.price { Text(price, format: .currency(code: "AUD")).font(.largeTitle.bold()) }
-            if let packSize = offer.packSizeLabel { Text("\(packSize) total pack size").foregroundStyle(.secondary) }
-            if let baseline = offer.baseline { Text("\(money(baseline.value)) / \(baseline.unit)").font(.title3.weight(.semibold)) }
-            if let question = offer.question { Text(question).foregroundStyle(.secondary) }
-            Text("Read that wrong? Tell me the correct price or pack size below.").font(.caption).foregroundStyle(.secondary)
-        }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
-            .background(.background, in: RoundedRectangle(cornerRadius: 22))
-    }
-
-    private func comparisonCard(_ comparison: PriceComparison, product: ProductInsight) -> some View {
-        VStack(alignment: .leading, spacing: 12) {
-            if let change = comparison.changeFromLast {
-                let headline = abs(change) < 1 ? "About the same as last time" : "\(abs(change).formatted(.number.precision(.fractionLength(0))))% \(change > 0 ? "more" : "less") than last time"
-                Label(headline, systemImage: change > 0 ? "arrow.up.right" : "arrow.down.right")
-                    .font(.title2.bold()).foregroundStyle(change > 0 ? Color.orange : Color.green)
-                if let baseline = comparison.offer.baseline {
-                    HStack {
-                        metric("This offer", baseline.value, baseline.unit)
-                        Spacer()
-                        if let average = comparison.average { metric("Your average", average, baseline.unit) }
-                    }
-                    if let lowest = comparison.lowest { Text("Your lowest: \(money(lowest)) / \(baseline.unit)").font(.subheadline) }
-                }
-                Text("Based on \(comparison.comparable.count) comparable receipt \(comparison.comparable.count == 1 ? "purchase" : "purchases").").font(.caption).foregroundStyle(.secondary)
-                ForEach(Array(comparison.comparable.prefix(3))) { purchase in
-                    Divider()
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(purchase.variant ?? product.name).font(.subheadline.weight(.medium))
-                        Text("\(purchase.storeName ?? "Saved receipt") · \(purchase.dayKey)").font(.caption).foregroundStyle(.secondary)
-                        if let value = purchase.unitPrice, let unit = purchase.unitPriceUnit { Text("\(money(value)) / \(unit)").font(.subheadline.monospacedDigit()) }
-                    }
-                }
+    private func pendingReply(_ offer: PriceOffer) -> some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if let question = offer.question, offer.baseline == nil {
+                Text(question).font(.title3).lineSpacing(5)
             } else {
-                Label("Not enough comparable history", systemImage: "questionmark.circle").font(.headline)
-                Text("These receipts don't have a usable size in the same units. I won't compare different packs as if they're equal.")
-                    .font(.callout).foregroundStyle(.secondary)
+                Text(candidates.isEmpty ? "I haven’t found that in your purchases yet." : "Which one do you mean?")
+                    .font(.title3.weight(.medium))
+                ForEach(Array(candidates.prefix(3))) { product in
+                    Button { Task { await compare(product) } } label: {
+                        HStack { Text(product.name); Spacer(); Image(systemName: "arrow.up.left") }
+                            .font(.subheadline).padding(.vertical, 10)
+                    }.tint(.primary)
+                }
+                Button("Find a product") { search = ""; showProducts = true }.font(.subheadline).tint(.secondary)
             }
-            NavigationLink("View \(product.name) history") {
-                ProductDetailView(householdId: householdId, productId: product.id, fallbackName: product.name)
-            }.font(.subheadline)
-        }.padding(20).frame(maxWidth: .infinity, alignment: .leading)
-            .background(Color.accentColor.opacity(0.08), in: RoundedRectangle(cornerRadius: 22))
-    }
-
-    private func metric(_ title: String, _ value: Double, _ unit: String) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title).font(.caption).foregroundStyle(.secondary)
-            Text(money(value)).font(.title3.bold().monospacedDigit())
-            Text("/ \(unit)").font(.caption).foregroundStyle(.secondary)
         }
     }
 
-    private var productPicker: some View {
-        VStack(alignment: .leading, spacing: 12) {
-            Text(selected == nil ? "Which product did you buy?" : "Compare another product").font(.headline)
-            Text("Check the brand and variant before comparing.").font(.caption).foregroundStyle(.secondary)
-            TextField("Search your purchases", text: $search).textFieldStyle(.roundedBorder).accessibilityIdentifier("price-check-product-search")
-            if candidates.isEmpty { Text("No matching purchases. Try a shorter name, or import a receipt first.").font(.callout).foregroundStyle(.secondary) }
-            ForEach(candidates) { product in
-                Button { Task { await compare(product) } } label: {
+    private var productSheet: some View {
+        NavigationStack {
+            List(searchResults) { product in
+                Button {
+                    showProducts = false
+                    Task { await compare(product) }
+                } label: {
                     HStack {
-                        VStack(alignment: .leading, spacing: 3) {
-                            Text(product.name).foregroundStyle(.primary)
-                            Text("\(product.timesPurchased) receipt purchases").font(.caption).foregroundStyle(.secondary)
-                        }
+                        Text(product.name).foregroundStyle(.primary)
                         Spacer()
-                        Image(systemName: selected?.id == product.id ? "checkmark.circle.fill" : "chevron.right")
-                    }.padding(.vertical, 8).contentShape(Rectangle())
-                }
-                Divider()
+                        if selected?.id == product.id { Image(systemName: "checkmark").foregroundStyle(.secondary) }
+                    }.padding(.vertical, 6)
+                }.buttonStyle(.plain)
             }
+            .searchable(text: $search, prompt: "Search your purchases")
+            .overlay { if searchResults.isEmpty { ContentUnavailableView.search(text: search) } }
+            .navigationTitle("Choose product").navigationBarTitleDisplayMode(.inline)
+            .toolbar { ToolbarItem(placement: .confirmationAction) { Button("Done") { showProducts = false } } }
+        }
+        .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
+    }
+
+    private func openCamera() {
+        speech.stop(flush: true)
+        Task {
+            if await AVCaptureDevice.requestAccess(for: .video) { showCamera = true }
+            else { error = "Allow camera access in Settings, or choose a photo instead." }
         }
     }
 
@@ -273,38 +301,51 @@ struct PriceCheckView: View {
         let image = attachment
         let data = image?.compressedForUpload()
         if image != nil && data == nil { error = "Couldn't prepare that photo."; return }
-        busy = true; error = nil; focused = false
+        let previous = offer
+        let previousMessages = messages
+        let previousComparison = comparison
+        let previousProduct = selected
+        if let comparison, let selected {
+            messages.append(Message(text: "", image: nil, isUser: false, comparison: comparison, product: selected))
+        } else if let question = offer?.question {
+            messages.append(Message(text: question, image: nil, isUser: false))
+        }
+        let sent = Message(text: question.isEmpty ? "Is this a good price?" : question, image: data.flatMap(UIImage.init(data:)))
+        messages.append(sent)
+        if messages.count > 16 { messages.removeFirst(messages.count - 16) }
+        offer = nil; comparison = nil; selected = nil
+        text = ""; attachment = nil; busy = true; error = nil; focused = false
         defer { busy = false }
         do {
-            let result = try await services.api.readPriceOffer(householdId: householdId, text: question, image: data, previous: image == nil ? offer : nil)
+            let result = try await services.api.readPriceOffer(householdId: householdId, text: question, image: data, previous: image == nil ? previous : nil)
             products = try await services.api.fetchProductInsights(householdId: householdId)
-            if let comparison, let change = comparison.changeFromLast, let previous = comparison.offer.baseline {
-                let summary = "\(comparison.offer.name): \(money(previous.value)) / \(previous.unit), \(abs(change).formatted(.number.precision(.fractionLength(0))))% \(change >= 0 ? "more" : "less") than your last comparable purchase."
-                messages.append(Message(text: summary, image: nil, isUser: false))
+            offer = result
+            if result.baseline != nil, let match = PriceProductMatcher.exactMatch(name: result.name, products: products) {
+                try await loadComparison(match, offer: result)
             }
-            messages.append(Message(text: question.isEmpty ? "Is this a good price?" : question, image: data.flatMap(UIImage.init(data:))))
-            if messages.count > 12 { messages.removeFirst(messages.count - 12) }
-            offer = result; comparison = nil; selected = nil
-            search = result.name.split(separator: " ").prefix(2).joined(separator: " ")
-            text = ""; attachment = nil
-        } catch { self.error = "Couldn't check that price right now. Your question and photo are still here—try again." }
+        } catch {
+            if offer == nil {
+                messages = previousMessages
+                offer = previous; comparison = previousComparison; selected = previousProduct
+                text = question; attachment = image
+            }
+            self.error = "Couldn't check just now. Try again in a moment."
+        }
     }
 
     private func compare(_ product: ProductInsight) async {
         guard let offer, !busy else { return }
         busy = true; error = nil
         defer { busy = false }
-        do {
-            let detail = try await services.api.fetchProductInsight(householdId: householdId, productId: product.id)
-            comparison = PriceComparison(offer: offer, purchases: detail.purchases)
-            selected = product
-        } catch { self.error = "Couldn't load purchase history. Tap the product to retry." }
+        do { try await loadComparison(product, offer: offer) }
+        catch { self.error = "Couldn't load your prices. Try choosing the product again." }
     }
 
-    private func money(_ value: Double) -> String {
-        value.formatted(.currency(code: "AUD").precision(.fractionLength(2)))
+    private func loadComparison(_ product: ProductInsight, offer: PriceOffer) async throws {
+        let detail = try await services.api.fetchProductInsight(householdId: householdId, productId: product.id)
+        comparison = PriceComparison(offer: offer, purchases: detail.purchases)
+        selected = product
     }
-
     private func enableRecent() async {
         let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
         recentEnabled = status == .authorized || status == .limited
@@ -353,5 +394,115 @@ private struct PriceCheckCamera: UIViewControllerRepresentable {
             parent.dismiss()
         }
         func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { parent.dismiss() }
+    }
+}
+
+/// An answer in the conversation, not a dashboard card.
+private struct PriceCheckReply: View {
+    let comparison: PriceComparison
+    let product: ProductInsight
+    var changeProduct: (() -> Void)? = nil
+    @State private var perUnit = false
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    private var change: Double? { comparison.changeFromAverage }
+    private var verdict: String {
+        guard let change else { return "No price to compare yet." }
+        if change > 5 { return "A bit steep." }
+        if change < -5 { return "Good price." }
+        return "About right."
+    }
+    private var verdictColor: Color {
+        guard let change else { return .primary }
+        if change > 5 { return Color(red: 0.78, green: 0.32, blue: 0.20) }
+        if change < -5 { return Color(red: 0.18, green: 0.55, blue: 0.39) }
+        return .primary
+    }
+    private var unitLabel: String {
+        switch comparison.offer.unit {
+        case "mL": return "100 mL"
+        case "g": return "100 g"
+        default: return "each"
+        }
+    }
+    private func display(_ value: Double) -> Double {
+        perUnit ? value : (comparison.priceForOfferPack(value) ?? value)
+    }
+    private func money(_ value: Double) -> String { value.formatted(.currency(code: "AUD").precision(.fractionLength(2))) }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 22) {
+            VStack(alignment: .leading, spacing: 12) {
+                if let changeProduct {
+                    Button(action: changeProduct) {
+                        HStack(spacing: 6) {
+                            Text(product.name)
+                            Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
+                        }.font(.subheadline).foregroundStyle(.secondary)
+                    }.buttonStyle(.plain).accessibilityLabel("Change product").accessibilityIdentifier("price-check-change-product")
+                } else { Text(product.name).font(.subheadline).foregroundStyle(.secondary) }
+                Text(verdict).font(.system(.largeTitle, design: .rounded, weight: .bold))
+                    .tracking(-0.8).foregroundStyle(verdictColor)
+                if let change {
+                    Text(abs(change) < 1 ? "Right around your average." : "\(abs(change).formatted(.number.precision(.fractionLength(0))))% \(change > 0 ? "above" : "below") your average.")
+                        .font(.title3).accessibilityIdentifier("price-check-verdict")
+                } else {
+                    Text("I don’t have a comparable price for this one yet.")
+                        .font(.body).foregroundStyle(.secondary)
+                }
+            }
+            if let baseline = comparison.offer.baseline, let average = comparison.average {
+                ViewThatFits(in: .horizontal) {
+                    HStack(spacing: 4) { unitOptions }.fixedSize(horizontal: true, vertical: false)
+                    VStack(alignment: .leading, spacing: 4) { unitOptions }
+                }.padding(4).background(Color(.tertiarySystemFill), in: RoundedRectangle(cornerRadius: 24))
+                ViewThatFits(in: .horizontal) {
+                    HStack(alignment: .top, spacing: 24) { metrics(baseline.value, average) }
+                    VStack(alignment: .leading, spacing: 18) { metrics(baseline.value, average) }
+                }.frame(maxWidth: .infinity, alignment: .leading)
+                if !dynamicTypeSize.isAccessibilitySize {
+                    VStack(spacing: 10) {
+                        priceBar("This price", value: baseline.value, maxValue: max(baseline.value, average), color: verdictColor)
+                        priceBar("Average", value: average, maxValue: max(baseline.value, average), color: Color.primary.opacity(0.18))
+                    }.accessibilityHidden(true)
+                }
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+        .padding(.vertical, 8)
+    }
+
+    @ViewBuilder private var unitOptions: some View {
+        unitButton(comparison.offer.packSizeLabel.map { "\($0) pack" } ?? "Pack", selected: !perUnit) { perUnit = false }
+        unitButton("Per \(unitLabel)", selected: perUnit) { perUnit = true }
+    }
+
+    @ViewBuilder private func metrics(_ offer: Double, _ average: Double) -> some View {
+        metric("This price", offer)
+        metric("Average", average)
+        if let usual = comparison.usual { metric("Usual", usual) }
+        else if let lowest = comparison.lowest { metric("Best", lowest) }
+    }
+    private func metric(_ label: String, _ value: Double) -> some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(label).font(.caption).foregroundStyle(.secondary)
+            Text(money(display(value))).font(.system(.title2, design: .rounded, weight: .semibold))
+                .monospacedDigit().fixedSize().contentTransition(.numericText())
+        }.accessibilityElement(children: .combine)
+    }
+    private func unitButton(_ title: String, selected: Bool, action: @escaping () -> Void) -> some View {
+        Button(action: action) {
+            Text(title).font(.caption.weight(.semibold))
+                .padding(.horizontal, 14).padding(.vertical, 9)
+                .background(selected ? Color(.systemBackground) : .clear, in: Capsule())
+        }.buttonStyle(.plain).accessibilityAddTraits(selected ? [.isSelected] : [])
+    }
+    private func priceBar(_ label: String, value: Double, maxValue: Double, color: Color) -> some View {
+        HStack(spacing: 12) {
+            Text(label).font(.caption).foregroundStyle(.secondary).frame(width: 58, alignment: .leading)
+            GeometryReader { geometry in
+                Capsule().fill(color).frame(width: max(4, geometry.size.width * value / maxValue))
+            }.frame(height: 6)
+        }
     }
 }

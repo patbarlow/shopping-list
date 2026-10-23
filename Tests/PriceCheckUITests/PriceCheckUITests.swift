@@ -11,29 +11,62 @@ final class PriceCheckUITests: XCTestCase {
         XCTAssertTrue(app.buttons["Done"].firstMatch.waitForExistence(timeout: 5))
     }
 
-    @MainActor func testQuestionToComparisonAndHistory() {
+    @MainActor func testPriceConversationSwitchingAndFollowUp() {
         let app = XCUIApplication()
         app.launchEnvironment["TROLLEY_UI_TEST"] = "price"
         app.launch()
         let input = app.descendants(matching: .any)["price-check-input"].firstMatch
         XCTAssertTrue(input.waitForExistence(timeout: 10))
+        capture(app, named: "Price check welcome")
         input.tap()
         input.typeText("Is Red Bull 4 x 250mL for $9.83 a good price?")
         app.buttons["price-check-send"].tap()
-        let search = app.textFields["price-check-product-search"]
-        XCTAssertTrue(search.waitForExistence(timeout: 10))
-        app.swipeUp()
-        let product = app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Red Bull Energy Drink")).firstMatch
-        XCTAssertTrue(product.waitForExistence(timeout: 5))
-        product.tap()
-        let result = app.staticTexts["26% more than last time"]
-        if !result.isHittable { app.swipeDown() }
+        let result = app.staticTexts["26% above your average."]
         XCTAssertTrue(result.waitForExistence(timeout: 10))
-        XCTAssertTrue(app.staticTexts["$0.98"].firstMatch.exists)
-        let screenshot = XCTAttachment(screenshot: app.screenshot())
-        screenshot.name = "Red Bull price comparison"
-        screenshot.lifetime = .keepAlways
-        add(screenshot)
+        XCTAssertTrue(app.staticTexts["A bit steep."].exists)
+        XCTAssertFalse(app.staticTexts["Compare another product"].exists)
+        capture(app, named: "Red Bull pack comparison")
+        app.buttons["Per 100 mL"].tap()
+        XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@", "$0.98")).firstMatch.exists)
+        capture(app, named: "Red Bull unit comparison")
+        app.buttons["price-check-change-product"].tap()
+        XCTAssertTrue(app.navigationBars["Choose product"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Milk"].waitForExistence(timeout: 5))
+        capture(app, named: "Change product sheet")
+        app.buttons.matching(NSPredicate(format: "label CONTAINS %@", "Red Bull Energy Drink")).firstMatch.tap()
+        XCTAssertTrue(result.waitForExistence(timeout: 5))
+        input.tap()
+        input.typeText("What about $7?")
+        app.buttons["price-check-send"].tap()
+        XCTAssertTrue(app.staticTexts["Good price."].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.staticTexts["10% below your average."].exists)
+        XCTAssertTrue(app.staticTexts["What about $7?"].exists)
+        // The first answer remains part of the conversation.
+        app.swipeDown()
+        XCTAssertTrue(app.staticTexts["A bit steep."].exists)
+    }
+
+    @MainActor func testLargeTextPriceCheck() {
+        let app = XCUIApplication()
+        app.launchEnvironment["TROLLEY_UI_TEST"] = "price"
+        app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launch()
+        let input = app.descendants(matching: .any)["price-check-input"].firstMatch
+        XCTAssertTrue(input.waitForExistence(timeout: 10))
+        input.tap()
+        input.typeText("Red Bull 4 x 250mL for $9.83")
+        app.buttons["price-check-send"].tap()
+        XCTAssertTrue(app.staticTexts["A bit steep."].waitForExistence(timeout: 10))
+        app.swipeUp()
+        capture(app, named: "Price check large text")
+        XCTAssertTrue(app.buttons["price-check-send"].exists)
+    }
+
+    @MainActor private func capture(_ app: XCUIApplication, named name: String) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
     }
 
     @MainActor func testProductSearchFiltersPurchases() {
