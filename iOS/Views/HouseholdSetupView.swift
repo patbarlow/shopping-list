@@ -14,8 +14,8 @@ struct HouseholdSetupView: View {
                 Spacer()
 
                 VStack(spacing: 8) {
-                    Image(systemName: "house.fill")
-                        .font(.system(size: 64))
+                    Image(hugeIcon: "house.fill")
+                        .resizable().scaledToFit().frame(width: 64, height: 64)
                         .foregroundStyle(TrolleyStyle.accent)
                     Text("Your Household")
                         .font(.system(.largeTitle, design: .rounded, weight: .bold))

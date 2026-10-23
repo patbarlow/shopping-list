@@ -22,11 +22,11 @@ struct PredictedListView: View {
             if isLoading {
                 ProgressView().frame(maxWidth: .infinity).padding(.vertical, 80)
             } else if let err = errorMessage {
-                ContentUnavailableView("Couldn't load forecast", systemImage: "exclamationmark.triangle", description: Text(err))
+                TrolleyUnavailableView("Couldn't load forecast", hugeIcon: "exclamationmark.triangle", description: Text(err))
             } else if let response, response.items.isEmpty {
-                ContentUnavailableView(
+                TrolleyUnavailableView(
                     "Not enough data yet",
-                    systemImage: "calendar.badge.clock",
+                    hugeIcon: "calendar.badge.clock",
                     description: Text("Scan a few more receipts and we'll start predicting what you'll need before your next big shop.")
                 )
             } else if let response {
@@ -58,7 +58,7 @@ struct PredictedListView: View {
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button { showSettings = true } label: {
-                    Image(systemName: "gearshape")
+                    Image(hugeIcon: "gearshape")
                         .frame(width: 22, height: 22)
                 }
             }
@@ -109,7 +109,7 @@ struct PredictedListView: View {
                 Button {
                     addAll(pending)
                 } label: {
-                    Label("Add ^[\(pending.count) item](inflect: true) to list", systemImage: "plus")
+                    Label("Add ^[\(pending.count) item](inflect: true) to list", hugeIcon: "plus")
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
                 }
@@ -166,14 +166,14 @@ struct PredictedListView: View {
             }
 
             if isOnList(item) {
-                Image(systemName: "checkmark.circle.fill")
+                Image(hugeIcon: "checkmark.circle.fill")
                     .font(.title3)
                     .foregroundStyle(.green)
             } else {
                 Button {
                     addAll([item])
                 } label: {
-                    Image(systemName: "plus.circle")
+                    Image(hugeIcon: "plus.circle")
                         .font(.title3)
                         .foregroundStyle(TrolleyStyle.accent)
                 }

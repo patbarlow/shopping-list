@@ -109,6 +109,132 @@ final class PriceCheckUITests: XCTestCase {
         XCTAssertTrue(app.buttons["price-check-send"].exists)
     }
 
+    @MainActor func testEmptyListAppearsAfterLoadingAndSurvivesTabSwitch() {
+        let app = XCUIApplication()
+        app.launchEnvironment["TROLLEY_UI_TEST"] = "list-empty"
+        app.launch()
+        XCTAssertTrue(app.staticTexts["A fresh start."].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.progressIndicators["list-loading"].exists)
+        capture(app, named: "Empty list after initial load")
+        app.tabBars.buttons["Check price"].tap()
+        XCTAssertTrue(app.staticTexts["Good price?\nLet’s find out."].waitForExistence(timeout: 5))
+        app.tabBars.buttons["List"].tap()
+        XCTAssertTrue(app.staticTexts["A fresh start."].waitForExistence(timeout: 5))
+        app.swipeDown()
+        XCTAssertTrue(app.staticTexts["A fresh start."].exists)
+    }
+
+    @MainActor func testListLoadErrorCanRetryIntoEmptyState() {
+        let app = XCUIApplication()
+        app.launchEnvironment["TROLLEY_UI_TEST"] = "list-error"
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Couldn't load your list"].waitForExistence(timeout: 10))
+        app.buttons["Try again"].tap()
+        XCTAssertTrue(app.staticTexts["A fresh start."].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["Try again"].exists)
+    }
+
+    @MainActor func testAllCheckedItemsShowEmptyState() {
+        let app = XCUIApplication()
+        app.launchEnvironment["TROLLEY_UI_TEST"] = "list-checked"
+        app.launch()
+        XCTAssertTrue(app.staticTexts["A fresh start."].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.staticTexts["Milk"].exists)
+    }
+
+    @MainActor func testSwipeDownOnBothComposersDismissesKeyboard() {
+        let app = XCUIApplication()
+        app.launchEnvironment["TROLLEY_UI_TEST"] = "list-empty"
+        app.launch()
+        XCTAssertTrue(app.staticTexts["A fresh start."].waitForExistence(timeout: 10))
+        app.staticTexts["Add item…"].tap()
+        let listInput = app.descendants(matching: .any)["list-add-input"].firstMatch
+        XCTAssertTrue(listInput.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        swipeComposerDown(listInput)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        app.tabBars.buttons["Check price"].tap()
+        let priceInput = app.descendants(matching: .any)["price-check-input"].firstMatch
+        priceInput.tap()
+        priceInput.typeText("Red Bull")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5))
+        swipeComposerDown(priceInput)
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        XCTAssertEqual(priceInput.value as? String, "Red Bull")
+    }
+
+    @MainActor func testCompactPhotosAndCameraFromChatAndReceipt() {
+        let app = XCUIApplication()
+        app.launchEnvironment["TROLLEY_UI_TEST"] = "app"
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Bananas"].waitForExistence(timeout: 10))
+        app.tabBars.buttons["Check price"].tap()
+        app.buttons["Photos"].tap()
+        let expand = app.buttons["photos-expand"]
+        XCTAssertTrue(expand.waitForExistence(timeout: 5))
+        let close = app.buttons["Close photos"]
+        XCTAssertTrue(close.isHittable)
+        waitForPhotoGrid(app)
+        capture(app, named: "Compact photo picker")
+        expand.tap()
+        XCTAssertTrue(app.buttons["Recents"].waitForExistence(timeout: 5))
+        capture(app, named: "Expanded photo picker")
+        close.tap()
+        app.buttons["Camera"].tap()
+        XCTAssertTrue(app.buttons["camera-shutter"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["Close camera"].isHittable)
+        capture(app, named: "Compact camera simulator fallback")
+        app.buttons["Close camera"].tap()
+        app.tabBars.buttons["List"].tap()
+        app.buttons["Import receipt"].tap()
+        app.buttons["Photo Library"].tap()
+        XCTAssertTrue(close.waitForExistence(timeout: 5))
+        close.tap()
+        XCTAssertTrue(close.waitForNonExistence(timeout: 5))
+        app.buttons["Import receipt"].tap()
+        if !app.buttons["Scan Receipt"].waitForExistence(timeout: 2) {
+            app.buttons["Import receipt"].tap()
+        }
+        app.buttons["Scan Receipt"].tap()
+        XCTAssertTrue(app.buttons["camera-shutter"].waitForExistence(timeout: 5))
+        app.buttons["Close camera"].tap()
+        XCTAssertTrue(app.staticTexts["Bananas"].isHittable)
+    }
+
+    @MainActor func testPhotoSelectionAttachesAndOpensReceiptReview() {
+        // The QA simulator contains the supplied Red Bull screenshot (simctl addmedia).
+        let app = XCUIApplication()
+        app.launchEnvironment["TROLLEY_UI_TEST"] = "app"
+        app.launch()
+        XCTAssertTrue(app.staticTexts["Bananas"].waitForExistence(timeout: 10))
+        app.tabBars.buttons["Check price"].tap()
+        app.buttons["Photos"].tap()
+        waitForPhotoGrid(app)
+        app.images.matching(identifier: "PXGGridLayout-Info").firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(app.buttons["Remove photo"].waitForExistence(timeout: 10))
+        capture(app, named: "Photo attached to price check")
+        app.buttons["Remove photo"].tap()
+        app.tabBars.buttons["Insights"].tap()
+        app.buttons["Import receipt"].tap()
+        app.buttons["Photo Library"].tap()
+        waitForPhotoGrid(app)
+        app.images.matching(identifier: "PXGGridLayout-Info").firstMatch.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5)).tap()
+        XCTAssertTrue(app.buttons["Edit"].waitForExistence(timeout: 15))
+        capture(app, named: "Photo receipt review from Insights")
+        app.buttons["Cancel"].tap()
+        XCTAssertTrue(app.buttons["insights-products"].waitForExistence(timeout: 5))
+    }
+
+    @MainActor private func waitForPhotoGrid(_ app: XCUIApplication) {
+        XCTAssertTrue(app.images.matching(identifier: "PXGGridLayout-Info").firstMatch.waitForExistence(timeout: 15))
+        if app.buttons["OK"].exists { app.buttons["OK"].tap() }
+    }
+
+    @MainActor private func swipeComposerDown(_ input: XCUIElement) {
+        let start = input.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: 110)))
+    }
+
     @MainActor private func capture(_ app: XCUIApplication, named name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name

@@ -68,8 +68,8 @@ private struct MacEmailEntryView: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            Image(systemName: "cart.fill")
-                .font(.system(size: 40))
+            Image(hugeIcon: "cart.fill")
+                .resizable().scaledToFit().frame(width: 40, height: 40)
                 .foregroundStyle(.green)
             Text("Shopping List")
                 .font(.title2.bold())
@@ -110,8 +110,8 @@ private struct MacCodeEntryView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Image(systemName: "envelope.badge")
-                .font(.system(size: 40))
+            Image(hugeIcon: "envelope.badge")
+                .resizable().scaledToFit().frame(width: 40, height: 40)
                 .foregroundStyle(.green)
             Text("Check your email")
                 .font(.title2.bold())
@@ -168,8 +168,8 @@ private struct MacHouseholdSetupView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Image(systemName: "house.fill")
-                .font(.system(size: 40))
+            Image(hugeIcon: "house.fill")
+                .resizable().scaledToFit().frame(width: 40, height: 40)
                 .foregroundStyle(.green)
             Text("Your Household")
                 .font(.title2.bold())
@@ -303,21 +303,21 @@ private struct MacListView: View {
         ToolbarItem(placement: .primaryAction) {
             Menu {
                 Button { showSettings = true } label: {
-                    Label("Settings", systemImage: "gear")
+                    Label("Settings", hugeIcon: "gear")
                 }
                 Divider()
                 Button { showRecipeImport = true } label: {
-                    Label("Import Recipe…", systemImage: "link")
+                    Label("Import Recipe…", hugeIcon: "link")
                 }
                 Button { showHistory = true } label: {
-                    Label("Purchase History", systemImage: "clock.arrow.circlepath")
+                    Label("Purchase History", hugeIcon: "clock.arrow.circlepath")
                 }
                 Divider()
                 Toggle(isOn: $alwaysOnTop) {
-                    Label("Always on Top", systemImage: "pin")
+                    Label("Always on Top", hugeIcon: "pin")
                 }
             } label: {
-                Image(systemName: "ellipsis")
+                Image(hugeIcon: "ellipsis")
             }
             .menuIndicator(.hidden)
         }
@@ -328,7 +328,7 @@ private struct MacListView: View {
     private var addBar: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Image(systemName: isAdding ? "circle" : "plus")
+                Image(hugeIcon: isAdding ? "circle" : "plus")
                     .foregroundStyle(isAdding ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Color.green))
                     .font(isAdding ? .body : .body.weight(.semibold))
                     .frame(width: 22, height: 22)
@@ -400,7 +400,7 @@ private struct MacListView: View {
                         .font(.subheadline.weight(.semibold))
                         .foregroundStyle(group.category.color)
                     Spacer()
-                    Image(systemName: "chevron.down")
+                    Image(hugeIcon: "chevron.down")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(group.category.color.opacity(0.7))
                         .rotationEffect(isCollapsed ? .degrees(-90) : .zero)
@@ -444,7 +444,7 @@ private struct MacListView: View {
         return VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .center, spacing: 10) {
                 // Circle toggles complete; tapping row text enters edit mode
-                Image(systemName: isComplete ? "checkmark.circle.fill" : "circle")
+                Image(hugeIcon: isComplete ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(isComplete ? AnyShapeStyle(.green) : AnyShapeStyle(.tertiary))
                     .font(.body)
                     .frame(width: 22, height: 22)
@@ -504,8 +504,8 @@ private struct MacListView: View {
 
     private var emptyState: some View {
         VStack(spacing: 10) {
-            Image(systemName: "cart")
-                .font(.system(size: 48, weight: .ultraLight))
+            Image(hugeIcon: "cart")
+                .resizable().scaledToFit().frame(width: 48, height: 48)
                 .foregroundStyle(.quaternary)
             Text("Your list is empty")
                 .font(.subheadline)
@@ -654,7 +654,7 @@ private struct MacSettingsView: View {
                             copied = true
                             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
                         } label: {
-                            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                            Image(hugeIcon: copied ? "checkmark" : "doc.on.doc")
                                 .foregroundStyle(copied ? .green : .accentColor)
                         }
                         .buttonStyle(.plain)
@@ -789,7 +789,7 @@ private struct MacHistoryView: View {
                                         }
                                     }
                                 } header: {
-                                    Label(group.category.rawValue, systemImage: group.category.sfSymbol)
+                                    Label { Text(group.category.rawValue) } icon: { Text(group.category.emoji) }
                                         .foregroundStyle(group.category.color)
                                 }
                             }

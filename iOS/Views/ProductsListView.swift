@@ -43,11 +43,11 @@ struct ProductsListView: View {
             if isLoading {
                 ProgressView().frame(maxWidth: .infinity).padding(.vertical, 80)
             } else if let err = errorMessage {
-                ContentUnavailableView("Couldn't load products", systemImage: "exclamationmark.triangle", description: Text(err))
+                TrolleyUnavailableView("Couldn't load products", hugeIcon: "exclamationmark.triangle", description: Text(err))
             } else if products.isEmpty {
-                ContentUnavailableView(
+                TrolleyUnavailableView(
                     "No products yet",
-                    systemImage: "cart",
+                    hugeIcon: "cart",
                     description: Text("Scan a receipt and the things you buy will show up here with prices and how often you buy them.")
                 )
             } else {
@@ -85,7 +85,7 @@ struct ProductsListView: View {
                         ForEach(Sort.allCases) { Text($0.rawValue).tag($0) }
                     }
                 } label: {
-                    Image(systemName: "arrow.up.arrow.down")
+                    Image(hugeIcon: "arrow.up.arrow.down")
                 }
                 .disabled(products.isEmpty)
             }
@@ -157,8 +157,8 @@ struct ProductsListView: View {
     @ViewBuilder
     private func trendArrow(_ product: ProductInsight) -> some View {
         switch product.priceTrend {
-        case .up:   Image(systemName: "arrow.up").font(.caption2.bold()).foregroundStyle(.red)
-        case .down: Image(systemName: "arrow.down").font(.caption2.bold()).foregroundStyle(.green)
+        case .up:   Image(hugeIcon: "arrow.up").font(.caption2.bold()).foregroundStyle(.red)
+        case .down: Image(hugeIcon: "arrow.down").font(.caption2.bold()).foregroundStyle(.green)
         case nil:   EmptyView()
         }
     }

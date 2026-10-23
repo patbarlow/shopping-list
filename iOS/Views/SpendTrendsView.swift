@@ -38,11 +38,11 @@ struct SpendTrendsView: View {
                 if isLoading {
                     ProgressView().frame(maxWidth: .infinity).padding(.vertical, 80)
                 } else if let errorMessage {
-                    ContentUnavailableView("Couldn't load insights", systemImage: "wifi.exclamationmark", description: Text(errorMessage))
+                    TrolleyUnavailableView("Couldn't load insights", hugeIcon: "wifi.exclamationmark", description: Text(errorMessage))
                 } else if trips.isEmpty {
-                    ContentUnavailableView(
+                    TrolleyUnavailableView(
                         "No trips yet",
-                        systemImage: "chart.bar",
+                        hugeIcon: "chart.bar",
                         description: Text("Scan receipts and your spend per shop will show up here.")
                     )
                 } else {
@@ -55,10 +55,10 @@ struct SpendTrendsView: View {
                                 ProductsListView(householdId: householdId)
                             } label: {
                                 HStack(spacing: 12) {
-                                    Image(systemName: "basket").foregroundStyle(TrolleyStyle.accent)
+                                    Image(hugeIcon: "basket").foregroundStyle(TrolleyStyle.accent)
                                     Text("Your products").font(.subheadline.weight(.semibold))
                                     Spacer()
-                                    Image(systemName: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
+                                    Image(hugeIcon: "chevron.right").font(.caption.weight(.semibold)).foregroundStyle(.secondary)
                                 }.padding(18).trolleyCard()
                             }.buttonStyle(.plain).accessibilityIdentifier("insights-products")
 
@@ -93,7 +93,7 @@ struct SpendTrendsView: View {
             .toolbar {
                 ToolbarItem(placement: .navigationBarLeading) {
                     Button { showSettings = true } label: {
-                        Image(systemName: "gearshape")
+                        Image(hugeIcon: "gearshape")
                             .frame(width: 22, height: 22)
                     }.accessibilityLabel("Settings")
                 }
@@ -101,7 +101,7 @@ struct SpendTrendsView: View {
                     NavigationLink {
                         ProductsListView(householdId: householdId).environment(services)
                     } label: {
-                        Label("Products", systemImage: "basket")
+                        Label("Products", hugeIcon: "basket")
                     }
                 }
                 ToolbarItem(placement: .navigationBarTrailing) {
@@ -303,7 +303,7 @@ struct SpendTrendsView: View {
 
     private func insightCard(_ text: String) -> some View {
         HStack(spacing: 10) {
-            Image(systemName: "sparkles")
+            Image(hugeIcon: "sparkles")
                 .foregroundStyle(TrolleyStyle.accent)
             Text(text)
                 .font(.subheadline)
@@ -466,7 +466,7 @@ struct SpendTrendsView: View {
                                             .font(.subheadline.weight(.semibold))
                                             .foregroundStyle(.primary)
                                     }
-                                    Image(systemName: "chevron.right")
+                                    Image(hugeIcon: "chevron.right")
                                         .font(.caption2.weight(.semibold))
                                         .foregroundStyle(.tertiary)
                                 }

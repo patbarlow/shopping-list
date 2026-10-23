@@ -26,7 +26,7 @@ struct ProductDetailView: View {
                 VStack(alignment: .leading, spacing: 20) {
                     statCards(detail.stats)
                     if let interval = detail.stats.avgIntervalDays, interval > 0 {
-                        Label("You buy this about every \(interval) day\(interval == 1 ? "" : "s").", systemImage: "clock.arrow.circlepath")
+                        Label("You buy this about every \(interval) day\(interval == 1 ? "" : "s").", hugeIcon: "clock.arrow.circlepath")
                             .font(.subheadline)
                             .foregroundStyle(.secondary)
                     }
@@ -34,7 +34,7 @@ struct ProductDetailView: View {
                 }
                 .padding(16)
             } else if let errorMessage {
-                ContentUnavailableView("Couldn't load", systemImage: "exclamationmark.triangle", description: Text(errorMessage))
+                TrolleyUnavailableView("Couldn't load", hugeIcon: "exclamationmark.triangle", description: Text(errorMessage))
                     .padding(.top, 80)
             }
         }
@@ -47,7 +47,7 @@ struct ProductDetailView: View {
                     renameText = detail?.product.name ?? fallbackName
                     showRename = true
                 } label: {
-                    Image(systemName: "pencil")
+                    Image(hugeIcon: "pencil")
                 }
                 .disabled(detail == nil)
             }

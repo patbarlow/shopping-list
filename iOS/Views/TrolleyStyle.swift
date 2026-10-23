@@ -44,7 +44,6 @@ struct TrolleyMascot: View {
     var body: some View {
         Image("TrolleyMascot")
             .resizable().scaledToFit().frame(width: size, height: size)
-            .clipShape(RoundedRectangle(cornerRadius: size * 0.25, style: .continuous))
             .accessibilityHidden(true)
     }
 }

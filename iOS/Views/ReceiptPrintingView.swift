@@ -245,7 +245,7 @@ struct ReceiptPrintingView: View {
                             .foregroundStyle(TrolleyStyle.accent)
                     }
                     if line.needsReview {
-                        Image(systemName: "exclamationmark.triangle.fill")
+                        Image(hugeIcon: "exclamationmark.triangle.fill")
                             .font(.caption2)
                             .foregroundStyle(.orange)
                     }
@@ -313,7 +313,7 @@ struct ReceiptPrintingView: View {
             VStack {
                 Spacer(minLength: 0)
                 HStack(spacing: 8) {
-                    Image(systemName: "scissors")
+                    Image(hugeIcon: "scissors")
                         .font(.caption)
                     Line()
                         .stroke(style: StrokeStyle(lineWidth: 1, dash: [4, 4]))
@@ -390,7 +390,7 @@ struct ReceiptPrintingView: View {
                         .controlSize(.small)
                 } else if stage == .printed {
                     Button(action: onEdit) {
-                        Label("Edit", systemImage: "pencil")
+                        Label("Edit", hugeIcon: "pencil")
                             .font(.subheadline.weight(.semibold))
                     }
                     .buttonStyle(.bordered)

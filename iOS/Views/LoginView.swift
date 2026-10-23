@@ -89,8 +89,8 @@ private struct CodeEntryView: View {
             Spacer()
 
             VStack(spacing: 8) {
-                Image(systemName: "envelope.badge")
-                    .font(.system(size: 64))
+                Image(hugeIcon: "envelope.badge")
+                    .resizable().scaledToFit().frame(width: 64, height: 64)
                     .foregroundStyle(TrolleyStyle.accent)
                 Text("Check your email")
                     .font(.system(.largeTitle, design: .rounded, weight: .bold))

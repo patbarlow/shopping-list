@@ -49,9 +49,6 @@ struct ShoppingListView: View {
     // ── Reference unit price (for the subtle "expected price" hint) ────────────
     @State private var unitPricesByName: [String: (value: Double, unit: String)] = [:]
 
-    // ── Empty-state visibility (debounced — see showEmptyStateIfSettled) ───────
-    @State private var showEmptyState = false
-    @State private var emptyStateTask: Task<Void, Never>? = nil
 
     private var store: ShoppingListStore { services.shopping }
 
@@ -68,28 +65,12 @@ struct ShoppingListView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                // Drawn first (behind) so the glass add-item accessory — added
-                // below via safeAreaInset, which renders on top of whatever
-                // it's attached to — can actually blur it, instead of this
-                // sitting in front of the glass with nothing to blur.
-                if showEmptyState {
-                    emptyState
-                        // Stable regardless of the keyboard or the accessory
-                        // growing taller (extra fields, toasts) — it's a ZStack
-                        // sibling, not nested inside mainList's own safe-area
-                        // reservation, so neither moves it.
-                        .ignoresSafeArea(.keyboard, edges: .bottom)
-                }
-
                 mainList
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        addItemAccessory
-                    }
+                if store.items.allSatisfy(\.checked) {
+                    listStatus.ignoresSafeArea(.keyboard, edges: .bottom)
+                }
             }
-            .onChange(of: store.items.isEmpty || store.isLoading) { _, _ in
-                showEmptyStateIfSettled()
-            }
-            .task { showEmptyStateIfSettled() }
+            .safeAreaInset(edge: .bottom, spacing: 0) { addItemAccessory }
             .background(TrolleyStyle.canvas)
             .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
@@ -135,7 +116,7 @@ struct ShoppingListView: View {
             // Duplicate-item toast
             if let dupe = duplicateToastName {
                 Button { duplicateToastName = nil } label: {
-                    Label("\(dupe) is already on your list", systemImage: "exclamationmark.circle")
+                    Label("\(dupe) is already on your list", hugeIcon: "exclamationmark.circle")
                         .font(.subheadline.weight(.medium))
                         .padding(.horizontal, 16)
                         .padding(.vertical, 18)
@@ -150,7 +131,7 @@ struct ShoppingListView: View {
             if !store.recentlyCompleted.isEmpty {
                 Button { store.undoLastComplete() } label: {
                     HStack(spacing: 10) {
-                        Label("Undo", systemImage: "arrow.uturn.backward")
+                        Label("Undo", hugeIcon: "arrow.uturn.backward")
                             .font(.subheadline.weight(.medium))
                         if let deadline = store.undoDeadline {
                             TimelineView(.periodic(from: .now, by: 1)) { _ in
@@ -176,17 +157,17 @@ struct ShoppingListView: View {
                 // Name row
                 HStack(spacing: 12) {
                     if isEditingItem {
-                        Image(systemName: "pencil")
+                        Image(hugeIcon: "pencil")
                             .font(.body.weight(.semibold))
                             .foregroundStyle(.tint)
                             .frame(width: 24, height: 24)
                     } else if isAdding {
-                        Image(systemName: "circle")
+                        Image(hugeIcon: "circle")
                             .foregroundStyle(.tertiary)
                             .font(.body)
                             .frame(width: 24, height: 24)
                     } else {
-                        Image(systemName: "plus")
+                        Image(hugeIcon: "plus")
                             .font(.body.weight(.semibold))
                             .foregroundStyle(.tint)
                             .frame(width: 24, height: 24)
@@ -201,7 +182,7 @@ struct ShoppingListView: View {
                         Button {
                             cancelEditing()
                         } label: {
-                            Image(systemName: "xmark.circle.fill")
+                            Image(hugeIcon: "xmark.circle.fill")
                                 .foregroundStyle(.tertiary)
                         }
                         .buttonStyle(.plain)
@@ -211,6 +192,7 @@ struct ShoppingListView: View {
                             .onTapGesture { startAdding() }
                     } else if isAdding {
                         TextField("Items, separated by commas", text: $addText, axis: .vertical)
+                            .accessibilityIdentifier("list-add-input")
                             .focused($focusedField, equals: .newName)
                             .submitLabel(.done)
                             .onSubmit { commitAdd() }
@@ -275,22 +257,22 @@ struct ShoppingListView: View {
             .padding(.top, 6)
             .contentShape(Rectangle())
             .simultaneousGesture(
-                DragGesture(minimumDistance: 8, coordinateSpace: .local)
+                DragGesture(minimumDistance: 8, coordinateSpace: .global)
                     .onEnded { value in
-                        let dy = value.translation.height
-                        let dx = value.translation.width
-                        guard abs(dy) > abs(dx) * 0.8 else { return }
-                        if dy > 25 && focusedField != nil {
-                            focusedField = nil
-                        } else if dy < -20 && isAdding && focusedField == nil {
-                            focusedField = .newName
-                        } else if dy < -20 && isEditingItem && focusedField == nil {
-                            focusedField = .editName
-                        } else if dy < -20 && !isAdding && !isEditingItem {
-                            startAdding()
-                        }
+                        // Global coordinates stay stable while the keyboard moves
+                        // the composer. Local translation could flip sign and reopen it.
+                        guard value.translation.height < -20,
+                              abs(value.translation.height) > abs(value.translation.width),
+                              focusedField == nil else { return }
+                        if isAdding { focusedField = .newName }
+                        else if isEditingItem { focusedField = .editName }
+                        else { startAdding() }
                     }
             )
+            .background(ComposerKeyboardDismissal(enabled: focusedField != nil) {
+                isCommitting = false
+                focusedField = nil
+            })
             // Snappier and less bouncy than before — the keyboard's own rise
             // is a plain ~250ms ease, and the old spring's overshoot tail kept
             // visibly settling after the keyboard had already finished.
@@ -334,7 +316,7 @@ struct ShoppingListView: View {
                                         .font(.system(.body, design: .rounded, weight: .semibold))
                                         .foregroundStyle(.primary)
                                     Spacer()
-                                    Image(systemName: "chevron.down")
+                                    Image(hugeIcon: "chevron.down")
                                         .font(.caption.weight(.semibold))
                                         .foregroundStyle(.secondary)
                                         .rotationEffect(isCollapsed ? .degrees(-90) : .zero)
@@ -373,7 +355,7 @@ struct ShoppingListView: View {
                                                 Button(role: .destructive) {
                                                     Task { await store.deleteItem(item) }
                                                 } label: {
-                                                    Label("Delete", systemImage: "trash")
+                                                    Label("Delete", hugeIcon: "trash")
                                                 }
                                             }
                                     }
@@ -419,7 +401,7 @@ struct ShoppingListView: View {
         let isVisuallyComplete = isComplete || pendingCompleteIDs.contains(item.id)
         return VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .center, spacing: 10) {
-                Image(systemName: isVisuallyComplete ? "checkmark.circle.fill" : "circle")
+                Image(hugeIcon: isVisuallyComplete ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(isVisuallyComplete ? TrolleyStyle.accent : Color(.systemGray3))
                     .font(.title3)
                     .frame(width: 28, height: 28)
@@ -469,6 +451,22 @@ struct ShoppingListView: View {
 
     // MARK: - Empty state
 
+    @ViewBuilder private var listStatus: some View {
+        if !store.hasLoaded, let error = store.error {
+            VStack(spacing: 16) {
+                Text("Couldn't load your list").font(.title3.bold())
+                Text(error).font(.subheadline).foregroundStyle(.secondary)
+                Button("Try again") { Task { await store.fetch() } }
+            }.padding(32).frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if store.hasLoaded {
+            emptyState.accessibilityIdentifier("list-empty-state")
+        } else {
+            ProgressView("Loading your list…")
+                .accessibilityIdentifier("list-loading")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
     private var emptyState: some View {
         VStack(spacing: 20) {
             TrolleyMascot(size: 100)
@@ -486,7 +484,7 @@ struct ShoppingListView: View {
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigationBarLeading) {
             Button { showSettings = true } label: {
-                Image(systemName: "gearshape")
+                Image(hugeIcon: "gearshape")
                     .frame(width: 22, height: 22)
             }.accessibilityLabel("Settings")
         }
@@ -543,28 +541,6 @@ struct ShoppingListView: View {
 
     private func isEditField(_ f: FocusField?) -> Bool {
         f == .editName || f == .editQty || f == .editNotes
-    }
-
-    // MARK: - Empty state visibility
-
-    /// A brief real reload (tab reappearing, a realtime reconnect refetch)
-    /// flips `isLoading`/`items` a couple of times in quick succession, and
-    /// each flip used to show/hide the empty-state graphic immediately —
-    /// visible as a flash. Hiding is instant (nothing to lose by reacting
-    /// fast), but showing only happens once the empty condition has actually
-    /// held for a moment.
-    private func showEmptyStateIfSettled() {
-        emptyStateTask?.cancel()
-        let isEmptyNow = store.items.isEmpty && !store.isLoading
-        guard isEmptyNow else {
-            showEmptyState = false
-            return
-        }
-        emptyStateTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 250_000_000)
-            guard !Task.isCancelled else { return }
-            showEmptyState = store.items.isEmpty && !store.isLoading
-        }
     }
 
     // MARK: - Actions

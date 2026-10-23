@@ -2,7 +2,7 @@
 
 The user selected the simplified checklist concept on 23 October 2026. Created with the built-in image-generation tool and resampled with sips for the asset catalogues. The production iOS icon is `iOS/Assets.xcassets/AppIcon.appiconset/AppIcon.png`: 1024 x 1024, opaque and full bleed so iOS applies its own mask. The same artwork is packaged at all existing macOS icon sizes.
 
-The design uses a slightly tilted cream checklist with chunky charcoal marks on a bright spring-green background (prompt target #9DE83A). It replaces the earlier trolley mascot app icon. The separate in-app illustration has not changed.
+The design uses a slightly tilted cream checklist with chunky charcoal marks on a bright spring-green background (prompt target #9DE83A). It replaces the earlier trolley mascot app icon. The in-app trolley is a separate transparent illustration; see TrolleyMascot.md.
 
 ## Generation prompt
 

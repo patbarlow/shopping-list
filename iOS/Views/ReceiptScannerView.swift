@@ -170,7 +170,7 @@ struct ReceiptScannerView: View {
 
     private func failedView(_ message: String) -> some View {
         VStack(spacing: 16) {
-            Image(systemName: "exclamationmark.triangle")
+            Image(hugeIcon: "exclamationmark.triangle")
                 .font(.system(size: 40))
                 .foregroundStyle(.red)
             Text(message)
@@ -557,7 +557,7 @@ private struct ReceiptEditorView: View {
                             item.isIncluded.toggle()
                             UISelectionFeedbackGenerator().selectionChanged()
                         } label: {
-                            Image(systemName: item.isIncluded ? "checkmark.circle.fill" : "circle")
+                            Image(hugeIcon: item.isIncluded ? "checkmark.circle.fill" : "circle")
                                 .font(.title3)
                                 .foregroundStyle(item.isIncluded ? TrolleyStyle.accent : Color.secondary)
                                 .frame(width: 32, height: 44)
@@ -619,7 +619,7 @@ private struct ReceiptProductChoice: View {
                 HStack {
                     Text(item.productName)
                     Spacer()
-                    Image(systemName: "checkmark").foregroundStyle(TrolleyStyle.accent)
+                    Image(hugeIcon: "checkmark").foregroundStyle(TrolleyStyle.accent)
                 }
             }
             Section(query.isEmpty ? "Suggested products" : "Search results") {
@@ -646,20 +646,20 @@ private struct ReceiptProductChoice: View {
                             }
                             Spacer()
                             if product.id == item.productId {
-                                Image(systemName: "checkmark").foregroundStyle(TrolleyStyle.accent)
+                                Image(hugeIcon: "checkmark").foregroundStyle(TrolleyStyle.accent)
                             }
                         }
                     }
                 }
             }
             Section {
-                Button("Create new product…", systemImage: "plus.circle") {
+                Button("Create new product…", hugeIcon: "plus.circle") {
                     newName = item.productName
                     creating = true
                 }
             }
             Section {
-                Button("Adjust quantity or price", systemImage: "slider.horizontal.3") {
+                Button("Adjust quantity or price", hugeIcon: "slider.horizontal.3") {
                     quantity = item.quantity.map { String($0) } ?? ""
                     price = item.priceText
                     adjusting = true
@@ -787,7 +787,7 @@ private struct ReceiptPrinterView: View {
                     HStack(spacing: 12) {
                         if isReady && !tearing {
                             Button(action: onEdit) {
-                                Label("Edit", systemImage: "slider.horizontal.3")
+                                Label("Edit", hugeIcon: "slider.horizontal.3")
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.glass)
@@ -797,7 +797,7 @@ private struct ReceiptPrinterView: View {
                                     tearing = true
                                 }
                             } label: {
-                                Label("Confirm", systemImage: "checkmark")
+                                Label("Confirm", hugeIcon: "checkmark")
                                     .frame(maxWidth: .infinity)
                             }
                             .buttonStyle(.glassProminent)
@@ -1028,7 +1028,7 @@ struct ProductPickerSheet: View {
                     Button {
                         onSelect(.create(name: searchText.trimmingCharacters(in: .whitespaces)))
                     } label: {
-                        Label("Add \"\(searchText.trimmingCharacters(in: .whitespaces))\"", systemImage: "plus.circle")
+                        Label("Add \"\(searchText.trimmingCharacters(in: .whitespaces))\"", hugeIcon: "plus.circle")
                             .foregroundStyle(.blue)
                     }
                 }

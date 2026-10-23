@@ -53,7 +53,7 @@
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Used for voice input when adding items to your shopping list.</string>
 	<key>NSPhotoLibraryUsageDescription</key>
-	<string>Suggest your latest screenshot or photo for a price check when you enable recent photos.</string>
+	<string>Suggest your latest screenshot or photo so you can quickly attach it to a price check.</string>
 	<key>NSSiriUsageDescription</key>
 	<string>Used to add items to your shopping list hands-free.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

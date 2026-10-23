@@ -105,7 +105,7 @@ struct ReceiptEditSheet: View {
 
             if let mismatch = mismatchNote {
                 Divider().padding(.leading, 16)
-                Label(mismatch, systemImage: "exclamationmark.triangle.fill")
+                Label(mismatch, hugeIcon: "exclamationmark.triangle.fill")
                     .font(.caption)
                     .foregroundStyle(.orange)
                     .frame(maxWidth: .infinity, alignment: .leading)
@@ -152,7 +152,7 @@ struct ReceiptEditSheet: View {
                 Button {
                     item.isIncluded.wrappedValue.toggle()
                 } label: {
-                    Image(systemName: value.isIncluded ? "checkmark.circle.fill" : "circle")
+                    Image(hugeIcon: value.isIncluded ? "checkmark.circle.fill" : "circle")
                         .font(.title2)
                         .foregroundStyle(value.isIncluded ? TrolleyStyle.accent : Color.secondary.opacity(0.5))
                         .contentTransition(.symbolEffect(.replace))
@@ -178,7 +178,7 @@ struct ReceiptEditSheet: View {
                                     .background(TrolleyStyle.accent.opacity(0.15), in: Capsule())
                                     .foregroundStyle(TrolleyStyle.accent)
                             }
-                            Image(systemName: "chevron.right")
+                            Image(hugeIcon: "chevron.right")
                                 .font(.caption2.weight(.semibold))
                                 .foregroundStyle(.tertiary)
                         }
@@ -256,7 +256,7 @@ struct ReceiptEditSheet: View {
 
     private func stepperButton(_ symbol: String, enabled: Bool, action: @escaping () -> Void) -> some View {
         Button(action: action) {
-            Image(systemName: symbol)
+            Image(hugeIcon: symbol)
                 .font(.caption.weight(.bold))
                 .frame(width: 32, height: 30)
                 .contentShape(Rectangle())

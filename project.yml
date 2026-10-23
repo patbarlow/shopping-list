@@ -36,6 +36,8 @@ targets:
     resources:
       - path: iOS/Assets.xcassets
       - path: Shared/Config.plist
+      - path: Shared/HugeIcons.xcassets
+      - path: Shared/HugeIcons-LICENSE.txt
     dependencies:
       - package: Sentry
         product: Sentry
@@ -54,7 +56,7 @@ targets:
           - UIInterfaceOrientationLandscapeLeft
           - UIInterfaceOrientationLandscapeRight
         NSCameraUsageDescription: "Take a receipt or price photo to check your shopping. Photos are not saved to your library."
-        NSPhotoLibraryUsageDescription: "Suggest your latest screenshot or photo for a price check when you enable recent photos."
+        NSPhotoLibraryUsageDescription: "Suggest your latest screenshot or photo so you can quickly attach it to a price check."
         NSMicrophoneUsageDescription: "Used for voice input when adding items to your shopping list."
         NSSpeechRecognitionUsageDescription: "Used to convert your voice into shopping list items."
         NSSiriUsageDescription: "Used to add items to your shopping list hands-free."
@@ -153,6 +155,8 @@ targets:
     resources:
       - path: macOS/Assets.xcassets
       - path: Shared/Config.plist
+      - path: Shared/HugeIcons.xcassets
+      - path: Shared/HugeIcons-LICENSE.txt
     info:
       path: macOS/Info.plist
       properties:

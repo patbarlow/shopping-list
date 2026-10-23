@@ -11,9 +11,7 @@ struct PriceCheckView: View {
     @State private var speech = SpeechService()
     @State private var text = ""
     @State private var attachment: UIImage?
-    @State private var photo: PhotosPickerItem?
-    @State private var showPhotos = false
-    @State private var showCamera = false
+    @State private var mediaSource: MediaPickerSource?
     @State private var showProducts = false
     @State private var busy = false
     @State private var error: String?
@@ -26,7 +24,6 @@ struct PriceCheckView: View {
     @State private var recentID: String?
     @State private var dismissedRecentID: String?
     @State private var messages: [Message] = []
-    @AppStorage("priceCheckRecentPhotos") private var recentEnabled = false
     @FocusState private var focused: Bool
 
     private struct Message: Identifiable {
@@ -97,39 +94,29 @@ struct PriceCheckView: View {
         .toolbar {
             ToolbarItem(placement: .topBarTrailing) {
                 Menu {
-                    Button("New chat", systemImage: "square.and.pencil") {
+                    Button("New chat", hugeIcon: "square.and.pencil") {
                         speech.stop(flush: false)
                         messages = []; offer = nil; comparison = nil; selected = nil; attachment = nil; text = ""; error = nil
                     }.disabled(busy)
-                    Button(recentEnabled ? "Turn off recent photos" : "Enable recent photo suggestion", systemImage: "photo.badge.clock") {
-                        if recentEnabled { recentEnabled = false; recentImage = nil }
-                        else { Task { await enableRecent() } }
-                    }
-                } label: { Image(systemName: "ellipsis") }
+                } label: { Image(hugeIcon: "ellipsis") }
+                .accessibilityLabel("Chat options")
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { composer }
-        .photosPicker(isPresented: $showPhotos, selection: $photo, matching: .images)
-        .sheet(isPresented: $showCamera) {
-            PriceCheckCamera { image in attachment = image; showCamera = false }.ignoresSafeArea()
-        }
-        .sheet(isPresented: $showProducts) { productSheet }
-        .onChange(of: photo) { _, item in
-            Task {
-                do {
-                    guard let data = try await item?.loadTransferable(type: Data.self), let image = UIImage(data: data) else { return }
-                    attachment = image
-                } catch { self.error = "Couldn't load that photo. Try choosing it again." }
-                photo = nil
+        .sheet(item: $mediaSource) { source in
+            switch source {
+            case .camera: CompactCameraPicker { attachment = $0 }
+            case .photos: CompactPhotoPicker { attachment = $0 }
             }
         }
+        .sheet(isPresented: $showProducts) { productSheet }
         .onChange(of: scenePhase) { _, phase in
             if phase == .active { Task { await loadRecent() } }
             else { speech.stop(flush: true) }
         }
         .task {
             speech.onUtterance = { phrase in text += (text.isEmpty ? "" : " ") + phrase }
-            await loadRecent()
+            await loadRecent(requestPermission: true)
         }
         .onDisappear { speech.stop(flush: true) }
     }
@@ -144,11 +131,10 @@ struct PriceCheckView: View {
                     .font(.body).foregroundStyle(.secondary)
             }.multilineTextAlignment(.center)
             HStack(spacing: 12) {
-                Button { openCamera() } label: { Label("Camera", systemImage: "camera") }
-                    .disabled(!UIImagePickerController.isSourceTypeAvailable(.camera))
-                Button { showPhotos = true } label: { Label("Photos", systemImage: "photo") }
+                Button { openMedia(.camera) } label: { Label("Camera", hugeIcon: "camera") }
+                Button { openMedia(.photos) } label: { Label("Photos", hugeIcon: "photo") }
             }
-            .font(.subheadline.weight(.medium)).buttonStyle(.bordered).buttonBorderShape(.capsule).tint(.primary)
+            .font(.subheadline.weight(.medium)).buttonStyle(PriceCheckMediaButtonStyle())
         }
         .frame(maxWidth: .infinity).padding(.top, 64).padding(.bottom, 24)
     }
@@ -183,7 +169,7 @@ struct PriceCheckView: View {
                             Text("Attach recent photo").font(.subheadline)
                         }
                     }.tint(.primary)
-                    Button { dismissedRecentID = recentID } label: { Image(systemName: "xmark").font(.caption) }
+                    Button { dismissedRecentID = recentID } label: { Image(hugeIcon: "xmark").font(.caption) }
                         .tint(.secondary).accessibilityLabel("Hide recent photo")
                 }.padding(.horizontal, 8)
             }
@@ -193,7 +179,7 @@ struct PriceCheckView: View {
                         Image(uiImage: attachment).resizable().scaledToFill().frame(width: 44, height: 44)
                             .clipped().clipShape(RoundedRectangle(cornerRadius: 10))
                         Text("Photo").font(.subheadline)
-                        Button { self.attachment = nil } label: { Image(systemName: "xmark").font(.caption.weight(.semibold)) }
+                        Button { self.attachment = nil } label: { Image(hugeIcon: "xmark").font(.caption.weight(.semibold)) }
                             .accessibilityLabel("Remove photo")
                     }.padding(6).padding(.trailing, 8).background(.quaternary.opacity(0.4), in: Capsule())
                 }
@@ -207,21 +193,20 @@ struct PriceCheckView: View {
                 if let error = speech.error { Text(error).font(.caption).foregroundStyle(.secondary) }
                 HStack(spacing: 4) {
                     Menu {
-                        Button("Camera", systemImage: "camera") { openCamera() }
-                            .disabled(!UIImagePickerController.isSourceTypeAvailable(.camera))
-                        Button("Photos", systemImage: "photo") { showPhotos = true }
-                    } label: { Image(systemName: "plus").font(.system(size: 22)).frame(width: 44, height: 44) }
-                        .accessibilityLabel("Attach photo")
+                        Button("Camera", hugeIcon: "camera") { openMedia(.camera) }
+                        Button("Photos", hugeIcon: "photo") { openMedia(.photos) }
+                    } label: { Image(hugeIcon: "plus").font(.system(size: 22)).frame(width: 44, height: 44) }
+                        .accessibilityLabel("Attach photo").accessibilityIdentifier("price-check-attachments")
                     Spacer()
                     Button {
                         if speech.isRecording { speech.stop(flush: true) }
                         else { focused = false; Task { await speech.start() } }
                     } label: {
-                        Image(systemName: speech.isRecording ? "stop.fill" : "waveform")
+                        Image(hugeIcon: speech.isRecording ? "stop.fill" : "waveform")
                             .font(.system(size: 19, weight: .medium)).frame(width: 44, height: 44)
                     }.accessibilityLabel(speech.isRecording ? "Stop dictation" : "Dictate question")
                     Button { Task { await check() } } label: {
-                        Image(systemName: "arrow.up").font(.system(size: 19, weight: .semibold))
+                        Image(hugeIcon: "arrow.up").font(.system(size: 19, weight: .semibold))
                             .foregroundStyle(Color(.systemBackground))
                             .frame(width: 40, height: 40)
                             .background(Color.primary.opacity(canSend && !busy ? 1 : 0.22), in: Circle())
@@ -234,6 +219,8 @@ struct PriceCheckView: View {
         }
         .padding(.horizontal, 16).padding(.bottom, 10).padding(.top, 8)
         .disabled(busy)
+        .contentShape(Rectangle())
+        .background(ComposerKeyboardDismissal(enabled: focused) { focused = false })
     }
 
     private func pendingReply(_ offer: PriceOffer) -> some View {
@@ -245,7 +232,7 @@ struct PriceCheckView: View {
                     .font(.title3.weight(.medium))
                 ForEach(Array(candidates.prefix(3))) { product in
                     Button { Task { await compare(product) } } label: {
-                        HStack { Text(product.name); Spacer(); Image(systemName: "arrow.up.left") }
+                        HStack { Text(product.name); Spacer(); Image(hugeIcon: "arrow.up.left") }
                             .font(.subheadline).padding(.vertical, 10)
                     }.tint(.primary)
                 }
@@ -264,7 +251,7 @@ struct PriceCheckView: View {
                     HStack {
                         Text(product.name).foregroundStyle(.primary)
                         Spacer()
-                        if selected?.id == product.id { Image(systemName: "checkmark").foregroundStyle(.secondary) }
+                        if selected?.id == product.id { Image(hugeIcon: "checkmark").foregroundStyle(.secondary) }
                     }.padding(.vertical, 6)
                 }.buttonStyle(.plain)
             }
@@ -276,12 +263,10 @@ struct PriceCheckView: View {
         .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
     }
 
-    private func openCamera() {
+    private func openMedia(_ source: MediaPickerSource) {
         speech.stop(flush: true)
-        Task {
-            if await AVCaptureDevice.requestAccess(for: .video) { showCamera = true }
-            else { error = "Allow camera access in Settings, or choose a photo instead." }
-        }
+        focused = false
+        mediaSource = source
     }
 
     private func check() async {
@@ -337,54 +322,44 @@ struct PriceCheckView: View {
         comparison = PriceComparison(offer: offer, purchases: detail.purchases)
         selected = product
     }
-    private func enableRecent() async {
-        let status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
-        recentEnabled = status == .authorized || status == .limited
-        if recentEnabled { await loadRecent() }
-        else { error = "Photo suggestions need Photos access in Settings. You can still choose a photo with the + button." }
-    }
-
-    private func loadRecent() async {
-        guard recentEnabled else { return }
-        let status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
-        guard status == .authorized || status == .limited else { recentImage = nil; return }
+    private func loadRecent(requestPermission: Bool = false) async {
+        #if DEBUG
+        guard ProcessInfo.processInfo.environment["TROLLEY_UI_TEST"] == nil else { return }
+        #endif
+        var status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
+        if requestPermission, status == .notDetermined {
+            status = await PHPhotoLibrary.requestAuthorization(for: .readWrite)
+        }
+        guard status == .authorized || status == .limited else {
+            recentImage = nil; recentID = nil
+            return
+        }
         let options = PHFetchOptions()
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
         options.fetchLimit = 1
         options.predicate = NSPredicate(format: "creationDate > %@", Date().addingTimeInterval(-86400) as NSDate)
-        guard let asset = PHAsset.fetchAssets(with: .image, options: options).firstObject else { recentImage = nil; return }
+        guard let asset = PHAsset.fetchAssets(with: .image, options: options).firstObject else { recentImage = nil; recentID = nil; return }
         guard asset.localIdentifier != recentID else { return }
         let request = PHImageRequestOptions()
         request.deliveryMode = .highQualityFormat
         request.isNetworkAccessAllowed = true
         let image: UIImage? = await withCheckedContinuation { continuation in
-            PHImageManager.default().requestImage(for: asset, targetSize: CGSize(width: 1600, height: 1600), contentMode: .aspectFit, options: request) { image, _ in
+            PHImageManager.default().requestImage(for: asset, targetSize: CGSize(width: 1600, height: 1600), contentMode: .aspectFit, options: request) { image, info in
+                guard info?[PHImageResultIsDegradedKey] as? Bool != true else { return }
                 continuation.resume(returning: image)
             }
         }
-        recentID = asset.localIdentifier; recentImage = image
+        recentID = image == nil ? nil : asset.localIdentifier; recentImage = image
     }
 }
 
-private struct PriceCheckCamera: UIViewControllerRepresentable {
-    let onCapture: (UIImage) -> Void
-    @Environment(\.dismiss) private var dismiss
-    func makeCoordinator() -> Coordinator { Coordinator(self) }
-    func makeUIViewController(context: Context) -> UIImagePickerController {
-        let picker = UIImagePickerController()
-        picker.sourceType = .camera
-        picker.delegate = context.coordinator
-        return picker
-    }
-    func updateUIViewController(_ controller: UIImagePickerController, context: Context) {}
-    final class Coordinator: NSObject, UIImagePickerControllerDelegate, UINavigationControllerDelegate {
-        let parent: PriceCheckCamera
-        init(_ parent: PriceCheckCamera) { self.parent = parent }
-        func imagePickerController(_ picker: UIImagePickerController, didFinishPickingMediaWithInfo info: [UIImagePickerController.InfoKey: Any]) {
-            if let image = info[.originalImage] as? UIImage { parent.onCapture(image) }
-            parent.dismiss()
-        }
-        func imagePickerControllerDidCancel(_ picker: UIImagePickerController) { parent.dismiss() }
+private struct PriceCheckMediaButtonStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(.primary)
+            .padding(.horizontal, 16).padding(.vertical, 12)
+            .background(TrolleyStyle.surface.opacity(configuration.isPressed ? 0.65 : 1), in: Capsule())
+            .opacity(configuration.isPressed ? 0.75 : 1)
     }
 }
 
@@ -428,7 +403,7 @@ private struct PriceCheckReply: View {
                     Button(action: changeProduct) {
                         HStack(spacing: 6) {
                             Text(product.name)
-                            Image(systemName: "chevron.down").font(.caption2.weight(.semibold))
+                            Image(hugeIcon: "chevron.down").font(.caption2.weight(.semibold))
                         }.font(.subheadline).foregroundStyle(.secondary)
                     }.buttonStyle(.plain).accessibilityLabel("Change product").accessibilityIdentifier("price-check-change-product")
                 } else { Text(product.name).font(.subheadline).foregroundStyle(.secondary) }

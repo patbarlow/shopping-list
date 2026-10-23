@@ -11,10 +11,11 @@ struct ContentView: View {
         // A local @Bindable shadow of the environment object — the standard
         // way to get a two-way Binding (for .sheet(item:)) out of something
         // injected via .environment(...) rather than owned as local @State.
-        Group {
+        @Bindable var receiptImportCoordinator = receiptImportCoordinator
+        return Group {
             #if DEBUG
             if let scenario = ProcessInfo.processInfo.environment["TROLLEY_UI_TEST"] {
-                if scenario == "app" {
+                if scenario == "app" || scenario.hasPrefix("list-") {
                     householdTabs(Household(id: "fixture", name: "Our place", inviteCode: "TEST", shoppingFrequency: .weekly))
                 } else {
                     NavigationStack {
@@ -32,6 +33,13 @@ struct ContentView: View {
             authenticatedContent
             #endif
         }
+        .sheet(item: $receiptImportCoordinator.mediaPicker,
+               onDismiss: receiptImportCoordinator.presentQueuedCapture) { source in
+            switch source {
+            case .camera: CompactCameraPicker(onCapture: receiptImportCoordinator.finishMedia)
+            case .photos: CompactPhotoPicker(onSelect: receiptImportCoordinator.finishMedia)
+            }
+        }
     }
 
     #if DEBUG
@@ -45,19 +53,32 @@ struct ContentView: View {
     #endif
 
     private func householdTabs(_ household: Household) -> some View {
-        TabView(selection: $selectedTab) {
-            Tab("List", systemImage: "cart", value: AppTab.list) {
+        @Bindable var receiptImportCoordinator = receiptImportCoordinator
+        return TabView(selection: $selectedTab) {
+            Tab(value: AppTab.list) {
                 ShoppingListView(household: household, voice: voice)
+            } label: {
+                Image(hugeIcon: "cart").accessibilityLabel("List")
             }
-            Tab("Insights", systemImage: "chart.bar", value: AppTab.insights) {
+            Tab(value: AppTab.insights) {
                 SpendTrendsView(household: household)
+            } label: {
+                Image(hugeIcon: "chart.bar").accessibilityLabel("Insights")
             }
-            Tab("Check price", systemImage: "tag", value: AppTab.price) {
+            Tab(value: AppTab.price) {
                 NavigationStack { PriceCheckView(householdId: household.id) }
+            } label: {
+                Image(hugeIcon: "tag").accessibilityLabel("Check price")
             }
-            Tab("Forecast", systemImage: "calendar.badge.clock", value: AppTab.forecast) {
+            Tab(value: AppTab.forecast) {
                 NavigationStack { PredictedListView(household: household) }
+            } label: {
+                Image(hugeIcon: "calendar.badge.clock").accessibilityLabel("Forecast")
             }
+        }
+        .sheet(item: $receiptImportCoordinator.pendingCapture) { capture in
+            ReceiptScannerView(householdId: household.id, initialCapture: capture)
+                .environment(services)
         }
         .tabBarMinimizeBehavior(.never)
         .overlay(alignment: .bottom) {
@@ -67,23 +88,10 @@ struct ContentView: View {
     }
 
     private var authenticatedContent: some View {
-        @Bindable var receiptImportCoordinator = receiptImportCoordinator
         return Group {
             if services.auth.isLoggedIn {
                 if let household = services.auth.household {
                     householdTabs(household)
-                    // Anchored here — the TabView's root, always "in window"
-                    // regardless of which tab is frontmost — rather than on
-                    // ShoppingListView specifically. A share-sheet import
-                    // (or the toolbar menu) landing while a different tab is
-                    // active used to try presenting from a view controller
-                    // that wasn't currently on screen, so the sheet just
-                    // silently queued until the user happened to switch back
-                    // to the List tab.
-                    .sheet(item: $receiptImportCoordinator.pendingCapture) { capture in
-                        ReceiptScannerView(householdId: household.id, initialCapture: capture)
-                            .environment(services)
-                    }
                     .onChange(of: services.pendingReceiptPDF) { _, pdf in
                         guard let pdf else { return }
                         services.pendingReceiptPDF = nil
