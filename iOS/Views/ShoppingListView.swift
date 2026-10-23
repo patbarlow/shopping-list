@@ -129,7 +129,7 @@ struct ShoppingListView: View {
 
             // Undo toast — taller, with live countdown
             if !store.recentlyCompleted.isEmpty {
-                Button { store.undoLastComplete() } label: {
+                Button { AppHaptics.selection(); store.undoLastComplete() } label: {
                     HStack(spacing: 10) {
                         Label("Undo", hugeIcon: "arrow.uturn.backward")
                             .font(.subheadline.weight(.medium))
@@ -191,10 +191,10 @@ struct ShoppingListView: View {
                             .contentShape(Rectangle())
                             .onTapGesture { startAdding() }
                     } else if isAdding {
-                        TextField("Items, separated by commas", text: $addText, axis: .vertical)
+                        TextField("Items, separated by commas", text: $addText)
                             .accessibilityIdentifier("list-add-input")
                             .focused($focusedField, equals: .newName)
-                            .submitLabel(.done)
+                            .submitLabel(.send)
                             .onSubmit { commitAdd() }
                         if parsedAddItems.count > 1 {
                             Text("\(parsedAddItems.count) items")
@@ -303,6 +303,7 @@ struct ShoppingListView: View {
                         VStack(spacing: 8) {
                             // ── Section header ────────────────────────────────
                             Button {
+                                AppHaptics.selection()
                                 withAnimation(.easeInOut(duration: 0.2)) {
                                     if isCollapsed { collapsedSections.remove(catKey) }
                                     else { collapsedSections.insert(catKey) }
@@ -557,6 +558,7 @@ struct ShoppingListView: View {
 
     private func startAdding() {
         guard !voice.isActive else { return }
+        AppHaptics.tap()
         voice.dismissFeedback()
         if let id = editingItemID, store.items.contains(where: { $0.id == id }) {
             commitCurrentEdit()
@@ -572,7 +574,7 @@ struct ShoppingListView: View {
     }
 
     private func commitAdd(refocus: Bool = true) {
-        let trimmed = addText.trimmingCharacters(in: .whitespaces)
+        let trimmed = addText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             if !refocus { cancelAdd() }
             return
@@ -589,6 +591,7 @@ struct ShoppingListView: View {
         }
 
         isCommitting = true
+        AppHaptics.added()
         let qty = addQty.trimmingCharacters(in: .whitespaces)
         let note = addNotes.trimmingCharacters(in: .whitespaces)
 
@@ -680,6 +683,8 @@ struct ShoppingListView: View {
     }
 
     private func triggerComplete(_ item: ShoppingItem) {
+        guard !pendingCompleteIDs.contains(item.id) else { return }
+        AppHaptics.added()
         withAnimation(.easeInOut(duration: 0.2)) {
             _ = pendingCompleteIDs.insert(item.id)
         }

@@ -35,10 +35,13 @@ struct ContentView: View {
         }
         .sheet(item: $receiptImportCoordinator.mediaPicker,
                onDismiss: receiptImportCoordinator.presentQueuedCapture) { source in
-            switch source {
-            case .camera: CompactCameraPicker(onCapture: receiptImportCoordinator.finishMedia)
-            case .photos: CompactPhotoPicker(onSelect: receiptImportCoordinator.finishMedia)
+            Group {
+                switch source {
+                case .camera, .scan: CompactCameraPicker(scan: source == .scan, onCapture: receiptImportCoordinator.finishMedia)
+                case .photos: CompactPhotoPicker(onSelect: receiptImportCoordinator.finishMedia)
+                }
             }
+            .modifier(MediaZoomTransition(namespace: receiptImportCoordinator.transitionNamespace, sourceID: "receipt"))
         }
     }
 
@@ -81,6 +84,7 @@ struct ContentView: View {
                 .environment(services)
         }
         .tabBarMinimizeBehavior(.never)
+        .onChange(of: selectedTab) { _, _ in AppHaptics.selection() }
         .overlay(alignment: .bottom) {
             VoiceScreenGlow(active: voice.isActive, level: voice.speech.level)
                 .ignoresSafeArea(.container, edges: .bottom)

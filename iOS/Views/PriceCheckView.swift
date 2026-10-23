@@ -12,6 +12,11 @@ struct PriceCheckView: View {
     @State private var text = ""
     @State private var attachment: UIImage?
     @State private var mediaSource: MediaPickerSource?
+    @Namespace private var mediaTransition
+    @State private var mediaOrigin = "attachments"
+    @State private var showAttachments = false
+    @State private var queuedMedia: MediaPickerSource?
+    @State private var focusAfterMedia = false
     @State private var showProducts = false
     @State private var busy = false
     @State private var error: String?
@@ -22,6 +27,7 @@ struct PriceCheckView: View {
     @State private var selected: ProductInsight?
     @State private var recentImage: UIImage?
     @State private var recentID: String?
+    @State private var recentDate: Date?
     @State private var dismissedRecentID: String?
     @State private var messages: [Message] = []
     @FocusState private var focused: Bool
@@ -52,7 +58,6 @@ struct PriceCheckView: View {
         ScrollViewReader { proxy in
             ScrollView {
                 LazyVStack(alignment: .leading, spacing: 30) {
-                    if messages.isEmpty { introduction }
                     ForEach(messages) { message in
                         if message.isUser {
                             userMessage(message)
@@ -79,6 +84,15 @@ struct PriceCheckView: View {
                 .padding(.horizontal, 24).padding(.top, 24).padding(.bottom, 16)
             }
             .scrollDismissesKeyboard(.interactively)
+            .scrollBounceBehavior(.basedOnSize)
+            .scrollDisabled(messages.isEmpty && offer == nil)
+            .overlay {
+                if messages.isEmpty, offer == nil, error == nil, !busy,
+                   !focused, attachment == nil, text.isEmpty {
+                    introduction.transition(.opacity)
+                }
+            }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.18), value: focused)
             .onChange(of: messages.count) { _, _ in
                 withAnimation(reduceMotion ? nil : .easeOut(duration: 0.25)) { proxy.scrollTo("bottom", anchor: .bottom) }
             }
@@ -103,11 +117,16 @@ struct PriceCheckView: View {
             }
         }
         .safeAreaInset(edge: .bottom, spacing: 0) { composer }
-        .sheet(item: $mediaSource) { source in
-            switch source {
-            case .camera: CompactCameraPicker { attachment = $0 }
-            case .photos: CompactPhotoPicker { attachment = $0 }
+        .sheet(item: $mediaSource, onDismiss: {
+            if focusAfterMedia { focused = true; focusAfterMedia = false }
+        }) { source in
+            Group {
+                switch source {
+                case .camera, .scan: CompactCameraPicker(scan: source == .scan, onCapture: attach)
+                case .photos: CompactPhotoPicker(onSelect: attach)
+                }
             }
+            .navigationTransition(.zoom(sourceID: mediaOrigin, in: mediaTransition))
         }
         .sheet(isPresented: $showProducts) { productSheet }
         .onChange(of: scenePhase) { _, phase in
@@ -118,6 +137,15 @@ struct PriceCheckView: View {
             speech.onUtterance = { phrase in text += (text.isEmpty ? "" : " ") + phrase }
             await loadRecent(requestPermission: true)
         }
+        .task(id: recentID) {
+            guard let recentDate else { return }
+            let remaining = max(0, recentDate.addingTimeInterval(RecentPhotoPolicy.maxAge).timeIntervalSinceNow)
+            try? await Task.sleep(for: .seconds(remaining))
+            guard !Task.isCancelled else { return }
+            recentImage = nil; recentID = nil
+        }
+        .onChange(of: text) { _, value in if !value.isEmpty { dismissedRecentID = recentID } }
+        .onChange(of: speech.transcript) { _, value in if !value.isEmpty { dismissedRecentID = recentID } }
         .onDisappear { speech.stop(flush: true) }
     }
 
@@ -131,12 +159,15 @@ struct PriceCheckView: View {
                     .font(.body).foregroundStyle(.secondary)
             }.multilineTextAlignment(.center)
             HStack(spacing: 12) {
-                Button { openMedia(.camera) } label: { Label("Camera", hugeIcon: "camera") }
-                Button { openMedia(.photos) } label: { Label("Photos", hugeIcon: "photo") }
+                Button { openMedia(.camera, origin: "camera") } label: { Label("Camera", hugeIcon: "camera") }
+                    .matchedTransitionSource(id: "camera", in: mediaTransition)
+                Button { openMedia(.photos, origin: "photos") } label: { Label("Photos", hugeIcon: "photo") }
+                    .matchedTransitionSource(id: "photos", in: mediaTransition)
             }
             .font(.subheadline.weight(.medium)).buttonStyle(PriceCheckMediaButtonStyle())
         }
-        .frame(maxWidth: .infinity).padding(.top, 64).padding(.bottom, 24)
+        .frame(maxWidth: .infinity).padding(.horizontal, 24)
+        .accessibilityIdentifier("price-check-introduction")
     }
 
     private func userMessage(_ message: Message) -> some View {
@@ -160,17 +191,15 @@ struct PriceCheckView: View {
 
     private var composer: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if let recentImage, attachment == nil, recentID != dismissedRecentID {
+            if let recentImage, attachment == nil, text.isEmpty, recentID != dismissedRecentID {
                 HStack(spacing: 10) {
-                    Button { attachment = recentImage; dismissedRecentID = recentID } label: {
+                    Button { attach(recentImage); focused = true; focusAfterMedia = false } label: {
                         HStack(spacing: 8) {
                             Image(uiImage: recentImage).resizable().scaledToFill().frame(width: 30, height: 30)
                                 .clipped().clipShape(RoundedRectangle(cornerRadius: 8))
                             Text("Attach recent photo").font(.subheadline)
                         }
                     }.tint(.primary)
-                    Button { dismissedRecentID = recentID } label: { Image(hugeIcon: "xmark").font(.caption) }
-                        .tint(.secondary).accessibilityLabel("Hide recent photo")
                 }.padding(.horizontal, 8)
             }
             VStack(alignment: .leading, spacing: 12) {
@@ -179,9 +208,11 @@ struct PriceCheckView: View {
                         Image(uiImage: attachment).resizable().scaledToFill().frame(width: 44, height: 44)
                             .clipped().clipShape(RoundedRectangle(cornerRadius: 10))
                         Text("Photo").font(.subheadline)
-                        Button { self.attachment = nil } label: { Image(hugeIcon: "xmark").font(.caption.weight(.semibold)) }
+                        Button { AppHaptics.selection(); self.attachment = nil } label: { Image(hugeIcon: "xmark").font(.caption.weight(.semibold)) }
                             .accessibilityLabel("Remove photo")
-                    }.padding(6).padding(.trailing, 8).background(.quaternary.opacity(0.4), in: Capsule())
+                    }.padding(6).padding(.trailing, 8)
+                        .background(TrolleyStyle.surface, in: RoundedRectangle(cornerRadius: 16, style: .continuous))
+                        .transition(.scale(scale: 0.94, anchor: .bottomLeading).combined(with: .opacity))
                 }
                 TextField("Is this a good price?", text: $text, axis: .vertical)
                     .font(.body).lineLimit(1...5).focused($focused)
@@ -192,13 +223,29 @@ struct PriceCheckView: View {
                 }
                 if let error = speech.error { Text(error).font(.caption).foregroundStyle(.secondary) }
                 HStack(spacing: 4) {
-                    Menu {
-                        Button("Camera", hugeIcon: "camera") { openMedia(.camera) }
-                        Button("Photos", hugeIcon: "photo") { openMedia(.photos) }
-                    } label: { Image(hugeIcon: "plus").font(.system(size: 22)).frame(width: 44, height: 44) }
+                    Button { AppHaptics.tap(); showAttachments = true } label: {
+                        Image(hugeIcon: "plus").frame(width: 44, height: 44)
+                            .contentShape(Circle())
+                    }
+                        .buttonStyle(.plain)
+                        .matchedTransitionSource(id: "attachments", in: mediaTransition)
                         .accessibilityLabel("Attach photo").accessibilityIdentifier("price-check-attachments")
+                        .popover(isPresented: $showAttachments, arrowEdge: .bottom) {
+                            MediaSourceMenu { source in
+                                queuedMedia = source
+                                showAttachments = false
+                            }
+                            .presentationCompactAdaptation(.popover)
+                            .onDisappear {
+                                if let queuedMedia {
+                                    self.queuedMedia = nil
+                                    openMedia(queuedMedia, origin: "attachments")
+                                }
+                            }
+                        }
                     Spacer()
                     Button {
+                        AppHaptics.tap()
                         if speech.isRecording { speech.stop(flush: true) }
                         else { focused = false; Task { await speech.start() } }
                     } label: {
@@ -263,10 +310,20 @@ struct PriceCheckView: View {
         .presentationDetents([.medium, .large]).presentationDragIndicator(.visible)
     }
 
-    private func openMedia(_ source: MediaPickerSource) {
+    private func openMedia(_ source: MediaPickerSource, origin: String) {
+        AppHaptics.tap()
         speech.stop(flush: true)
         focused = false
+        mediaOrigin = origin
         mediaSource = source
+    }
+
+    private func attach(_ image: UIImage) {
+        AppHaptics.added()
+        withAnimation(reduceMotion ? nil : .easeOut(duration: 0.2)) { attachment = image }
+        dismissedRecentID = recentID
+        focusAfterMedia = true
+        error = nil
     }
 
     private func check() async {
@@ -274,6 +331,8 @@ struct PriceCheckView: View {
         let question = text.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !busy, !question.isEmpty || attachment != nil else { return }
         guard question.count <= 2000 else { error = "Please keep your question under 2,000 characters."; return }
+        AppHaptics.sent()
+        dismissedRecentID = recentID
         let image = attachment
         let data = image?.compressedForUpload()
         if image != nil && data == nil { error = "Couldn't prepare that photo."; return }
@@ -299,14 +358,32 @@ struct PriceCheckView: View {
             if result.baseline != nil, let match = PriceProductMatcher.exactMatch(name: result.name, products: products) {
                 try await loadComparison(match, offer: result)
             }
+            AppHaptics.success()
         } catch {
             if offer == nil {
                 messages = previousMessages
                 offer = previous; comparison = previousComparison; selected = previousProduct
                 text = question; attachment = image
             }
-            self.error = "Couldn't check just now. Try again in a moment."
+            AppHaptics.error()
+            self.error = priceCheckErrorMessage(error)
         }
+    }
+
+    private func priceCheckErrorMessage(_ error: Error) -> String {
+        if let apiError = error as? APIError {
+            switch apiError {
+            case .unauthorized: return "Your sign-in has expired. Sign in again in Settings, then retry."
+            case .notFound: return "Price check couldn’t connect. Your photo is still here — please try again."
+            case .serverError("could_not_read_offer"): return "I couldn’t read the price. Try a closer photo, or type the product and price."
+            case .serverError("price_reader_unavailable"): return "The price reader is unavailable just now. Your photo is ready to retry."
+            default: break
+            }
+        }
+        if (error as? URLError)?.code == .notConnectedToInternet {
+            return "You’re offline. Reconnect and send again — your photo is still here."
+        }
+        return "Couldn't check just now. Your message is ready to retry."
     }
 
     private func compare(_ product: ProductInsight) async {
@@ -324,7 +401,14 @@ struct PriceCheckView: View {
     }
     private func loadRecent(requestPermission: Bool = false) async {
         #if DEBUG
-        guard ProcessInfo.processInfo.environment["TROLLEY_UI_TEST"] == nil else { return }
+        if let scenario = ProcessInfo.processInfo.environment["TROLLEY_UI_TEST"] {
+            if scenario == "price-recent", recentID == nil {
+                recentDate = .now
+                recentID = "fixture-recent-photo"
+                recentImage = UIImage(named: "TrolleyMascot")
+            }
+            return
+        }
         #endif
         var status = PHPhotoLibrary.authorizationStatus(for: .readWrite)
         if requestPermission, status == .notDetermined {
@@ -337,7 +421,7 @@ struct PriceCheckView: View {
         let options = PHFetchOptions()
         options.sortDescriptors = [NSSortDescriptor(key: "creationDate", ascending: false)]
         options.fetchLimit = 1
-        options.predicate = NSPredicate(format: "creationDate > %@", Date().addingTimeInterval(-86400) as NSDate)
+        options.predicate = NSPredicate(format: "creationDate > %@ AND creationDate <= %@", Date().addingTimeInterval(-RecentPhotoPolicy.maxAge) as NSDate, Date() as NSDate)
         guard let asset = PHAsset.fetchAssets(with: .image, options: options).firstObject else { recentImage = nil; recentID = nil; return }
         guard asset.localIdentifier != recentID else { return }
         let request = PHImageRequestOptions()
@@ -349,6 +433,10 @@ struct PriceCheckView: View {
                 continuation.resume(returning: image)
             }
         }
+        guard !Task.isCancelled else { return }
+        guard RecentPhotoPolicy.isEligible(asset.creationDate) else { recentID = nil; recentImage = nil; return }
+        if !text.isEmpty || attachment != nil || busy { dismissedRecentID = asset.localIdentifier }
+        recentDate = asset.creationDate
         recentID = image == nil ? nil : asset.localIdentifier; recentImage = image
     }
 }

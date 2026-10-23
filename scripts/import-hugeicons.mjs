@@ -11,7 +11,7 @@ const mapping = {
   'tag': 'SearchDollar', 'calendar.badge.clock': 'CalendarClock',
   'gear': 'Settings01', 'gearshape': 'Settings01', 'plus': 'Plus', 'plus.circle': 'Plus', 'minus': 'MinusSign',
   'receipt': 'AddInvoice', 'doc.viewfinder': 'ScanText', 'photo': 'Album01', 'photo.on.rectangle': 'Album01',
-  'folder': 'Folder01', 'camera': 'Camera01', 'camera.rotate': 'CameraRotated01',
+  'folder': 'Folder01', 'camera': 'Camera01', 'camera.rotate': 'CameraRotated01', 'flash': 'Flash', 'flash.off': 'FlashOff',
   'checkmark': 'Tick01', 'checkmark.circle.fill': 'CheckmarkCircle02', 'circle': 'Circle',
   'xmark': 'Cancel01', 'xmark.circle.fill': 'CancelCircle', 'minus.circle.fill': 'CancelCircle',
   'ellipsis': 'MoreHorizontal', 'chevron.down': 'ArrowDown01', 'chevron.right': 'ArrowRight01', 'chevron.left': 'ArrowLeft01',
@@ -40,7 +40,7 @@ fs.copyFileSync(path.join(source,'LICENSE.md'),path.join(root,'Shared/HugeIcons-
 const labels = {
   ShoppingCart01:'Shopping list', Chart01:'Price chart', SearchDollar:'Check price', CalendarClock:'Forecast', Settings01:'Settings',
   Plus:'Add', MinusSign:'Remove', AddInvoice:'Import receipt', ScanText:'Scan receipt', Album01:'Photos', Folder01:'Files',
-  Camera01:'Camera', CameraRotated01:'Switch camera', Tick01:'Done', CheckmarkCircle02:'Checked', Circle:'Unchecked',
+  Flash:'Flash', FlashOff:'Flash off', Camera01:'Camera', CameraRotated01:'Switch camera', Tick01:'Done', CheckmarkCircle02:'Checked', Circle:'Unchecked',
   Cancel01:'Close', CancelCircle:'Remove', MoreHorizontal:'More options', ArrowDown01:'Expand', ArrowRight01:'Next',
   ArrowLeft01:'Back', ArrowUp02:'Send', ArrowDown02:'Down', ArrowUpDown:'Sort', ArrowUpLeft01:'Choose',
   ArrowTurnBackward:'Undo', Download01:'Import', PencilEdit01:'Edit', Edit01:'New', Delete02:'Delete', Mic01:'Dictate',

@@ -17,6 +17,12 @@ final class PriceCheckFixtureProtocol: URLProtocol, @unchecked Sendable {
         let today = String(ISO8601DateFormatter().string(from: Date()).prefix(10))
         if path.hasSuffix("/receipts/scan/stream") {
             body = "event: store\ndata: {\"store_name\":\"Woolworths\"}\n\nevent: matched\ndata: {\"store_name\":\"Woolworths\",\"total_amount\":7.8,\"items\":[{\"description\":\"Red Bull 4x250ml\",\"quantity\":1,\"total_price\":7.8,\"product_name\":\"Red Bull\",\"is_new\":false}]}\n\n"
+        } else if path.hasSuffix("/items"), request.httpMethod == "POST" {
+            var item = requestJSON()
+            item["id"] = item["id"] ?? UUID().uuidString
+            item["checked"] = false
+            item["category"] = "Other"
+            body = String(data: try! JSONSerialization.data(withJSONObject: item), encoding: .utf8)!
         } else if path.hasSuffix("/items"), scenario.hasPrefix("list-") {
             Self.requestLock.lock()
             Self.itemRequests += 1
@@ -36,6 +42,9 @@ final class PriceCheckFixtureProtocol: URLProtocol, @unchecked Sendable {
             body = #"{"trips":[{"id":"trip-1","date":"\#(today)","store_name":"Woolworths","total_amount":113.7,"item_count":20},{"id":"trip-2","date":"\#(today)","store_name":"Coles","total_amount":24.5,"item_count":4}],"category_spend":[{"date":"\#(today)","category":"Fruit & Veg","total":42.3},{"date":"\#(today)","category":"Dairy & Eggs","total":31.1},{"date":"\#(today)","category":"Drinks","total":22.8}]}"#
         } else if path.hasSuffix("/predictions") {
             body = #"{"range":{"start":"\#(today)","end":"\#(today)"},"predicted_total":22.8,"items":[{"product_id":"milk","name":"Milk","category":"Dairy & Eggs","predicted_date":"\#(today)","predicted_price":4.7,"avg_interval_days":7,"times_purchased":8,"last_purchased_at":"\#(today)"},{"product_id":"oats","name":"Rolled oats","category":"Breakfast","predicted_date":"\#(today)","predicted_price":3.5,"avg_interval_days":14,"times_purchased":5,"last_purchased_at":"\#(today)"},{"product_id":"coffee","name":"Coffee beans","category":"Pantry","predicted_date":"\#(today)","predicted_price":14.6,"avg_interval_days":14,"times_purchased":6,"last_purchased_at":"\#(today)"}]}"#
+        } else if path.contains("price-check"), scenario == "price-error" {
+            statusCode = 503
+            body = #"{"error":"price_reader_unavailable"}"#
         } else if path.contains("price-check") {
             let input = requestJSON()
             let isFollowUp = (input["text"] as? String)?.contains("What about $7?") == true

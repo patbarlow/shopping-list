@@ -7,6 +7,7 @@ import PhotosUI
 @Observable final class ReceiptImportCoordinator {
     var pendingCapture: ReceiptScannerView.InitialCapture?
     var mediaPicker: MediaPickerSource?
+    var transitionNamespace: Namespace.ID?
     private var queuedCapture: ReceiptScannerView.InitialCapture?
 
     func finishMedia(_ image: UIImage) {
@@ -27,20 +28,26 @@ struct ReceiptImportToolbarButton: View {
     @Environment(ReceiptImportCoordinator.self) private var coordinator
 
     @State private var showFilePicker = false
+    @Namespace private var mediaTransition
 
     var body: some View {
         Menu {
             Button {
-                coordinator.mediaPicker = .camera
+                AppHaptics.tap()
+                coordinator.transitionNamespace = mediaTransition
+                coordinator.mediaPicker = .scan
             } label: {
                 Label("Scan Receipt", hugeIcon: "doc.viewfinder")
             }
             Button {
+                AppHaptics.tap()
+                coordinator.transitionNamespace = mediaTransition
                 coordinator.mediaPicker = .photos
             } label: {
                 Label("Photo Library", hugeIcon: "photo.on.rectangle")
             }
             Button {
+                AppHaptics.tap()
                 showFilePicker = true
             } label: {
                 Label("Files", hugeIcon: "folder")
@@ -50,6 +57,8 @@ struct ReceiptImportToolbarButton: View {
                 .frame(width: 22, height: 22)
         }
         .accessibilityLabel("Import receipt")
+        .matchedTransitionSource(id: "receipt", in: mediaTransition)
+        .simultaneousGesture(TapGesture().onEnded { AppHaptics.tap() })
         .fileImporter(
             isPresented: $showFilePicker,
             allowedContentTypes: [.pdf],

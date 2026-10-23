@@ -14,7 +14,10 @@ import { errorCode, logError } from "./log";
 
 export { HouseholdRoom } from "./room";
 
-const app = new Hono<{ Bindings: Env }>();
+// Accept the trailing slash sent by released iOS build 201 as well as the
+// canonical paths. Authentication middleware alone could previously return 401
+// for that URL while authenticated requests fell through to a 404.
+const app = new Hono<{ Bindings: Env }>({ strict: false });
 
 app.get("/", (c) => c.json({ ok: true, service: "shopping-list-api" }));
 app.get("/healthz", (c) => c.text("ok"));

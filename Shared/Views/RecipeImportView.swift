@@ -24,6 +24,7 @@ public struct RecipeImportView: View {
     @State private var savedSnapshot: Data?
     #if os(iOS)
     @State private var mediaSource: MediaPickerSource?
+    @Namespace private var mediaTransition
     #endif
     @FocusState private var focusedField: IngFocusField?
 
@@ -49,10 +50,13 @@ public struct RecipeImportView: View {
         }
         #if os(iOS)
         .sheet(item: $mediaSource) { source in
-            switch source {
-            case .camera: CompactCameraPicker { image in Task { await handleCapturedImage(image) } }
-            case .photos: CompactPhotoPicker { image in Task { await handleCapturedImage(image) } }
+            Group {
+                switch source {
+                case .camera, .scan: CompactCameraPicker(scan: source == .scan) { image in Task { await handleCapturedImage(image) } }
+                case .photos: CompactPhotoPicker { image in Task { await handleCapturedImage(image) } }
+                }
             }
+            .navigationTransition(.zoom(sourceID: source.rawValue, in: mediaTransition))
         }
         #endif
     }
@@ -100,17 +104,19 @@ public struct RecipeImportView: View {
                 #if os(iOS)
                 Section {
                     HStack(spacing: 16) {
-                        Button { mediaSource = .photos } label: {
+                        Button { AppHaptics.tap(); mediaSource = .photos } label: {
                             Label("Photo Library", hugeIcon: "photo.on.rectangle")
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
+                        .matchedTransitionSource(id: "photos", in: mediaTransition)
 
-                        Button { mediaSource = .camera } label: {
+                        Button { AppHaptics.tap(); mediaSource = .scan } label: {
                             Label("Camera", hugeIcon: "camera")
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(.bordered)
+                        .matchedTransitionSource(id: "scan", in: mediaTransition)
                     }
                     .padding(.vertical, 4)
                 } header: {

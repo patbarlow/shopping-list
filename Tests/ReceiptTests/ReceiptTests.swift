@@ -123,3 +123,16 @@ struct PriceSummaryTests {
         #expect(PriceProductMatcher.exactMatch(name: "Red Bull Energy Drink", products: products + products) == nil)
     }
 }
+
+
+struct RecentPhotoTests {
+    @Test func onlySuggestPhotosFromLastThirtyMinutes() {
+        let now = Date(timeIntervalSince1970: 100_000)
+        #expect(RecentPhotoPolicy.isEligible(now, now: now))
+        #expect(RecentPhotoPolicy.isEligible(now.addingTimeInterval(-1799), now: now))
+        #expect(!RecentPhotoPolicy.isEligible(now.addingTimeInterval(-1800), now: now))
+        #expect(!RecentPhotoPolicy.isEligible(now.addingTimeInterval(-86400), now: now))
+        #expect(!RecentPhotoPolicy.isEligible(now.addingTimeInterval(1), now: now))
+        #expect(!RecentPhotoPolicy.isEligible(nil, now: now))
+    }
+}

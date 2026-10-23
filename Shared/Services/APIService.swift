@@ -35,7 +35,7 @@ final class APIService {
         if let previous, let data = try? JSONEncoder().encode(previous) {
             body["previous"] = try? JSONSerialization.jsonObject(with: data)
         }
-        return try await post("/v1/price-check/", body: body)
+        return try await post("/v1/price-check", body: body)
     }
 
     // MARK: - Auth

@@ -191,6 +191,7 @@ struct PredictedListView: View {
     }
 
     private func addAll(_ items: [PredictedItem]) {
+        AppHaptics.added()
         // Optimistic: tick immediately, revert any that fail.
         for item in items { onListNames.insert(item.name.lowercased()) }
         Task {
@@ -198,6 +199,7 @@ struct PredictedListView: View {
                 do {
                     _ = try await services.api.createItem(householdId: householdId, name: item.name)
                 } catch {
+                    AppHaptics.error()
                     onListNames.remove(item.name.lowercased())
                 }
             }

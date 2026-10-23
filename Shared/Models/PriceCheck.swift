@@ -1,5 +1,14 @@
 import Foundation
 
+enum RecentPhotoPolicy {
+    static let maxAge: TimeInterval = 30 * 60
+    static func isEligible(_ creationDate: Date?, now: Date = .now) -> Bool {
+        guard let creationDate else { return false }
+        let age = now.timeIntervalSince(creationDate)
+        return age >= 0 && age < maxAge
+    }
+}
+
 struct PriceOffer: Codable, Equatable {
     var name: String
     var price: Double?
