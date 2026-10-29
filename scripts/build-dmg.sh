@@ -1,8 +1,8 @@
 #!/bin/bash
 set -euo pipefail
 
-APP_NAME="Shopping List"
-APP_BINARY="Shopping List macOS"
+APP_NAME="Trolley"
+APP_BINARY="Trolley"
 SCHEME="Shopping List macOS"
 BUILD_DIR="${TMPDIR}shoppinglist-build"
 APP_PATH="${BUILD_DIR}/Build/Products/Release/${APP_BINARY}.app"

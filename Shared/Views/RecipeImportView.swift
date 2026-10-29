@@ -79,6 +79,22 @@ public struct RecipeImportView: View {
     // MARK: - Input
 
     private var inputView: some View {
+        #if os(macOS)
+        VStack(alignment: .leading, spacing: 18) {
+            Label("Bring a recipe to your list.", hugeIcon: "fork.knife")
+                .font(.system(.title2, design: .rounded, weight: .bold))
+            Text("Paste a recipe link, then review the ingredients and adjust the servings before adding them.")
+                .foregroundStyle(.secondary)
+            TextField("https://…", text: $urlText)
+                .textFieldStyle(.roundedBorder).onSubmit { parseURL() }
+            if let error = errorMessage { Text(error).foregroundStyle(.red) }
+            HStack {
+                Spacer()
+                Button("Import recipe", action: parseURL).buttonStyle(.borderedProminent)
+                    .disabled(urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+            }
+        }.padding(32).frame(maxWidth: 520).frame(maxWidth: .infinity, maxHeight: .infinity)
+        #else
         List {
             Section {
                 VStack(alignment: .leading, spacing: 12) {
@@ -131,6 +147,7 @@ public struct RecipeImportView: View {
                 }
             }
         }
+        #endif
     }
 
     // MARK: - Loading

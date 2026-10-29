@@ -5,7 +5,15 @@ import Sparkle
 @main
 struct ShoppingListMacApp: App {
     @State private var services = AppServices()
-    private let updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
+    private let updaterController = SPUStandardUpdaterController(startingUpdater: !Self.isDevelopmentBuild, updaterDelegate: nil, userDriverDelegate: nil)
+
+    private static var isDevelopmentBuild: Bool {
+        #if DEBUG
+        true
+        #else
+        false
+        #endif
+    }
 
     init() {
         ShoppingCore.migrateIfNeeded()
@@ -22,18 +30,29 @@ struct ShoppingListMacApp: App {
     }
 
     var body: some Scene {
-        WindowGroup {
+        Window("Trolley", id: "main") {
             MacRootView()
                 .environment(services)
         }
-        .windowStyle(.hiddenTitleBar)
-        .defaultSize(width: 380, height: 580)
+        .windowStyle(.titleBar)
+        .defaultSize(width: 960, height: 720)
+        .windowResizability(.contentMinSize)
         .commands {
+            MacCommands()
             CommandGroup(after: .appInfo) {
                 Button("Check for Updates…") {
                     updaterController.checkForUpdates(nil)
                 }
             }
+        }
+        Settings {
+            Group {
+                if let household = services.auth.household {
+                    MacSettingsView(household: household)
+                } else {
+                    Text("Sign in to manage your household settings.").padding(40)
+                }
+            }.environment(services)
         }
     }
 }

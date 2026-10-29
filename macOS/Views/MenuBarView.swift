@@ -3,7 +3,7 @@ import AppKit
 
 // MARK: - Window level accessor
 
-private struct WindowLevelAccessor: NSViewRepresentable {
+struct WindowLevelAccessor: NSViewRepresentable {
     let alwaysOnTop: Bool
     func makeNSView(context: Context) -> NSView { NSView() }
     func updateNSView(_ view: NSView, context: Context) {
@@ -26,18 +26,18 @@ struct MacRootView: View {
     @Environment(AppServices.self) private var services
 
     var body: some View {
-        NavigationStack {
+        Group {
             Group {
                 if services.auth.isLoggedIn {
                     if let household = services.auth.household {
-                        MacListView(household: household)
+                        MacWorkspaceView(household: household)
                     } else {
                         MacHouseholdSetupView()
-                            .navigationTitle("Shopping List")
+                            .navigationTitle("Trolley")
                     }
                 } else {
                     MacLoginView()
-                        .navigationTitle("Shopping List")
+                        .navigationTitle("Trolley")
                 }
             }
         }
@@ -68,11 +68,11 @@ private struct MacEmailEntryView: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            Image(hugeIcon: "cart.fill")
-                .resizable().scaledToFit().frame(width: 40, height: 40)
-                .foregroundStyle(.green)
-            Text("Shopping List")
-                .font(.title2.bold())
+            Image("TrolleyMascot").resizable().scaledToFit().frame(width: 96, height: 96)
+            Text("Welcome to Trolley")
+                .font(.system(.largeTitle, design: .rounded, weight: .bold))
+            Text("Your household’s shopping, together. Sign in with the email you use on your phone.")
+                .foregroundStyle(.secondary).multilineTextAlignment(.center)
 
             VStack(spacing: 10) {
                 TextField("Email", text: $email)
@@ -94,7 +94,8 @@ private struct MacEmailEntryView: View {
                 .keyboardShortcut(.return, modifiers: [])
             }
         }
-        .padding(24)
+        .padding(32)
+        .frame(maxWidth: 400)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -112,9 +113,9 @@ private struct MacCodeEntryView: View {
         VStack(spacing: 16) {
             Image(hugeIcon: "envelope.badge")
                 .resizable().scaledToFit().frame(width: 40, height: 40)
-                .foregroundStyle(.green)
+                .foregroundStyle(Color.accentColor)
             Text("Check your email")
-                .font(.title2.bold())
+                .font(.system(.title2, design: .rounded, weight: .bold))
             Text("Code sent to **\(email)**")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -147,7 +148,8 @@ private struct MacCodeEntryView: View {
                 .buttonStyle(.plain)
             }
         }
-        .padding(24)
+        .padding(32)
+        .frame(maxWidth: 400)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -170,9 +172,9 @@ private struct MacHouseholdSetupView: View {
         VStack(spacing: 16) {
             Image(hugeIcon: "house.fill")
                 .resizable().scaledToFit().frame(width: 40, height: 40)
-                .foregroundStyle(.green)
+                .foregroundStyle(Color.accentColor)
             Text("Your Household")
-                .font(.title2.bold())
+                .font(.system(.title2, design: .rounded, weight: .bold))
 
             Picker("", selection: $mode) {
                 Text("Create").tag(Mode.create)
@@ -204,23 +206,28 @@ private struct MacHouseholdSetupView: View {
             Button("Sign Out", role: .destructive) { services.auth.logout() }
                 .font(.footnote)
         }
-        .padding(24)
+        .padding(32)
+        .frame(maxWidth: 400)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
 // MARK: - Main list
 
-private struct MacListView: View {
+@Observable final class MacListDraft {
+    var isAdding = false
+    var newItem = ""
+    var newQty = ""
+}
+
+struct MacListView: View {
     @State private var voice = VoiceEntryController()
     @Environment(\.scenePhase) private var scenePhase
     let household: Household
     @Environment(AppServices.self) private var services
 
     // ── Add ──────────────────────────────────────────────────────────────────
-    @State private var isAdding = false
-    @State private var newItem  = ""
-    @State private var newQty   = ""
+    @Bindable var draft: MacListDraft
 
     // ── Edit ─────────────────────────────────────────────────────────────────
     @State private var editingItemID: String? = nil
@@ -233,10 +240,8 @@ private struct MacListView: View {
 
     // ── UI ────────────────────────────────────────────────────────────────────
     @State private var collapsedSections: Set<String> = []
-    @State private var showSettings = false
-    @State private var showRecipeImport = false
-    @State private var showHistory = false
-    @AppStorage("mac_always_on_top") private var alwaysOnTop = true
+    @Binding var addRequest: Int
+    @State private var filter = ""
 
     private var store: ShoppingListStore { services.shopping }
 
@@ -244,19 +249,33 @@ private struct MacListView: View {
         VStack(spacing: 0) {
             ScrollView {
                 LazyVStack(spacing: 8) {
-                    if store.items.isEmpty && !store.isLoading {
+                    if store.isLoading && !store.hasLoaded {
+                        ProgressView("Loading your list…").padding(40)
+                    } else if store.groupedItems.isEmpty && store.hasLoaded {
                         emptyState
+                    } else if !filter.isEmpty && filteredGroups.isEmpty {
+                        Text("No items match “\(filter)”.").foregroundStyle(.secondary).padding(40)
                     } else {
-                        ForEach(store.groupedItems, id: \.category) { group in
+                        ForEach(filteredGroups, id: \.category) { group in
                             categoryCard(group: group)
                         }
                     }
                     Color.clear.frame(height: 4)
                 }
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
+                .padding(24)
+                .frame(maxWidth: 840)
+                .frame(maxWidth: .infinity)
             }
 
+            if let error = store.error {
+                MacErrorBanner(message: error) { Task { await store.fetch() } }
+            }
+            if !store.recentlyCompleted.isEmpty {
+                HStack {
+                    Text("Checked off \(store.recentlyCompleted.count) item(s)").foregroundStyle(.secondary)
+                    Button("Undo") { store.undoLastComplete() }.keyboardShortcut("z", modifiers: .command)
+                }.padding(8)
+            }
             VoiceFeedbackPill(voice: voice)
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.horizontal, 12)
@@ -265,61 +284,30 @@ private struct MacListView: View {
             Divider().opacity(0.4)
             addBar
                 .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.vertical, 12)
+                .frame(maxWidth: 840).frame(maxWidth: .infinity)
         }
         .overlay(alignment: .bottom) {
             VoiceScreenGlow(active: voice.isActive, level: voice.speech.level)
                 .ignoresSafeArea(.container, edges: .bottom)
         }
-        .navigationTitle("Shopping List")
-        .toolbar { toolbarItems }
-        .toolbarBackground(Color(.windowBackgroundColor), for: .windowToolbar)
-        .sheet(isPresented: $showSettings) {
-            MacSettingsView(household: household)
-                .environment(services)
-        }
-        #if os(iOS)
-        .sheet(isPresented: $showRecipeImport) {
-            RecipeImportView(householdId: household.id)
-                .environment(services)
-        }
-#endif
-        .sheet(isPresented: $showHistory) {
-            MacHistoryView(householdId: household.id)
-                .environment(services)
-        }
-        .task { await store.load(householdId: household.id) }
+        .navigationTitle("List")
+        .searchable(text: $filter, prompt: "Find an item")
+        .onChange(of: addRequest) { _, value in if value > 0 { startAdding(); addRequest = 0 } }
+        .task { if addRequest > 0 { startAdding(); addRequest = 0 } }
         .onChange(of: focusedField) { old, new in handleFocusChange(old: old, new: new) }
         .onDisappear { voice.stop(discardPending: true) }
         .onChange(of: scenePhase) { _, phase in if phase == .background { voice.stop(discardPending: true) } }
         .animation(.default, value: store.groupedItems.map {
             "\($0.category.rawValue)\($0.items.map { "\($0.id)\($0.checked)" }.joined())"
         })
-        .background(WindowLevelAccessor(alwaysOnTop: alwaysOnTop))
+
     }
 
-    @ToolbarContentBuilder
-    private var toolbarItems: some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            Menu {
-                Button { showSettings = true } label: {
-                    Label("Settings", hugeIcon: "gear")
-                }
-                Divider()
-                Button { showRecipeImport = true } label: {
-                    Label("Import Recipe…", hugeIcon: "link")
-                }
-                Button { showHistory = true } label: {
-                    Label("Purchase History", hugeIcon: "clock.arrow.circlepath")
-                }
-                Divider()
-                Toggle(isOn: $alwaysOnTop) {
-                    Label("Always on Top", hugeIcon: "pin")
-                }
-            } label: {
-                Image(hugeIcon: "ellipsis")
-            }
-            .menuIndicator(.hidden)
+    private var filteredGroups: [(category: ItemCategory, items: [ShoppingItem])] {
+        store.groupedItems.compactMap { group in
+            let items = group.items.filter { filter.isEmpty || $0.name.localizedCaseInsensitiveContains(filter) }
+            return items.isEmpty ? nil : (group.category, items)
         }
     }
 
@@ -328,9 +316,9 @@ private struct MacListView: View {
     private var addBar: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Image(hugeIcon: isAdding ? "circle" : "plus")
-                    .foregroundStyle(isAdding ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Color.green))
-                    .font(isAdding ? .body : .body.weight(.semibold))
+                Image(hugeIcon: draft.isAdding ? "circle" : "plus")
+                    .foregroundStyle(draft.isAdding ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Color.accentColor))
+                    .font(draft.isAdding ? .body : .body.weight(.semibold))
                     .frame(width: 22, height: 22)
                     .contentShape(Rectangle())
                     .onTapGesture { startAdding() }
@@ -339,8 +327,8 @@ private struct MacListView: View {
                     VoiceInputLabel(voice: voice)
                         .contentShape(Rectangle())
                         .onTapGesture { startAdding() }
-                } else if isAdding {
-                    TextField("Items, separated by commas", text: $newItem, axis: .vertical)
+                } else if draft.isAdding {
+                    TextField("Items, separated by commas", text: $draft.newItem)
                         .textFieldStyle(.plain)
                         .focused($focusedField, equals: .addName)
                         .onSubmit { commitAdd() }
@@ -352,17 +340,20 @@ private struct MacListView: View {
                         .contentShape(Rectangle())
                         .onTapGesture { voice.speech.error = nil; startAdding() }
                 }
+                if draft.isAdding && !draft.newItem.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Button("Add", action: { commitAdd() }).buttonStyle(.borderedProminent)
+                }
                 VoiceInputControls(voice: voice, toggle: toggleVoice)
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, isAdding ? 10 : 12)
+            .padding(.vertical, draft.isAdding ? 10 : 12)
 
-            if isAdding && !voice.isActive {
+            if draft.isAdding && !voice.isActive {
                 Divider().padding(.horizontal, 12).opacity(0.25)
                 HStack(spacing: 10) {
                     Color.clear.frame(width: 22)
-                    TextField(ShoppingInputParser.split(newItem).count > 1 ? "Write quantities beside each item" : "Qty", text: $newQty)
-                        .disabled(ShoppingInputParser.split(newItem).count > 1)
+                    TextField(ShoppingInputParser.split(draft.newItem).count > 1 ? "Write quantities beside each item" : "Qty", text: $draft.newQty)
+                        .disabled(ShoppingInputParser.split(draft.newItem).count > 1)
                         .textFieldStyle(.plain)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -378,7 +369,7 @@ private struct MacListView: View {
         .frame(maxWidth: .infinity, alignment: .leading)
         .background(Color(.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
         .contentShape(Rectangle())
-        .animation(.easeOut(duration: 0.18), value: isAdding)
+        .animation(.easeOut(duration: 0.18), value: draft.isAdding)
     }
 
     // MARK: Category card
@@ -397,8 +388,8 @@ private struct MacListView: View {
                 HStack(spacing: 6) {
                     Text(group.category.emoji).font(.subheadline)
                     Text(catKey)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(group.category.color)
+                        .font(.system(.headline, design: .rounded, weight: .semibold))
+                        .foregroundStyle(.primary)
                     Spacer()
                     Image(hugeIcon: "chevron.down")
                         .font(.caption.weight(.semibold))
@@ -407,7 +398,7 @@ private struct MacListView: View {
                         .animation(.easeInOut(duration: 0.2), value: isCollapsed)
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.vertical, 14)
                 .contentShape(Rectangle())
             }
             .buttonStyle(.plain)
@@ -421,7 +412,10 @@ private struct MacListView: View {
                             Divider().padding(.leading, 44).opacity(0.15)
                         }
                         unifiedItemRow(for: item)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
                             .contextMenu {
+                                Button("Edit") { beginEditing(item) }
                                 Button("Delete", role: .destructive) {
                                     Task { await store.deleteItem(item) }
                                 }
@@ -431,8 +425,8 @@ private struct MacListView: View {
                 .padding(.bottom, 4)
             }
         }
-        .background(group.category.color.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(group.category.color.opacity(0.10), in: RoundedRectangle(cornerRadius: 22))
+        .clipShape(RoundedRectangle(cornerRadius: 22))
     }
 
     // MARK: Unified item row
@@ -444,12 +438,13 @@ private struct MacListView: View {
         return VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .center, spacing: 10) {
                 // Circle toggles complete; tapping row text enters edit mode
-                Image(hugeIcon: isComplete ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isComplete ? AnyShapeStyle(.green) : AnyShapeStyle(.tertiary))
+                Button { store.pendingToggle(item) } label: {
+                  Image(hugeIcon: isComplete ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isComplete ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
                     .font(.body)
                     .frame(width: 22, height: 22)
                     .contentShape(Circle())
-                    .onTapGesture { store.pendingToggle(item) }
+                }.buttonStyle(.plain).help("Check off \(item.name)").accessibilityLabel("Check off \(item.name)")
 
                 if isEditing {
                     TextField("Name", text: $editName)
@@ -497,22 +492,15 @@ private struct MacListView: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.vertical, 12)
+        .background(isEditing ? Color.accentColor.opacity(0.12) : Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 15))
     }
 
     // MARK: Empty state
 
     private var emptyState: some View {
-        VStack(spacing: 10) {
-            Image(hugeIcon: "cart")
-                .resizable().scaledToFit().frame(width: 48, height: 48)
-                .foregroundStyle(.quaternary)
-            Text("Your list is empty")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 48)
+        MacEmptyState(title: "A fresh start.", message: "What are we picking up? Add an item below, or press ⌘N.")
+            .padding(.vertical, 64)
     }
 
     // MARK: Focus handling
@@ -521,9 +509,9 @@ private struct MacListView: View {
         if isEditField(old) && !isEditField(new) && editingItemID != nil {
             commitEdit()
         }
-        if isAddField(old) && !isAddField(new) && isAdding {
-            let trimmed = newItem.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty { cancelAdd() } else { commitAdd(refocus: false) }
+        if isAddField(old) && !isAddField(new) && draft.isAdding {
+            // Clicking elsewhere must never submit an unfinished item.
+            if draft.newItem.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { cancelAdd() }
         }
     }
 
@@ -538,7 +526,7 @@ private struct MacListView: View {
         if voice.isActive {
             voice.stop()
         } else {
-            isAdding = false
+            draft.isAdding = false
             focusedField = nil
             voice.start(store: store, api: services.api)
         }
@@ -548,42 +536,49 @@ private struct MacListView: View {
         guard !voice.isActive else { return }
         voice.dismissFeedback()
         commitEdit()
-        guard !isAdding else { focusedField = .addName; return }
-        isAdding = true
+        guard !draft.isAdding else { focusedField = .addName; return }
+        draft.isAdding = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { focusedField = .addName }
     }
 
     private func commitAdd(refocus: Bool = true) {
-        let trimmed = newItem.trimmingCharacters(in: .whitespaces)
+        let trimmed = draft.newItem.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else {
             if !refocus { cancelAdd() }
             return
         }
-        let qty = newQty.trimmingCharacters(in: .whitespaces)
-        newItem = ""; newQty = ""
+        let qty = draft.newQty.trimmingCharacters(in: .whitespaces)
+        draft.newItem = ""; draft.newQty = ""
         if refocus {
             Task { @MainActor in focusedField = .addName }
         } else {
-            isAdding = false; focusedField = nil
+            draft.isAdding = false; focusedField = nil
         }
         Task {
             let names = ShoppingInputParser.split(trimmed)
+            var failed: [String] = []
             for name in names {
-                await store.addItem(name: name, quantity: names.count == 1 && !qty.isEmpty ? qty : nil)
+                if await store.addItem(name: name, quantity: names.count == 1 && !qty.isEmpty ? qty : nil) == nil { failed.append(name) }
+            }
+            if !failed.isEmpty {
+                let current = draft.newItem.trimmingCharacters(in: .whitespacesAndNewlines)
+                draft.newItem = ([current].filter { !$0.isEmpty } + failed).joined(separator: ", ")
+                if names.count == 1 && current.isEmpty { draft.newQty = qty }
+                draft.isAdding = true
             }
         }
     }
 
     private func cancelAdd() {
-        newItem = ""; newQty = ""; isAdding = false; focusedField = nil
+        draft.newItem = ""; draft.newQty = ""; draft.isAdding = false; focusedField = nil
     }
 
     // MARK: Edit actions
 
     private func beginEditing(_ item: ShoppingItem) {
-        if isAdding {
-            let t = newItem.trimmingCharacters(in: .whitespaces)
-            if t.isEmpty { cancelAdd() } else { commitAdd() }
+        if draft.isAdding {
+            draft.isAdding = false
+            focusedField = nil
         }
         commitEdit()
         editingItemID = item.id
@@ -602,6 +597,7 @@ private struct MacListView: View {
         let trimNotes = editNotes.trimmingCharacters(in: .whitespaces)
         editingItemID = nil; focusedField = nil
         guard !trimName.isEmpty else { return }
+        guard trimName != item.name || trimQty != (item.quantity ?? "") || trimNotes != (item.notes ?? "") else { return }
         Task {
             await store.updateItem(
                 item,
@@ -619,12 +615,14 @@ private struct MacListView: View {
 
 // MARK: - Settings sheet
 
-private struct MacSettingsView: View {
+struct MacSettingsView: View {
     let household: Household
     @Environment(AppServices.self) private var services
     @Environment(\.dismiss) private var dismiss
     @State private var copied = false
     @State private var frequency: ShoppingFrequency
+    @AppStorage("mac_always_on_top") private var alwaysOnTop = false
+    @State private var confirmSignOut = false
 
     init(household: Household) {
         self.household = household
@@ -634,7 +632,7 @@ private struct MacSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
-                Text("Settings").font(.title2.bold())
+                Text("Settings").font(.system(.title2, design: .rounded, weight: .bold))
                 Spacer()
                 Button("Done") { dismiss() }.buttonStyle(.borderedProminent)
             }
@@ -684,22 +682,25 @@ private struct MacSettingsView: View {
                 .padding(4)
             }
 
+            Toggle("Keep Trolley above other windows", isOn: $alwaysOnTop)
+            if let error = services.auth.error { Text(error).foregroundStyle(.red).font(.callout) }
+            LabeledContent("Signed in as", value: services.auth.currentUser?.email ?? "")
+            LabeledContent("Version", value: MacStyle.version)
             Spacer()
-
-            Button("Sign Out", role: .destructive) {
-                services.auth.logout()
-                dismiss()
-            }
+            Button("Sign Out…", role: .destructive) { confirmSignOut = true }
             .frame(maxWidth: .infinity)
         }
         .padding(24)
-        .frame(width: 340, height: 360)
+        .frame(width: 460, height: 500)
+        .confirmationDialog("Sign out of Trolley?", isPresented: $confirmSignOut) {
+            Button("Sign Out", role: .destructive) { services.auth.logout(); dismiss() }
+        }
     }
 }
 
 // MARK: - Mac History View
 
-private struct MacHistoryView: View {
+struct MacHistoryView: View {
     let householdId: String
     @Environment(AppServices.self) private var services
     @Environment(\.dismiss) private var dismiss
@@ -708,6 +709,7 @@ private struct MacHistoryView: View {
     @State private var dayItems: [HistoryItem] = []
     @State private var isLoadingDays = true
     @State private var isLoadingItems = false
+    @State private var historyError: String?
 
     private var groupedDayItems: [(category: ItemCategory, items: [HistoryItem])] {
         let grouped = Dictionary(grouping: dayItems) { ItemCategory(rawValue: $0.category) ?? .other }
@@ -725,6 +727,10 @@ private struct MacHistoryView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
                 Divider()
+                if let historyError {
+                    Text(historyError).foregroundStyle(.red).padding(12)
+                    Button("Retry") { Task { await loadDays() } }.padding(.horizontal)
+                }
                 if isLoadingDays {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 20)
                 } else if days.isEmpty {
@@ -804,24 +810,26 @@ private struct MacHistoryView: View {
             }
             .frame(minWidth: 240, idealWidth: 300)
         }
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Done") { dismiss() }
-            }
+        .navigationTitle("Purchase history")
+        .frame(minWidth: 480, maxWidth: .infinity, minHeight: 360, maxHeight: .infinity)
+        .task { await loadDays() }
+        .task(id: selectedDate) {
+            guard let date = selectedDate else { return }
+            isLoadingItems = true; dayItems = []; historyError = nil
+            do {
+                let loaded = try await services.api.fetchHistoryDay(householdId: householdId, date: date)
+                guard !Task.isCancelled else { return }
+                dayItems = loaded
+            } catch { if !Task.isCancelled { historyError = error.localizedDescription } }
+            if !Task.isCancelled { isLoadingItems = false }
         }
-        .frame(width: 520, height: 400)
-        .task {
-            days = (try? await services.api.fetchHistoryDays(householdId: householdId)) ?? []
-            isLoadingDays = false
-        }
-        .onChange(of: selectedDate) { _, date in
-            guard let date else { return }
-            isLoadingItems = true
-            dayItems = []
-            Task {
-                dayItems = (try? await services.api.fetchHistoryDay(householdId: householdId, date: date)) ?? []
-                isLoadingItems = false
-            }
-        }
+    }
+    private func loadDays() async {
+        isLoadingDays = true; historyError = nil
+        do {
+            days = try await services.api.fetchHistoryDays(householdId: householdId)
+            if selectedDate == nil { selectedDate = days.first?.date }
+        } catch { historyError = error.localizedDescription }
+        isLoadingDays = false
     }
 }
