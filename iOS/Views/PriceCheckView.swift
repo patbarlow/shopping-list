@@ -41,6 +41,10 @@ struct PriceCheckView: View {
     }
 
     private var candidates: [ProductInsight] {
+        if let matches = offer?.historyMatches, !matches.isEmpty {
+            let ids = Set(matches.map(\.productId))
+            return products.filter { ids.contains($0.id) }
+        }
         let terms = (offer?.name ?? "").lowercased().split(separator: " ").prefix(2).map(String.init)
         return matchingProducts(terms)
     }
@@ -350,9 +354,9 @@ struct PriceCheckView: View {
             let result = try await services.api.readPriceOffer(householdId: householdId, text: question, image: data, previous: image == nil ? previous : nil)
             products = try await services.api.fetchProductInsights(householdId: householdId)
             offer = result
-            if result.baseline != nil, let match = PriceProductMatcher.exactMatch(name: result.name, products: products) {
-                try await loadComparison(match, offer: result)
-            }
+            let matchedID = result.historyMatches?.count == 1 ? result.historyMatches?.first?.productId : nil
+            let match = products.first { $0.id == matchedID } ?? (result.historyMatches == nil ? PriceProductMatcher.exactMatch(name: result.name, products: products) : nil)
+            if result.baseline != nil, let match { try await loadComparison(match, offer: result) }
             AppHaptics.success()
         } catch {
             if offer == nil {
@@ -391,7 +395,7 @@ struct PriceCheckView: View {
 
     private func loadComparison(_ product: ProductInsight, offer: PriceOffer) async throws {
         let detail = try await services.api.fetchProductInsight(householdId: householdId, productId: product.id)
-        comparison = PriceComparison(offer: offer, purchases: detail.purchases)
+        comparison = PriceComparison(offer: offer, purchases: offer.matchingPurchases(detail.purchases, productId: product.id))
         selected = product
     }
     private func loadRecent(requestPermission: Bool = false) async {

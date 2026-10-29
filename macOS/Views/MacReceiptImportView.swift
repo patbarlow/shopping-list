@@ -59,12 +59,12 @@ struct MacReceiptImportView: View {
                     Button("Choose another receipt…") { importing = true }
                     Spacer()
                     Button("Save \(items.filter(\.isIncluded).count) items", action: save)
-                        .buttonStyle(.borderedProminent).disabled(!valid)
+                        .buttonStyle(MacButtonStyle(.primary)).disabled(!valid)
                 }
             } else {
                 MacEmptyState(title: "Make your receipts useful.", message: "Choose a receipt image or PDF from your Mac. Review the products before adding them to your household’s price history.")
                 Button { importing = true } label: { Label("Choose receipt…", hugeIcon: "folder") }
-                    .buttonStyle(.borderedProminent).frame(maxWidth: .infinity).padding(.bottom, 24)
+                    .buttonStyle(MacButtonStyle(.primary)).frame(maxWidth: .infinity).padding(.bottom, 24)
             }
         }.padding(24).frame(width: 660, height: 580)
             .interactiveDismissDisabled(busy)

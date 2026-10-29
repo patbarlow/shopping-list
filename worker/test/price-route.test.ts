@@ -14,7 +14,7 @@ const token = await new SignJWT({ sub: 'user-1' }).setProtectedHeader({ alg: 'HS
   .setIssuer('shopping-list-api').setExpirationTime('5m').sign(new TextEncoder().encode(secret));
 function env(member = true) {
   return { SESSION_SECRET: secret, ANTHROPIC_API_KEY: 'test-provider-key', DB: {
-    prepare(sql: string) { return { bind() { return { async first() {
+    prepare(sql: string) { return { bind() { return { async all() { return { results: [] }; }, async first() {
       if (sql.includes('household_members')) return member ? { exists: 1 } : null;
       return { id: 'user-1', email: 'test@example.com', name: 'Test' };
     } }; } }; }
@@ -41,7 +41,7 @@ test('authenticated image-only price checks reach the mounted route with either 
     for (const path of ['/v1/price-check', '/v1/price-check/']) {
       const result = await app.fetch(request(path, { household_id: 'home', image_base64: '/9j/AA==', text: '' }), env());
       assert.equal(result.status, 200, path);
-      assert.deepEqual(await result.json(), offer);
+      assert.deepEqual(await result.json(), { ...offer, historyMatches: [] });
     }
     assert.equal(calls, 2);
   } finally { globalThis.fetch = realFetch; }

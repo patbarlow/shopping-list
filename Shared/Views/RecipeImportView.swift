@@ -90,7 +90,7 @@ public struct RecipeImportView: View {
             if let error = errorMessage { Text(error).foregroundStyle(.red) }
             HStack {
                 Spacer()
-                Button("Import recipe", action: parseURL).buttonStyle(.borderedProminent)
+                Button("Import recipe", action: parseURL).modifier(RecipePrimaryActionStyle())
                     .disabled(urlText.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
             }
         }.padding(32).frame(maxWidth: 520).frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -111,7 +111,7 @@ public struct RecipeImportView: View {
                         Label("Import from URL", hugeIcon: "arrow.down.circle")
                             .frame(maxWidth: .infinity)
                     }
-                    .buttonStyle(.borderedProminent)
+                    .modifier(RecipePrimaryActionStyle())
                     .disabled(urlText.trimmingCharacters(in: .whitespaces).isEmpty)
                 }
                 .padding(.vertical, 4)
@@ -229,7 +229,7 @@ public struct RecipeImportView: View {
                 .frame(maxWidth: .infinity)
                 .bold()
             }
-            .buttonStyle(.borderedProminent)
+            .modifier(RecipePrimaryActionStyle())
             .disabled(includedCount == 0)
             .padding(.horizontal)
             .padding(.top, 12)
@@ -463,3 +463,13 @@ extension UIImage {
     }
 }
 #endif
+
+private struct RecipePrimaryActionStyle: ViewModifier {
+    func body(content: Content) -> some View {
+        #if os(macOS)
+        content.buttonStyle(MacButtonStyle(.primary))
+        #else
+        content.buttonStyle(.borderedProminent)
+        #endif
+    }
+}

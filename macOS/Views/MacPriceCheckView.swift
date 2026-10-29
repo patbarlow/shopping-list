@@ -65,9 +65,9 @@ struct MacPriceCheckView: View {
             composer.padding(20).frame(maxWidth: 840).frame(maxWidth: .infinity)
         }
         .navigationTitle("Price check")
-        .toolbar {
+        .safeAreaInset(edge: .top, alignment: .trailing) {
             Button("New check") { draft.offer = nil; draft.text = ""; draft.image = nil; draft.error = nil; draft.selectedProduct = ""; draft.purchases = [] }
-                .disabled(draft.busy)
+                .disabled(draft.busy).padding(.trailing, 24).padding(.vertical, 8)
         }
         .fileImporter(isPresented: $importing, allowedContentTypes: [.image]) { result in
             switch result {
@@ -79,14 +79,20 @@ struct MacPriceCheckView: View {
         .dropDestination(for: URL.self) { urls, _ in
             guard let url = urls.first, !draft.busy else { return false }; loadFile(url); return true
         }
-        .task(id: draft.selectedProduct) {
+        .task(id: comparisonIdentity) {
             draft.purchases = []
             guard !draft.selectedProduct.isEmpty else { return }
             do {
                 let result = try await services.api.fetchProductInsight(householdId: householdId, productId: draft.selectedProduct)
-                if !Task.isCancelled { draft.purchases = result.purchases }
+                if !Task.isCancelled { draft.purchases = draft.offer?.matchingPurchases(result.purchases, productId: draft.selectedProduct) ?? [] }
             } catch { if !Task.isCancelled { draft.error = error.localizedDescription } }
         }
+    }
+
+    private var comparisonIdentity: String {
+        [draft.selectedProduct, draft.offer?.name ?? "",
+         draft.offer?.historyMatches?.flatMap(\.purchaseIds).sorted().joined(separator: ",") ?? "legacy"]
+            .joined(separator: "|")
     }
 
     private var composer: some View {
@@ -95,7 +101,7 @@ struct MacPriceCheckView: View {
                 HStack {
                     Image(nsImage: image).resizable().scaledToFill().frame(width: 60, height: 60).clipShape(RoundedRectangle(cornerRadius: 12))
                     Text("Photo attached").foregroundStyle(.secondary)
-                    Button { draft.image = nil } label: { Image(hugeIcon: "xmark") }.buttonStyle(.plain).help("Remove photo")
+                    Button { draft.image = nil } label: { Image(hugeIcon: "xmark") }.buttonStyle(MacButtonStyle(.subtle, compact: true)).help("Remove photo")
                 }
             }
             TextField("e.g. Greek yoghurt, 1 kg for $6.50", text: $draft.text)
@@ -105,7 +111,7 @@ struct MacPriceCheckView: View {
                 Button("Paste image") { pasteImage() }.help("Paste a copied screenshot or photo")
                 Spacer()
                 if importingImage { ProgressView().controlSize(.small) }
-                Button("Check price", action: send).buttonStyle(.borderedProminent).keyboardShortcut(.return, modifiers: .command)
+                Button("Check price", action: send).buttonStyle(MacButtonStyle(.primary)).keyboardShortcut(.return, modifiers: .command)
                     .disabled(draft.busy || importingImage || (draft.text.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && draft.image == nil))
             }
         }.padding(18).background(Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 22))
@@ -131,7 +137,7 @@ struct MacPriceCheckView: View {
                 }
                 ForEach(Array(value.comparable.prefix(5))) { purchase in
                     HStack {
-                        Text(purchase.storeName ?? "Purchase")
+                        VStack(alignment: .leading) { Text(purchase.variant ?? offer.name); Text(purchase.storeName ?? "Purchase").font(.caption).foregroundStyle(.secondary) }
                         Text(MacStyle.date(purchase.purchasedAt)).foregroundStyle(.secondary)
                         Spacer()
                         Text("\(MacStyle.money(purchase.unitPrice)) / \(purchase.unitPriceUnit ?? "")")
@@ -149,10 +155,10 @@ struct MacPriceCheckView: View {
         Task {
             defer { draft.busy = false }
             do {
-                let offer = try await services.api.readPriceOffer(householdId: householdId, text: draft.text.isEmpty ? "Is this a good price?" : draft.text, image: draft.image, previous: draft.offer)
+                let offer = try await services.api.readPriceOffer(householdId: householdId, text: draft.text.isEmpty ? "Is this a good price?" : draft.text, image: draft.image, previous: draft.image == nil ? draft.offer : nil)
                 draft.offer = offer
                 draft.products = try await services.api.fetchProductInsights(householdId: householdId)
-                draft.selectedProduct = PriceProductMatcher.exactMatch(name: offer.name, products: draft.products)?.id ?? ""
+                draft.selectedProduct = offer.historyMatches?.count == 1 ? (offer.historyMatches?.first?.productId ?? "") : (offer.historyMatches == nil ? PriceProductMatcher.exactMatch(name: offer.name, products: draft.products)?.id ?? "" : "")
                 draft.text = ""; draft.image = nil
                 focused = true
             } catch { draft.error = error.localizedDescription }

@@ -9,6 +9,8 @@ struct WindowLevelAccessor: NSViewRepresentable {
     func updateNSView(_ view: NSView, context: Context) {
         DispatchQueue.main.async {
             view.window?.level = alwaysOnTop ? .floating : .normal
+            view.window?.titlebarSeparatorStyle = .none
+            view.window?.titlebarAppearsTransparent = true
         }
     }
 }
@@ -89,7 +91,7 @@ private struct MacEmailEntryView: View {
                     if services.auth.isLoading { ProgressView().frame(maxWidth: .infinity) }
                     else { Text("Send Code").frame(maxWidth: .infinity) }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(MacButtonStyle(.primary))
                 .disabled(services.auth.isLoading || email.trimmingCharacters(in: .whitespaces).isEmpty)
                 .keyboardShortcut(.return, modifiers: [])
             }
@@ -135,7 +137,7 @@ private struct MacCodeEntryView: View {
                     if services.auth.isLoading { ProgressView().frame(maxWidth: .infinity) }
                     else { Text("Sign In").frame(maxWidth: .infinity) }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(MacButtonStyle(.primary))
                 .disabled(services.auth.isLoading || code.trimmingCharacters(in: .whitespaces).isEmpty)
                 .keyboardShortcut(.return, modifiers: [])
 
@@ -145,7 +147,7 @@ private struct MacCodeEntryView: View {
                 }
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-                .buttonStyle(.plain)
+                .buttonStyle(MacButtonStyle(.subtle, compact: true))
             }
         }
         .padding(32)
@@ -189,14 +191,14 @@ private struct MacHouseholdSetupView: View {
             if mode == .create {
                 TextField("Household name", text: $name).textFieldStyle(.roundedBorder)
                 Button("Create") { Task { await services.auth.createHousehold(name: name) } }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(MacButtonStyle(.primary))
                     .disabled(name.isEmpty || services.auth.isLoading)
             } else {
                 TextField("Invite code", text: $inviteCode)
                     .textFieldStyle(.roundedBorder)
                     .textCase(.uppercase)
                 Button("Join") { Task { await services.auth.joinHousehold(inviteCode: inviteCode) } }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(MacButtonStyle(.primary))
                     .disabled(inviteCode.isEmpty || services.auth.isLoading)
             }
 
@@ -281,10 +283,9 @@ struct MacListView: View {
                 .padding(.horizontal, 12)
                 .padding(.bottom, voice.status == nil && voice.speech.error == nil ? 0 : 6)
 
-            Divider().opacity(0.4)
             addBar
-                .padding(.horizontal, 12)
-                .padding(.vertical, 12)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 20).padding(.top, 10)
                 .frame(maxWidth: 840).frame(maxWidth: .infinity)
         }
         .overlay(alignment: .bottom) {
@@ -292,7 +293,7 @@ struct MacListView: View {
                 .ignoresSafeArea(.container, edges: .bottom)
         }
         .navigationTitle("List")
-        .searchable(text: $filter, prompt: "Find an item")
+
         .onChange(of: addRequest) { _, value in if value > 0 { startAdding(); addRequest = 0 } }
         .task { if addRequest > 0 { startAdding(); addRequest = 0 } }
         .onChange(of: focusedField) { old, new in handleFocusChange(old: old, new: new) }
@@ -341,7 +342,7 @@ struct MacListView: View {
                         .onTapGesture { voice.speech.error = nil; startAdding() }
                 }
                 if draft.isAdding && !draft.newItem.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                    Button("Add", action: { commitAdd() }).buttonStyle(.borderedProminent)
+                    Button("Add", action: { commitAdd() }).buttonStyle(MacButtonStyle(.primary))
                 }
                 VoiceInputControls(voice: voice, toggle: toggleVoice)
             }
@@ -367,7 +368,10 @@ struct MacListView: View {
         }
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+        .padding(8)
+        .background(Color(.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 24))
+        .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Color.primary.opacity(0.07), lineWidth: 1))
+        .shadow(color: .black.opacity(0.045), radius: 14, y: 4)
         .contentShape(Rectangle())
         .animation(.easeOut(duration: 0.18), value: draft.isAdding)
     }
@@ -401,7 +405,7 @@ struct MacListView: View {
                 .padding(.vertical, 14)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(MacSidebarButtonStyle())
 
             if !isCollapsed {
                 Divider().padding(.horizontal, 12).opacity(0.25)
@@ -444,7 +448,7 @@ struct MacListView: View {
                     .font(.body)
                     .frame(width: 22, height: 22)
                     .contentShape(Circle())
-                }.buttonStyle(.plain).help("Check off \(item.name)").accessibilityLabel("Check off \(item.name)")
+                }.buttonStyle(MacButtonStyle(.subtle, compact: true)).help("Check off \(item.name)").accessibilityLabel("Check off \(item.name)")
 
                 if isEditing {
                     TextField("Name", text: $editName)
@@ -494,6 +498,7 @@ struct MacListView: View {
         .padding(.horizontal, 12)
         .padding(.vertical, 12)
         .background(isEditing ? Color.accentColor.opacity(0.12) : Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 15))
+        .modifier(MacRowHover())
     }
 
     // MARK: Empty state
@@ -621,7 +626,7 @@ struct MacSettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @State private var copied = false
     @State private var frequency: ShoppingFrequency
-    @AppStorage("mac_always_on_top") private var alwaysOnTop = false
+    @AppStorage("mac_always_on_top") private var alwaysOnTop = true
     @State private var confirmSignOut = false
 
     init(household: Household) {
@@ -634,7 +639,7 @@ struct MacSettingsView: View {
             HStack {
                 Text("Settings").font(.system(.title2, design: .rounded, weight: .bold))
                 Spacer()
-                Button("Done") { dismiss() }.buttonStyle(.borderedProminent)
+                Button("Done") { dismiss() }.buttonStyle(MacButtonStyle(.primary))
             }
 
             GroupBox("Household") {
@@ -655,7 +660,7 @@ struct MacSettingsView: View {
                             Image(hugeIcon: copied ? "checkmark" : "doc.on.doc")
                                 .foregroundStyle(copied ? .green : .accentColor)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(MacButtonStyle(.subtle, compact: true))
                     }
                     Text("Share this code with household partners so they can join.")
                         .font(.caption)

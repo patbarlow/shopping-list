@@ -136,3 +136,15 @@ struct RecentPhotoTests {
         #expect(!RecentPhotoPolicy.isEligible(nil, now: now))
     }
 }
+
+struct PriceReceiptIdentityTests {
+    @Test func genericProductComparisonUsesOnlyMatchedBrandReceipts() throws {
+        let data = Data(#"{"name":"Red Bull Energy Drink","price":9.83,"size":1000,"unit":"mL","question":null,"historyMatches":[{"productId":"energy","purchaseIds":["red"],"receiptDescriptions":["REDBULL 4X250ML"]}]}"#.utf8)
+        let offer = try JSONDecoder().decode(PriceOffer.self, from: data)
+        let purchases = try JSONDecoder().decode([ProductPurchase].self, from: Data(#"[{"id":"red","purchased_at":"2026-10-01","price_paid":6.5,"quantity":"1","variant":"REDBULL 4X250ML","unit_price":0.65,"unit_price_unit":"100mL"},{"id":"v","purchased_at":"2026-10-02","price_paid":4,"quantity":"1","variant":"V BLUE","unit_price":0.4,"unit_price_unit":"100mL"}]"#.utf8))
+        let matched = offer.matchingPurchases(purchases, productId: "energy")
+        #expect(matched.map(\.id) == ["red"])
+        #expect(PriceComparison(offer: offer, purchases: matched).average == 0.65)
+        #expect(offer.matchingPurchases(purchases, productId: "unrelated").isEmpty)
+    }
+}

@@ -80,7 +80,7 @@ targets:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.patbarlow.shoppinglist
         MARKETING_VERSION: "1.8.1"
-        CURRENT_PROJECT_VERSION: "203"
+        CURRENT_PROJECT_VERSION: "205"
         TARGETED_DEVICE_FAMILY: "1,2"
         IPHONEOS_DEPLOYMENT_TARGET: "26.0"
         CODE_SIGN_STYLE: Automatic
@@ -173,7 +173,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.patbarlow.shoppinglist.mac
         PRODUCT_NAME: Trolley
         MARKETING_VERSION: "1.9.0"
-        CURRENT_PROJECT_VERSION: "204"
+        CURRENT_PROJECT_VERSION: "205"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon

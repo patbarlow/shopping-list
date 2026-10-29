@@ -17,6 +17,11 @@ struct ShoppingListMacApp: App {
 
     init() {
         ShoppingCore.migrateIfNeeded()
+        // One-time adoption of the requested Mac default; subsequent choices persist.
+        if !UserDefaults.standard.bool(forKey: "trolley_floating_default_v205") {
+            UserDefaults.standard.set(true, forKey: "mac_always_on_top")
+            UserDefaults.standard.set(true, forKey: "trolley_floating_default_v205")
+        }
         SentrySDK.start { options in
             options.dsn = "https://4fbbe6fdbd49ab9139757d8b8a1de53f@o4511482336772096.ingest.us.sentry.io/4511482454933504"
             options.sendDefaultPii = true
@@ -34,7 +39,7 @@ struct ShoppingListMacApp: App {
             MacRootView()
                 .environment(services)
         }
-        .windowStyle(.titleBar)
+        .windowStyle(.hiddenTitleBar)
         .defaultSize(width: 960, height: 720)
         .windowResizability(.contentMinSize)
         .commands {
@@ -44,15 +49,6 @@ struct ShoppingListMacApp: App {
                     updaterController.checkForUpdates(nil)
                 }
             }
-        }
-        Settings {
-            Group {
-                if let household = services.auth.household {
-                    MacSettingsView(household: household)
-                } else {
-                    Text("Sign in to manage your household settings.").padding(40)
-                }
-            }.environment(services)
         }
     }
 }

@@ -80,8 +80,8 @@ struct MacInsightsView: View {
             }
         }
         .navigationTitle("Insights")
-        .searchable(text: $query, prompt: "Find a product")
-        .toolbar { Button("Refresh") { Task { await load() } } }
+        .safeAreaInset(edge: .top) { TextField("Find a product", text: $query).textFieldStyle(.roundedBorder).padding(.horizontal, 24) }
+        .safeAreaInset(edge: .top) { HStack { Spacer(); Button("Refresh") { Task { await load() } } }.padding(.horizontal, 24).padding(.vertical, 8) }
         .task { await load() }
         .task(id: selected) {
             guard let selected else { detail = nil; return }
@@ -150,7 +150,7 @@ struct MacForecastView: View {
                 MacEmptyState(title: "Getting to know your shop.", message: "As you shop, Trolley learns what you buy regularly and suggests what you might need next.")
             }
         }.navigationTitle("Forecast")
-            .toolbar { Button("Refresh") { Task { await load() } } }
+            .safeAreaInset(edge: .top) { HStack { Spacer(); Button("Refresh") { Task { await load() } } }.padding(.horizontal, 24).padding(.vertical, 8) }
             .task { await load() }
     }
     private func load() async {
@@ -176,7 +176,7 @@ struct MacRecipesView: View {
             else if recipes.isEmpty && error == nil {
                 VStack(spacing: 0) {
                     MacEmptyState(title: "Something good for dinner.", message: "Import a recipe from a link, review the ingredients and add just what you need to your list.").frame(maxHeight: 330)
-                    Button("Import recipe…") { importing = true }.buttonStyle(.borderedProminent)
+                    Button("Import recipe…") { importing = true }.buttonStyle(MacButtonStyle(.primary))
                 }.frame(maxWidth: .infinity, maxHeight: .infinity)
             } else {
                 List(recipes) { recipe in
@@ -190,11 +190,11 @@ struct MacRecipesView: View {
                             Spacer()
                             Text("Review ingredients").foregroundStyle(.secondary)
                         }.padding(.vertical, 10).contentShape(Rectangle())
-                    }.buttonStyle(.plain)
+                    }.buttonStyle(MacSidebarButtonStyle())
                 }
             }
         }.navigationTitle("Recipes")
-            .toolbar { Button("Import recipe…") { importing = true } }
+            .safeAreaInset(edge: .top) { HStack { Spacer(); Button("Import recipe…") { importing = true } }.padding(.horizontal, 24).padding(.vertical, 8) }
             .sheet(isPresented: $importing, onDismiss: { Task { await load() } }) {
                 RecipeImportView(householdId: householdId).frame(width: 600, height: 620)
             }
@@ -246,7 +246,7 @@ private struct MacSavedRecipeView: View {
                         do { try await services.shopping.addBulkItems(ingredients.filter(\.isIncluded)); dismiss() }
                         catch { self.error = error.localizedDescription; loading = false }
                     }
-                }.buttonStyle(.borderedProminent).disabled(loading || !ingredients.contains(where: \.isIncluded))
+                }.buttonStyle(MacButtonStyle(.primary)).disabled(loading || !ingredients.contains(where: \.isIncluded))
             }
         }.padding(24).frame(width: 560, height: 560)
             .task {

@@ -15,6 +15,7 @@ struct PriceOffer: Codable, Equatable {
     var size: Double?
     var unit: String?
     var question: String?
+    var historyMatches: [PriceHistoryMatch]? = nil
 
     var packSizeLabel: String? {
         guard let size, let unit else { return nil }
@@ -31,6 +32,20 @@ struct PriceOffer: Codable, Equatable {
         case "each": return (price / size, "each")
         default: return nil
         }
+    }
+}
+
+struct PriceHistoryMatch: Codable, Equatable {
+    let productId: String
+    let purchaseIds: [String]
+    let receiptDescriptions: [String]
+}
+
+extension PriceOffer {
+    func matchingPurchases(_ purchases: [ProductPurchase], productId: String) -> [ProductPurchase] {
+        guard let historyMatches else { return purchases } // Older server compatibility.
+        let ids = Set(historyMatches.filter { $0.productId == productId }.flatMap(\.purchaseIds))
+        return purchases.filter { ids.contains($0.id) }
     }
 }
 
