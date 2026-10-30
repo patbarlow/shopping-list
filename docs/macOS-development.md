@@ -29,7 +29,9 @@ files, dropped files and pasted images. Receipt import accepts images, text PDFs
 and scanned PDFs, with a review step before saving.
 
 The sidebar includes receipt import and Settings. Settings opens as an in-app
-modal. Use **⇧⌘S** to toggle the sidebar. The window floats above other windows
+modal. The window can narrow to 380 points; below 760 points the sidebar opens
+over the content and closes after navigation. Clicking outside an editor dismisses
+it; unfinished new-item text is retained for when you reopen it. Use **⇧⌘S** to toggle the sidebar. The window floats above other windows
 by default; this can be turned off in Settings.
 
 Photo-only price checks identify the offer and match original receipt descriptions
@@ -38,7 +40,7 @@ Comparisons use only matched purchase records and normalize pack sizes.
 
 ## Development builds versus released updates
 
-Version 1.9.0 (205) is a local Mac development build. Creating or running it does
+Version 1.9.0 (206) is a local Mac development build. Creating or running it does
 not publish a Sparkle update. The public appcast still points at the released
 1.8.0 (200) package until a separate signed, notarized release is published.
 The iOS and macOS targets have independent version settings and release paths.

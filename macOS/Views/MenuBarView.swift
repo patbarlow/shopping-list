@@ -347,7 +347,7 @@ struct MacListView: View {
                 VoiceInputControls(voice: voice, toggle: toggleVoice)
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, draft.isAdding ? 10 : 12)
+            .padding(.vertical, draft.isAdding ? 10 : 6)
 
             if draft.isAdding && !voice.isActive {
                 Divider().padding(.horizontal, 12).opacity(0.25)
@@ -373,6 +373,8 @@ struct MacListView: View {
         .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Color.primary.opacity(0.07), lineWidth: 1))
         .shadow(color: .black.opacity(0.045), radius: 14, y: 4)
         .contentShape(Rectangle())
+        .onTapGesture { if !draft.isAdding && !voice.isActive { startAdding() } }
+        .background(MacClickOutside(active: draft.isAdding, action: dismissAdd))
         .animation(.easeOut(duration: 0.18), value: draft.isAdding)
     }
 
@@ -441,21 +443,18 @@ struct MacListView: View {
 
         return VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .center, spacing: 10) {
-                // Circle toggles complete; tapping row text enters edit mode
+                // The circle toggles completion; the rest of the row opens the editor.
                 Button { store.pendingToggle(item) } label: {
                   Image(hugeIcon: isComplete ? "checkmark.circle.fill" : "circle")
                     .foregroundStyle(isComplete ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
                     .font(.body)
                     .frame(width: 22, height: 22)
                     .contentShape(Circle())
-                }.buttonStyle(MacButtonStyle(.subtle, compact: true)).help("Check off \(item.name)").accessibilityLabel("Check off \(item.name)")
+                }.buttonStyle(MacCheckboxStyle()).help("Check off \(item.name)").accessibilityLabel("Check off \(item.name)")
 
                 if isEditing {
-                    TextField("Name", text: $editName)
-                        .textFieldStyle(.plain)
-                        .focused($focusedField, equals: .editName)
-                        .onSubmit { commitEdit() }
-                        .onKeyPress(.escape) { cancelEdit(); return .handled }
+                    MacRowNameField(text: $editName, focus: $focusedField,
+                                    onSubmit: commitEdit, onCancel: cancelEdit)
                 } else {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(item.name)
@@ -466,7 +465,6 @@ struct MacListView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
-                    .onTapGesture { beginEditing(item) }
                 }
             }
 
@@ -499,6 +497,9 @@ struct MacListView: View {
         .padding(.vertical, 12)
         .background(isEditing ? Color.accentColor.opacity(0.12) : Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 15))
         .modifier(MacRowHover())
+        .contentShape(RoundedRectangle(cornerRadius: 15))
+        .onTapGesture { if !isEditing { beginEditing(item) } }
+        .background(MacClickOutside(active: isEditing, action: commitEdit))
     }
 
     // MARK: Empty state
@@ -515,8 +516,7 @@ struct MacListView: View {
             commitEdit()
         }
         if isAddField(old) && !isAddField(new) && draft.isAdding {
-            // Clicking elsewhere must never submit an unfinished item.
-            if draft.newItem.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { cancelAdd() }
+            dismissAdd()
         }
     }
 
@@ -574,6 +574,12 @@ struct MacListView: View {
         }
     }
 
+    private func dismissAdd() {
+        // Collapse without submitting or losing an unfinished draft.
+        draft.isAdding = false
+        if isAddField(focusedField) { focusedField = nil }
+    }
+
     private func cancelAdd() {
         draft.newItem = ""; draft.newQty = ""; draft.isAdding = false; focusedField = nil
     }
@@ -590,7 +596,7 @@ struct MacListView: View {
         editName  = item.name
         editQty   = item.quantity ?? ""
         editNotes = item.notes    ?? ""
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { focusedField = .editName }
+        focusedField = .editName
     }
 
     private func commitEdit() {
@@ -836,5 +842,104 @@ struct MacHistoryView: View {
             if selectedDate == nil { selectedDate = days.first?.date }
         } catch { historyError = error.localizedDescription }
         isLoadingDays = false
+    }
+}
+
+// Observe clicks without consuming them, so the clicked control still receives
+// its normal action. Geometry is the actual editor, including its padded area.
+private struct MacClickOutside: NSViewRepresentable {
+    let active: Bool
+    let action: () -> Void
+    func makeNSView(context: Context) -> OutsideClickView { OutsideClickView() }
+    func updateNSView(_ view: OutsideClickView, context: Context) {
+        view.action = action
+        view.setActive(active)
+    }
+    static func dismantleNSView(_ view: OutsideClickView, coordinator: ()) { view.setActive(false) }
+
+    final class OutsideClickView: NSView {
+        var action: (() -> Void)?
+        private var monitor: Any?
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        func setActive(_ active: Bool) {
+            if !active, let monitor { NSEvent.removeMonitor(monitor); self.monitor = nil }
+            guard active, monitor == nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+                guard let self, let window = self.window, event.window === window else { return event }
+                if !self.bounds.contains(self.convert(event.locationInWindow, from: nil)) { self.action?() }
+                return event
+            }
+        }
+    }
+}
+
+private struct MacCheckboxStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View { Surface(configuration: configuration) }
+    private struct Surface: View {
+        let configuration: ButtonStyleConfiguration
+        @State private var hovered = false
+        var body: some View {
+            configuration.label
+                .background(Circle().fill(Color.accentColor.opacity(configuration.isPressed ? 0.24 : hovered ? 0.12 : 0)))
+                .contentShape(Circle())
+                .onHover { hovered = $0 }
+                .animation(.easeOut(duration: 0.12), value: hovered)
+        }
+    }
+}
+
+// Native text field avoids SwiftUI's automatic select-all when a row enters edit
+// mode. Subsequent clicks still position the insertion point normally.
+private struct MacRowNameField: NSViewRepresentable {
+    @Binding var text: String
+    var focus: FocusState<MacFocusField?>.Binding
+    let onSubmit: () -> Void
+    let onCancel: () -> Void
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeNSView(context: Context) -> NameField {
+        let field = NameField()
+        field.isBordered = false
+        field.focusRingType = .none
+        field.drawsBackground = false
+        field.font = .systemFont(ofSize: NSFont.systemFontSize)
+        field.placeholderString = "Name"
+        field.setAccessibilityLabel("Name")
+        field.delegate = context.coordinator
+        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return field
+    }
+    func updateNSView(_ field: NameField, context: Context) {
+        context.coordinator.parent = self
+        if field.stringValue != text { field.stringValue = text }
+        guard !context.coordinator.didFocus else { return }
+        context.coordinator.didFocus = true
+        DispatchQueue.main.async {
+            guard field.window != nil else { return }
+            field.selectText(nil)
+        }
+    }
+    final class NameField: NSTextField {
+        override func selectText(_ sender: Any?) {
+            super.selectText(sender)
+            if let editor = currentEditor() as? NSTextView {
+                editor.setSelectedRange(NSRange(location: stringValue.utf16.count, length: 0))
+                editor.isAutomaticTextCompletionEnabled = false
+                editor.isAutomaticSpellingCorrectionEnabled = false
+            }
+        }
+    }
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: MacRowNameField
+        var didFocus = false
+        init(_ parent: MacRowNameField) { self.parent = parent }
+        func controlTextDidChange(_ notification: Notification) {
+            if let field = notification.object as? NSTextField { parent.text = field.stringValue }
+        }
+        func controlTextDidBeginEditing(_ notification: Notification) { parent.focus.wrappedValue = .editName }
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy command: Selector) -> Bool {
+            if command == #selector(NSResponder.insertNewline(_:)) { parent.onSubmit(); return true }
+            if command == #selector(NSResponder.cancelOperation(_:)) { parent.onCancel(); return true }
+            return false
+        }
     }
 }

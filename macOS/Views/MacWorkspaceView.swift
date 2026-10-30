@@ -64,54 +64,84 @@ struct MacWorkspaceView: View {
     @State private var showReceipt = false
     @State private var showSettings = false
     @State private var sidebarVisible = true
+    @State private var compactWindow = false
     @AppStorage("mac_always_on_top") private var alwaysOnTop = true
 
     var body: some View {
-        HStack(spacing: 0) {
-            if sidebarVisible {
-                VStack(alignment: .leading, spacing: 6) {
-                    Text("Shopping").font(.caption.weight(.medium)).foregroundStyle(.secondary).padding(.horizontal, 10)
-                    ForEach(Array(MacDestination.allCases.prefix(4))) { navigationRow($0) }
-                    Text("Your household").font(.caption.weight(.medium)).foregroundStyle(.secondary).padding(.horizontal, 10).padding(.top, 22)
-                    navigationRow(.history)
-                    navigationRow(.recipes)
-                    Button { showReceipt = true } label: {
-                        sidebarLabel("Import receipt", icon: "receipt")
-                    }.buttonStyle(MacSidebarButtonStyle()).help("Import a receipt (⌘I)")
-                    Spacer()
-                    Text(household.name).font(.system(.headline, design: .rounded)).padding(.horizontal, 10)
-                    Button { showSettings = true } label: { sidebarLabel("Settings", icon: "gear") }
-                        .buttonStyle(MacSidebarButtonStyle()).help("Settings (⌘,)")
-                }.padding(12).padding(.top, 42).frame(width: 210)
-                    .background(Color.primary.opacity(0.025))
-            }
-            Group {
-                switch selection ?? .list {
-                case .list: MacListView(household: household, draft: listDraft, addRequest: $addRequest)
-                case .insights: MacInsightsView(householdId: household.id)
-                case .priceCheck: MacPriceCheckView(householdId: household.id, draft: priceDraft)
-                case .forecast: MacForecastView(householdId: household.id)
-                case .history: MacHistoryView(householdId: household.id)
-                case .recipes: MacRecipesView(householdId: household.id)
+        GeometryReader { geometry in
+            let compact = geometry.size.width < 760
+            ZStack(alignment: .leading) {
+                HStack(spacing: 0) {
+                    if sidebarVisible && !compact { sidebar.transition(.move(edge: .leading).combined(with: .opacity)) }
+                    workspaceContent
                 }
-            }.padding(.top, 42).frame(maxWidth: .infinity, maxHeight: .infinity)
-        }
-        .overlay(alignment: .topLeading) {
-            Button { sidebarVisible.toggle() } label: {
-                Image(systemName: "sidebar.left").font(.system(size: 15)).frame(width: 20, height: 20)
-            }.buttonStyle(MacButtonStyle(.subtle, compact: true))
-                .help("Toggle sidebar (⇧⌘S)").accessibilityLabel("Toggle sidebar")
-                .padding(.leading, sidebarVisible ? 168 : 92).padding(.top, 8)
+                if sidebarVisible && compact {
+                    Color.black.opacity(0.08)
+                        .contentShape(Rectangle())
+                        .onTapGesture { sidebarVisible = false }
+                    sidebar
+                        .shadow(color: .black.opacity(0.12), radius: 16, x: 6)
+                        .transition(.move(edge: .leading).combined(with: .opacity))
+                }
+            }
+            .animation(.easeInOut(duration: 0.22), value: sidebarVisible)
+            .overlay(alignment: .topLeading) {
+                Button { sidebarVisible.toggle() } label: {
+                    Image(systemName: "sidebar.left").font(.system(size: 15)).frame(width: 20, height: 20)
+                }.buttonStyle(MacButtonStyle(.subtle, compact: true))
+                    .help("Toggle sidebar (⇧⌘S)").accessibilityLabel("Toggle sidebar")
+                    .padding(.leading, sidebarVisible ? 168 : 92).padding(.top, 8)
+            }
+            .onChange(of: compact, initial: true) { _, value in
+                compactWindow = value
+                if value { sidebarVisible = false }
+            }
         }
         .ignoresSafeArea(.container, edges: .top)
-        .frame(minWidth: 760, minHeight: 540)
+        .frame(minWidth: 380, minHeight: 540)
         .background(Color(nsColor: .windowBackgroundColor))
         .background(WindowLevelAccessor(alwaysOnTop: alwaysOnTop))
         .buttonStyle(MacButtonStyle(.secondary))
-        .focusedSceneValue(\.trolleyActions, MacWindowActions(add: addItem, receipt: { showReceipt = true }, settings: { showSettings = true }, toggleSidebar: { sidebarVisible.toggle() }, navigate: { selection = $0 }))
+        .focusedSceneValue(\.trolleyActions, MacWindowActions(add: addItem, receipt: { showReceipt = true }, settings: { showSettings = true }, toggleSidebar: { sidebarVisible.toggle() }, navigate: navigate))
         .sheet(isPresented: $showReceipt) { MacReceiptImportView(householdId: household.id).buttonStyle(MacButtonStyle(.secondary)) }
         .sheet(isPresented: $showSettings) { MacSettingsView(household: household).buttonStyle(MacButtonStyle(.secondary)) }
         .task(id: household.id) { await services.shopping.load(householdId: household.id) }
+    }
+
+    private var sidebar: some View {
+        VStack(alignment: .leading, spacing: 6) {
+            Text("Shopping").font(.caption.weight(.medium)).foregroundStyle(.secondary).padding(.horizontal, 10)
+            ForEach(Array(MacDestination.allCases.prefix(4))) { navigationRow($0) }
+            Text("Your household").font(.caption.weight(.medium)).foregroundStyle(.secondary).padding(.horizontal, 10).padding(.top, 22)
+            navigationRow(.history)
+            navigationRow(.recipes)
+            Button { showReceipt = true } label: {
+                sidebarLabel("Import receipt", icon: "receipt")
+            }.buttonStyle(MacSidebarButtonStyle()).help("Import a receipt (⌘I)")
+            Spacer()
+            Text(household.name).font(.system(.headline, design: .rounded)).padding(.horizontal, 10)
+            Button { showSettings = true } label: { sidebarLabel("Settings", icon: "gear") }
+                .buttonStyle(MacSidebarButtonStyle()).help("Settings (⌘,)")
+        }.padding(12).padding(.top, 42).frame(width: 210)
+            .background(Color(nsColor: .windowBackgroundColor))
+    }
+
+    private var workspaceContent: some View {
+        Group {
+            switch selection ?? .list {
+            case .list: MacListView(household: household, draft: listDraft, addRequest: $addRequest)
+            case .insights: MacInsightsView(householdId: household.id)
+            case .priceCheck: MacPriceCheckView(householdId: household.id, draft: priceDraft)
+            case .forecast: MacForecastView(householdId: household.id)
+            case .history: MacHistoryView(householdId: household.id)
+            case .recipes: MacRecipesView(householdId: household.id)
+            }
+        }.padding(.top, 42).frame(maxWidth: .infinity, maxHeight: .infinity)
+    }
+
+    private func navigate(_ destination: MacDestination) {
+        selection = destination
+        if compactWindow { sidebarVisible = false }
     }
 
     private func sidebarLabel(_ title: String, icon: String) -> some View {
@@ -122,7 +152,7 @@ struct MacWorkspaceView: View {
         }.padding(.horizontal, 10).padding(.vertical, 9).contentShape(RoundedRectangle(cornerRadius: 10))
     }
     private func navigationRow(_ destination: MacDestination) -> some View {
-        Button { selection = destination } label: {
+        Button { navigate(destination) } label: {
             HStack(spacing: 10) {
                 Image(hugeIcon: destination.icon).resizable().scaledToFit().frame(width: 20, height: 20)
                 Text(destination.rawValue)
@@ -136,7 +166,7 @@ struct MacWorkspaceView: View {
     }
 
     private func addItem() {
-        selection = .list
+        navigate(.list)
         // Wait for the destination to mount when invoked from another screen.
         Task { @MainActor in
             await Task.yield()
