@@ -5,12 +5,58 @@ import AppKit
 
 struct WindowLevelAccessor: NSViewRepresentable {
     let alwaysOnTop: Bool
-    func makeNSView(context: Context) -> NSView { NSView() }
-    func updateNSView(_ view: NSView, context: Context) {
-        DispatchQueue.main.async {
-            view.window?.level = alwaysOnTop ? .floating : .normal
-            view.window?.titlebarSeparatorStyle = .none
-            view.window?.titlebarAppearsTransparent = true
+    func makeNSView(context: Context) -> WindowChromeView { WindowChromeView() }
+    func updateNSView(_ view: WindowChromeView, context: Context) {
+        view.alwaysOnTop = alwaysOnTop
+        DispatchQueue.main.async { view.updateWindow() }
+    }
+
+    static func dismantleNSView(_ view: WindowChromeView, coordinator: ()) { view.stopObserving() }
+
+    final class WindowChromeView: NSView {
+        var alwaysOnTop = true
+        private var observers: [NSObjectProtocol] = []
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            observers.forEach(NotificationCenter.default.removeObserver)
+            observers = []
+            guard let window else { return }
+            for name in [NSWindow.didResizeNotification, NSWindow.didEndLiveResizeNotification,
+                         NSWindow.didBecomeKeyNotification, NSWindow.didExitFullScreenNotification] {
+                observers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                    DispatchQueue.main.async { self?.updateWindow() }
+                })
+            }
+            DispatchQueue.main.async { [weak self] in self?.updateWindow() }
+        }
+        func updateWindow() {
+            guard let window else { return }
+            window.level = alwaysOnTop ? .floating : .normal
+            window.titlebarSeparatorStyle = .none
+            window.titlebarAppearsTransparent = true
+            guard !window.styleMask.contains(.fullScreen),
+                  let close = window.standardWindowButton(.closeButton),
+                  let titlebar = close.superview, let container = titlebar.superview else { return }
+            // Give the native controls a 48-point titlebar, matching the custom
+            // sidebar button's 24-point centre while retaining its top padding.
+            let height: CGFloat = 48
+            var containerFrame = container.frame
+            containerFrame.origin.y = container.superview.map { $0.bounds.height - height } ?? containerFrame.minY
+            containerFrame.size.height = height
+            container.frame = containerFrame
+            var titlebarFrame = titlebar.frame
+            titlebarFrame.size.height = height
+            titlebar.frame = titlebarFrame
+            for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+                guard let button = window.standardWindowButton(kind) else { continue }
+                var frame = button.frame
+                frame.origin.y = (height - frame.height) / 2
+                button.frame = frame
+            }
+        }
+        func stopObserving() {
+            observers.forEach(NotificationCenter.default.removeObserver)
+            observers = []
         }
     }
 }

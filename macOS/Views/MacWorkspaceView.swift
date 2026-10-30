@@ -90,7 +90,7 @@ struct MacWorkspaceView: View {
                     Image(systemName: "sidebar.left").font(.system(size: 15)).frame(width: 20, height: 20)
                 }.buttonStyle(MacButtonStyle(.subtle, compact: true))
                     .help("Toggle sidebar (⇧⌘S)").accessibilityLabel("Toggle sidebar")
-                    .padding(.leading, sidebarVisible ? 168 : 92)
+                    .padding(.leading, sidebarVisible ? 168 : 92).padding(.top, 8)
             }
             .onChange(of: compact, initial: true) { _, value in
                 compactWindow = value
