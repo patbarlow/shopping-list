@@ -28,19 +28,28 @@ async function callClaude(
   messages: { role: "user" | "assistant"; content: string | object[] }[],
   maxTokens: number,
   model: string = HAIKU,
+  strict = false,
 ): Promise<string | null> {
-  if (!env.ANTHROPIC_API_KEY) return null;
+  if (!env.ANTHROPIC_API_KEY) {
+    if (strict) throw new Error("receipt_service_unavailable");
+    return null;
+  }
   try {
     const res = await fetch(ANTHROPIC_URL, {
       method: "POST",
       headers: ANTHROPIC_HEADERS(env.ANTHROPIC_API_KEY),
       body: JSON.stringify({ model, max_tokens: maxTokens, messages }),
-      signal: AbortSignal.timeout(30_000),
+      signal: AbortSignal.timeout(strict ? 120_000 : 30_000),
     });
-    if (!res.ok) return null;
-    const json = await res.json<{ content?: { text?: string }[] }>();
+    if (!res.ok) {
+      if (strict) throw new Error(`receipt_provider_http_${res.status}`);
+      return null;
+    }
+    const json = await res.json<{ content?: { text?: string }[]; stop_reason?: string }>();
+    if (strict && json.stop_reason === "max_tokens") throw new Error("receipt_provider_truncated");
     return (json.content?.[0]?.text ?? "").trim() || null;
-  } catch {
+  } catch (error) {
+    if (strict) throw error;
     return null;
   }
 }
@@ -479,47 +488,20 @@ export async function* streamReceipt(
 ): AsyncGenerator<ReceiptRecord | { type: "done"; receipt: ParsedReceipt | null }> {
   const assembler = new ReceiptAssembler();
 
-  if (!env.ANTHROPIC_API_KEY) {
-    yield { type: "done", receipt: null };
-    return;
+  if (!env.ANTHROPIC_API_KEY) throw new Error("receipt_service_unavailable");
+  const res = await fetch(ANTHROPIC_URL, {
+    method: "POST",
+    headers: ANTHROPIC_HEADERS(env.ANTHROPIC_API_KEY),
+    body: JSON.stringify({ model: SONNET, max_tokens: 6000, stream: true, messages: receiptMessages(input) }),
+    signal: AbortSignal.timeout(120_000),
+  });
+  if (!res.ok || !res.body) throw new Error(`receipt_provider_http_${res.status}`);
+  for await (const text of anthropicTextDeltas(res.body)) {
+    for (const record of assembler.push(text)) yield record;
   }
-
-  let body: ReadableStream<Uint8Array> | null = null;
-  try {
-    const res = await fetch(ANTHROPIC_URL, {
-      method: "POST",
-      headers: ANTHROPIC_HEADERS(env.ANTHROPIC_API_KEY),
-      body: JSON.stringify({
-        model: SONNET,
-        max_tokens: 3000,
-        stream: true,
-        messages: receiptMessages(input),
-      }),
-      signal: AbortSignal.timeout(120_000),
-    });
-    if (res.ok) body = res.body;
-  } catch {
-    body = null;
-  }
-  if (!body) {
-    yield { type: "done", receipt: null };
-    return;
-  }
-
-  let interrupted = false;
-  try {
-    for await (const text of anthropicTextDeltas(body)) {
-      for (const record of assembler.push(text)) yield record;
-    }
-    for (const record of assembler.finish()) yield record;
-  } catch {
-    // A dropped connection mid-receipt: finish with whatever arrived rather
-    // than losing it, but the result is a receipt missing its tail.
-    interrupted = true;
-  }
+  for (const record of assembler.finish()) yield record;
 
   const receipt = finishReceipt(assembler);
-  if (receipt && interrupted) receipt.needs_review = true;
   yield { type: "done", receipt };
 }
 
@@ -535,7 +517,7 @@ function parseReceiptJson(text: string): ParsedReceipt | null {
  * a rasterised PDF — there is nothing to misread, so the model cannot invent items.
  */
 export async function parseReceiptFromText(env: Env, receiptText: string): Promise<ParsedReceipt | null> {
-  const reply = await callClaude(env, receiptMessages({ text: receiptText }), 3000, SONNET);
+  const reply = await callClaude(env, receiptMessages({ text: receiptText }), 6000, SONNET, true);
   return reply ? parseReceiptJson(reply) : null;
 }
 
@@ -544,7 +526,7 @@ export async function parseReceiptFromImage(
   imageBase64: string,
   mediaType: string = "image/jpeg",
 ): Promise<ParsedReceipt | null> {
-  const reply = await callClaude(env, receiptMessages({ imageBase64, mediaType }), 3000, SONNET);
+  const reply = await callClaude(env, receiptMessages({ imageBase64, mediaType }), 6000, SONNET, true);
   return reply ? parseReceiptJson(reply) : null;
 }
 

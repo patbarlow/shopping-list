@@ -1,7 +1,16 @@
 <?xml version="1.0" standalone="yes"?>
 <rss xmlns:sparkle="http://www.andymatuschak.org/xml-namespaces/sparkle" version="2.0">
     <channel>
-        <title>Shopping List macOS</title>
+        <title>Trolley</title>
+        <item>
+            <title>Trolley 1.9.0</title>
+            <pubDate>Fri, 30 Oct 2026 11:24:47 +1100</pubDate>
+            <sparkle:version>207</sparkle:version>
+            <sparkle:shortVersionString>1.9.0</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<ul><li>A new Trolley workspace for Mac, with sidebar navigation, receipt import, in-app Settings, and a floating add-item card.</li><li>Compact windows, an animated overlay sidebar, whole-row editing, click-away dismissal, and clearer hover feedback.</li><li>Send a product photo to compare matching brands and variants from your receipts, even when your shopping list uses a general name.</li><li>Refreshed app icon, rounded typography, pastel aisles, and more reliable receipt imports.</li></ul>]]></description>
+            <enclosure url="https://github.com/patbarlow/shopping-list/releases/download/v1.9.0/ShoppingList.dmg" sparkle:edSignature="xQ9PayjwM5f3V/3n5qrZxPU5MutPyrFsTXP6tO8nRvi5IO3vsBQzr54WfiI2pqWbz13WP2I5C7IC5ntpX2iqCg==" length="7406526" type="application/octet-stream"/>
+        </item>
         <item>
             <title>1.8.0</title>
             <pubDate>Fri, 09 Oct 2026 15:55:17 +1100</pubDate>

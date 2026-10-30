@@ -17,7 +17,7 @@ struct TripReceiptView: View {
             if isLoading {
                 ProgressView().frame(maxWidth: .infinity, maxHeight: .infinity)
             } else if let errorMessage {
-                ContentUnavailableView("Couldn't load receipt", systemImage: "receipt", description: Text(errorMessage))
+                TrolleyUnavailableView("Couldn't load receipt", hugeIcon: "receipt", description: Text(errorMessage))
             } else {
                 ScrollView {
                     receiptCard

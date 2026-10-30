@@ -3,12 +3,60 @@ import AppKit
 
 // MARK: - Window level accessor
 
-private struct WindowLevelAccessor: NSViewRepresentable {
+struct WindowLevelAccessor: NSViewRepresentable {
     let alwaysOnTop: Bool
-    func makeNSView(context: Context) -> NSView { NSView() }
-    func updateNSView(_ view: NSView, context: Context) {
-        DispatchQueue.main.async {
-            view.window?.level = alwaysOnTop ? .floating : .normal
+    func makeNSView(context: Context) -> WindowChromeView { WindowChromeView() }
+    func updateNSView(_ view: WindowChromeView, context: Context) {
+        view.alwaysOnTop = alwaysOnTop
+        DispatchQueue.main.async { view.updateWindow() }
+    }
+
+    static func dismantleNSView(_ view: WindowChromeView, coordinator: ()) { view.stopObserving() }
+
+    final class WindowChromeView: NSView {
+        var alwaysOnTop = true
+        private var observers: [NSObjectProtocol] = []
+        override func viewDidMoveToWindow() {
+            super.viewDidMoveToWindow()
+            observers.forEach(NotificationCenter.default.removeObserver)
+            observers = []
+            guard let window else { return }
+            for name in [NSWindow.didResizeNotification, NSWindow.didEndLiveResizeNotification,
+                         NSWindow.didBecomeKeyNotification, NSWindow.didExitFullScreenNotification] {
+                observers.append(NotificationCenter.default.addObserver(forName: name, object: window, queue: .main) { [weak self] _ in
+                    DispatchQueue.main.async { self?.updateWindow() }
+                })
+            }
+            DispatchQueue.main.async { [weak self] in self?.updateWindow() }
+        }
+        func updateWindow() {
+            guard let window else { return }
+            window.level = alwaysOnTop ? .floating : .normal
+            window.titlebarSeparatorStyle = .none
+            window.titlebarAppearsTransparent = true
+            guard !window.styleMask.contains(.fullScreen),
+                  let close = window.standardWindowButton(.closeButton),
+                  let titlebar = close.superview, let container = titlebar.superview else { return }
+            // Give the native controls a 48-point titlebar, matching the custom
+            // sidebar button's 24-point centre while retaining its top padding.
+            let height: CGFloat = 48
+            var containerFrame = container.frame
+            containerFrame.origin.y = container.superview.map { $0.bounds.height - height } ?? containerFrame.minY
+            containerFrame.size.height = height
+            container.frame = containerFrame
+            var titlebarFrame = titlebar.frame
+            titlebarFrame.size.height = height
+            titlebar.frame = titlebarFrame
+            for kind in [NSWindow.ButtonType.closeButton, .miniaturizeButton, .zoomButton] {
+                guard let button = window.standardWindowButton(kind) else { continue }
+                var frame = button.frame
+                frame.origin.y = (height - frame.height) / 2
+                button.frame = frame
+            }
+        }
+        func stopObserving() {
+            observers.forEach(NotificationCenter.default.removeObserver)
+            observers = []
         }
     }
 }
@@ -26,18 +74,18 @@ struct MacRootView: View {
     @Environment(AppServices.self) private var services
 
     var body: some View {
-        NavigationStack {
+        Group {
             Group {
                 if services.auth.isLoggedIn {
                     if let household = services.auth.household {
-                        MacListView(household: household)
+                        MacWorkspaceView(household: household)
                     } else {
                         MacHouseholdSetupView()
-                            .navigationTitle("Shopping List")
+                            .navigationTitle("Trolley")
                     }
                 } else {
                     MacLoginView()
-                        .navigationTitle("Shopping List")
+                        .navigationTitle("Trolley")
                 }
             }
         }
@@ -68,11 +116,11 @@ private struct MacEmailEntryView: View {
 
     var body: some View {
         VStack(spacing: 20) {
-            Image(systemName: "cart.fill")
-                .font(.system(size: 40))
-                .foregroundStyle(.green)
-            Text("Shopping List")
-                .font(.title2.bold())
+            Image("TrolleyMascot").resizable().scaledToFit().frame(width: 96, height: 96)
+            Text("Welcome to Trolley")
+                .font(.system(.largeTitle, design: .rounded, weight: .bold))
+            Text("Your household’s shopping, together. Sign in with the email you use on your phone.")
+                .foregroundStyle(.secondary).multilineTextAlignment(.center)
 
             VStack(spacing: 10) {
                 TextField("Email", text: $email)
@@ -89,12 +137,13 @@ private struct MacEmailEntryView: View {
                     if services.auth.isLoading { ProgressView().frame(maxWidth: .infinity) }
                     else { Text("Send Code").frame(maxWidth: .infinity) }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(MacButtonStyle(.primary))
                 .disabled(services.auth.isLoading || email.trimmingCharacters(in: .whitespaces).isEmpty)
                 .keyboardShortcut(.return, modifiers: [])
             }
         }
-        .padding(24)
+        .padding(32)
+        .frame(maxWidth: 400)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -110,11 +159,11 @@ private struct MacCodeEntryView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Image(systemName: "envelope.badge")
-                .font(.system(size: 40))
-                .foregroundStyle(.green)
+            Image(hugeIcon: "envelope.badge")
+                .resizable().scaledToFit().frame(width: 40, height: 40)
+                .foregroundStyle(Color.accentColor)
             Text("Check your email")
-                .font(.title2.bold())
+                .font(.system(.title2, design: .rounded, weight: .bold))
             Text("Code sent to **\(email)**")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -134,7 +183,7 @@ private struct MacCodeEntryView: View {
                     if services.auth.isLoading { ProgressView().frame(maxWidth: .infinity) }
                     else { Text("Sign In").frame(maxWidth: .infinity) }
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(MacButtonStyle(.primary))
                 .disabled(services.auth.isLoading || code.trimmingCharacters(in: .whitespaces).isEmpty)
                 .keyboardShortcut(.return, modifiers: [])
 
@@ -144,10 +193,11 @@ private struct MacCodeEntryView: View {
                 }
                 .font(.footnote)
                 .foregroundStyle(.secondary)
-                .buttonStyle(.plain)
+                .buttonStyle(MacButtonStyle(.subtle, compact: true))
             }
         }
-        .padding(24)
+        .padding(32)
+        .frame(maxWidth: 400)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
@@ -168,11 +218,11 @@ private struct MacHouseholdSetupView: View {
 
     var body: some View {
         VStack(spacing: 16) {
-            Image(systemName: "house.fill")
-                .font(.system(size: 40))
-                .foregroundStyle(.green)
+            Image(hugeIcon: "house.fill")
+                .resizable().scaledToFit().frame(width: 40, height: 40)
+                .foregroundStyle(Color.accentColor)
             Text("Your Household")
-                .font(.title2.bold())
+                .font(.system(.title2, design: .rounded, weight: .bold))
 
             Picker("", selection: $mode) {
                 Text("Create").tag(Mode.create)
@@ -187,14 +237,14 @@ private struct MacHouseholdSetupView: View {
             if mode == .create {
                 TextField("Household name", text: $name).textFieldStyle(.roundedBorder)
                 Button("Create") { Task { await services.auth.createHousehold(name: name) } }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(MacButtonStyle(.primary))
                     .disabled(name.isEmpty || services.auth.isLoading)
             } else {
                 TextField("Invite code", text: $inviteCode)
                     .textFieldStyle(.roundedBorder)
                     .textCase(.uppercase)
                 Button("Join") { Task { await services.auth.joinHousehold(inviteCode: inviteCode) } }
-                    .buttonStyle(.borderedProminent)
+                    .buttonStyle(MacButtonStyle(.primary))
                     .disabled(inviteCode.isEmpty || services.auth.isLoading)
             }
 
@@ -204,23 +254,28 @@ private struct MacHouseholdSetupView: View {
             Button("Sign Out", role: .destructive) { services.auth.logout() }
                 .font(.footnote)
         }
-        .padding(24)
+        .padding(32)
+        .frame(maxWidth: 400)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 }
 
 // MARK: - Main list
 
-private struct MacListView: View {
+@Observable final class MacListDraft {
+    var isAdding = false
+    var newItem = ""
+    var newQty = ""
+}
+
+struct MacListView: View {
     @State private var voice = VoiceEntryController()
     @Environment(\.scenePhase) private var scenePhase
     let household: Household
     @Environment(AppServices.self) private var services
 
     // ── Add ──────────────────────────────────────────────────────────────────
-    @State private var isAdding = false
-    @State private var newItem  = ""
-    @State private var newQty   = ""
+    @Bindable var draft: MacListDraft
 
     // ── Edit ─────────────────────────────────────────────────────────────────
     @State private var editingItemID: String? = nil
@@ -233,10 +288,8 @@ private struct MacListView: View {
 
     // ── UI ────────────────────────────────────────────────────────────────────
     @State private var collapsedSections: Set<String> = []
-    @State private var showSettings = false
-    @State private var showRecipeImport = false
-    @State private var showHistory = false
-    @AppStorage("mac_always_on_top") private var alwaysOnTop = true
+    @Binding var addRequest: Int
+    @State private var filter = ""
 
     private var store: ShoppingListStore { services.shopping }
 
@@ -244,82 +297,64 @@ private struct MacListView: View {
         VStack(spacing: 0) {
             ScrollView {
                 LazyVStack(spacing: 8) {
-                    if store.items.isEmpty && !store.isLoading {
+                    if store.isLoading && !store.hasLoaded {
+                        ProgressView("Loading your list…").padding(40)
+                    } else if store.groupedItems.isEmpty && store.hasLoaded {
                         emptyState
+                    } else if !filter.isEmpty && filteredGroups.isEmpty {
+                        Text("No items match “\(filter)”.").foregroundStyle(.secondary).padding(40)
                     } else {
-                        ForEach(store.groupedItems, id: \.category) { group in
+                        ForEach(filteredGroups, id: \.category) { group in
                             categoryCard(group: group)
                         }
                     }
                     Color.clear.frame(height: 4)
                 }
-                .padding(.horizontal, 12)
-                .padding(.top, 8)
+                .padding(24)
+                .frame(maxWidth: 840)
+                .frame(maxWidth: .infinity)
             }
 
+            if let error = store.error {
+                MacErrorBanner(message: error) { Task { await store.fetch() } }
+            }
+            if !store.recentlyCompleted.isEmpty {
+                HStack {
+                    Text("Checked off \(store.recentlyCompleted.count) item(s)").foregroundStyle(.secondary)
+                    Button("Undo") { store.undoLastComplete() }.keyboardShortcut("z", modifiers: .command)
+                }.padding(8)
+            }
             VoiceFeedbackPill(voice: voice)
                 .frame(maxWidth: .infinity, alignment: .trailing)
                 .padding(.horizontal, 12)
                 .padding(.bottom, voice.status == nil && voice.speech.error == nil ? 0 : 6)
 
-            Divider().opacity(0.4)
             addBar
-                .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.horizontal, 20)
+                .padding(.bottom, 20).padding(.top, 10)
+                .frame(maxWidth: 840).frame(maxWidth: .infinity)
         }
         .overlay(alignment: .bottom) {
             VoiceScreenGlow(active: voice.isActive, level: voice.speech.level)
                 .ignoresSafeArea(.container, edges: .bottom)
         }
-        .navigationTitle("Shopping List")
-        .toolbar { toolbarItems }
-        .toolbarBackground(Color(.windowBackgroundColor), for: .windowToolbar)
-        .sheet(isPresented: $showSettings) {
-            MacSettingsView(household: household)
-                .environment(services)
-        }
-        #if os(iOS)
-        .sheet(isPresented: $showRecipeImport) {
-            RecipeImportView(householdId: household.id)
-                .environment(services)
-        }
-#endif
-        .sheet(isPresented: $showHistory) {
-            MacHistoryView(householdId: household.id)
-                .environment(services)
-        }
-        .task { await store.load(householdId: household.id) }
+        .navigationTitle("List")
+
+        .onChange(of: addRequest) { _, value in if value > 0 { startAdding(); addRequest = 0 } }
+        .task { if addRequest > 0 { startAdding(); addRequest = 0 } }
         .onChange(of: focusedField) { old, new in handleFocusChange(old: old, new: new) }
         .onDisappear { voice.stop(discardPending: true) }
         .onChange(of: scenePhase) { _, phase in if phase == .background { voice.stop(discardPending: true) } }
         .animation(.default, value: store.groupedItems.map {
             "\($0.category.rawValue)\($0.items.map { "\($0.id)\($0.checked)" }.joined())"
         })
-        .background(WindowLevelAccessor(alwaysOnTop: alwaysOnTop))
+
     }
 
-    @ToolbarContentBuilder
-    private var toolbarItems: some ToolbarContent {
-        ToolbarItem(placement: .primaryAction) {
-            Menu {
-                Button { showSettings = true } label: {
-                    Label("Settings", systemImage: "gear")
-                }
-                Divider()
-                Button { showRecipeImport = true } label: {
-                    Label("Import Recipe…", systemImage: "link")
-                }
-                Button { showHistory = true } label: {
-                    Label("Purchase History", systemImage: "clock.arrow.circlepath")
-                }
-                Divider()
-                Toggle(isOn: $alwaysOnTop) {
-                    Label("Always on Top", systemImage: "pin")
-                }
-            } label: {
-                Image(systemName: "ellipsis")
-            }
-            .menuIndicator(.hidden)
+    private var filteredGroups: [(category: ItemCategory, items: [ShoppingItem])] {
+        store.groupedItems.compactMap { group in
+            let items = group.items.filter { filter.isEmpty || $0.name.localizedCaseInsensitiveContains(filter) }
+            return items.isEmpty ? nil : (group.category, items)
         }
     }
 
@@ -328,9 +363,9 @@ private struct MacListView: View {
     private var addBar: some View {
         VStack(alignment: .leading, spacing: 0) {
             HStack(spacing: 10) {
-                Image(systemName: isAdding ? "circle" : "plus")
-                    .foregroundStyle(isAdding ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Color.green))
-                    .font(isAdding ? .body : .body.weight(.semibold))
+                Image(hugeIcon: draft.isAdding ? "circle" : "plus")
+                    .foregroundStyle(draft.isAdding ? AnyShapeStyle(.tertiary) : AnyShapeStyle(Color.accentColor))
+                    .font(draft.isAdding ? .body : .body.weight(.semibold))
                     .frame(width: 22, height: 22)
                     .contentShape(Rectangle())
                     .onTapGesture { startAdding() }
@@ -339,8 +374,8 @@ private struct MacListView: View {
                     VoiceInputLabel(voice: voice)
                         .contentShape(Rectangle())
                         .onTapGesture { startAdding() }
-                } else if isAdding {
-                    TextField("Items, separated by commas", text: $newItem, axis: .vertical)
+                } else if draft.isAdding {
+                    TextField("Items, separated by commas", text: $draft.newItem)
                         .textFieldStyle(.plain)
                         .focused($focusedField, equals: .addName)
                         .onSubmit { commitAdd() }
@@ -352,17 +387,20 @@ private struct MacListView: View {
                         .contentShape(Rectangle())
                         .onTapGesture { voice.speech.error = nil; startAdding() }
                 }
+                if draft.isAdding && !draft.newItem.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+                    Button("Add", action: { commitAdd() }).buttonStyle(MacButtonStyle(.primary))
+                }
                 VoiceInputControls(voice: voice, toggle: toggleVoice)
             }
             .padding(.horizontal, 12)
-            .padding(.vertical, isAdding ? 10 : 12)
+            .padding(.vertical, draft.isAdding ? 10 : 6)
 
-            if isAdding && !voice.isActive {
+            if draft.isAdding && !voice.isActive {
                 Divider().padding(.horizontal, 12).opacity(0.25)
                 HStack(spacing: 10) {
                     Color.clear.frame(width: 22)
-                    TextField(ShoppingInputParser.split(newItem).count > 1 ? "Write quantities beside each item" : "Qty", text: $newQty)
-                        .disabled(ShoppingInputParser.split(newItem).count > 1)
+                    TextField(ShoppingInputParser.split(draft.newItem).count > 1 ? "Write quantities beside each item" : "Qty", text: $draft.newQty)
+                        .disabled(ShoppingInputParser.split(draft.newItem).count > 1)
                         .textFieldStyle(.plain)
                         .font(.subheadline)
                         .foregroundStyle(.secondary)
@@ -376,9 +414,14 @@ private struct MacListView: View {
         }
         .fixedSize(horizontal: false, vertical: true)
         .frame(maxWidth: .infinity, alignment: .leading)
-        .background(Color(.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 12))
+        .padding(8)
+        .background(Color(.controlBackgroundColor), in: RoundedRectangle(cornerRadius: 24))
+        .overlay(RoundedRectangle(cornerRadius: 24).strokeBorder(Color.primary.opacity(0.07), lineWidth: 1))
+        .shadow(color: .black.opacity(0.045), radius: 14, y: 4)
         .contentShape(Rectangle())
-        .animation(.easeOut(duration: 0.18), value: isAdding)
+        .onTapGesture { if !draft.isAdding && !voice.isActive { startAdding() } }
+        .background(MacClickOutside(active: draft.isAdding, action: dismissAdd))
+        .animation(.easeOut(duration: 0.18), value: draft.isAdding)
     }
 
     // MARK: Category card
@@ -397,20 +440,20 @@ private struct MacListView: View {
                 HStack(spacing: 6) {
                     Text(group.category.emoji).font(.subheadline)
                     Text(catKey)
-                        .font(.subheadline.weight(.semibold))
-                        .foregroundStyle(group.category.color)
+                        .font(.system(.headline, design: .rounded, weight: .semibold))
+                        .foregroundStyle(.primary)
                     Spacer()
-                    Image(systemName: "chevron.down")
+                    Image(hugeIcon: "chevron.down")
                         .font(.caption.weight(.semibold))
                         .foregroundStyle(group.category.color.opacity(0.7))
                         .rotationEffect(isCollapsed ? .degrees(-90) : .zero)
                         .animation(.easeInOut(duration: 0.2), value: isCollapsed)
                 }
                 .padding(.horizontal, 12)
-                .padding(.vertical, 8)
+                .padding(.vertical, 14)
                 .contentShape(Rectangle())
             }
-            .buttonStyle(.plain)
+            .buttonStyle(MacSidebarButtonStyle())
 
             if !isCollapsed {
                 Divider().padding(.horizontal, 12).opacity(0.25)
@@ -421,7 +464,10 @@ private struct MacListView: View {
                             Divider().padding(.leading, 44).opacity(0.15)
                         }
                         unifiedItemRow(for: item)
+                            .padding(.horizontal, 8)
+                            .padding(.vertical, 3)
                             .contextMenu {
+                                Button("Edit") { beginEditing(item) }
                                 Button("Delete", role: .destructive) {
                                     Task { await store.deleteItem(item) }
                                 }
@@ -431,8 +477,8 @@ private struct MacListView: View {
                 .padding(.bottom, 4)
             }
         }
-        .background(group.category.color.opacity(0.10), in: RoundedRectangle(cornerRadius: 12))
-        .clipShape(RoundedRectangle(cornerRadius: 12))
+        .background(group.category.color.opacity(0.10), in: RoundedRectangle(cornerRadius: 22))
+        .clipShape(RoundedRectangle(cornerRadius: 22))
     }
 
     // MARK: Unified item row
@@ -443,20 +489,18 @@ private struct MacListView: View {
 
         return VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .center, spacing: 10) {
-                // Circle toggles complete; tapping row text enters edit mode
-                Image(systemName: isComplete ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isComplete ? AnyShapeStyle(.green) : AnyShapeStyle(.tertiary))
+                // The circle toggles completion; the rest of the row opens the editor.
+                Button { store.pendingToggle(item) } label: {
+                  Image(hugeIcon: isComplete ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isComplete ? AnyShapeStyle(Color.accentColor) : AnyShapeStyle(.tertiary))
                     .font(.body)
                     .frame(width: 22, height: 22)
                     .contentShape(Circle())
-                    .onTapGesture { store.pendingToggle(item) }
+                }.buttonStyle(MacCheckboxStyle()).help("Check off \(item.name)").accessibilityLabel("Check off \(item.name)")
 
                 if isEditing {
-                    TextField("Name", text: $editName)
-                        .textFieldStyle(.plain)
-                        .focused($focusedField, equals: .editName)
-                        .onSubmit { commitEdit() }
-                        .onKeyPress(.escape) { cancelEdit(); return .handled }
+                    MacRowNameField(text: $editName, focus: $focusedField,
+                                    onSubmit: commitEdit, onCancel: cancelEdit)
                 } else {
                     HStack(alignment: .firstTextBaseline, spacing: 6) {
                         Text(item.name)
@@ -467,7 +511,6 @@ private struct MacListView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
                     .contentShape(Rectangle())
-                    .onTapGesture { beginEditing(item) }
                 }
             }
 
@@ -497,22 +540,19 @@ private struct MacListView: View {
             }
         }
         .padding(.horizontal, 12)
-        .padding(.vertical, 6)
+        .padding(.vertical, 12)
+        .background(isEditing ? Color.accentColor.opacity(0.12) : Color(nsColor: .controlBackgroundColor), in: RoundedRectangle(cornerRadius: 15))
+        .modifier(MacRowHover())
+        .contentShape(RoundedRectangle(cornerRadius: 15))
+        .onTapGesture { if !isEditing { beginEditing(item) } }
+        .background(MacClickOutside(active: isEditing, action: commitEdit))
     }
 
     // MARK: Empty state
 
     private var emptyState: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "cart")
-                .font(.system(size: 48, weight: .ultraLight))
-                .foregroundStyle(.quaternary)
-            Text("Your list is empty")
-                .font(.subheadline)
-                .foregroundStyle(.secondary)
-        }
-        .frame(maxWidth: .infinity)
-        .padding(.vertical, 48)
+        MacEmptyState(title: "A fresh start.", message: "What are we picking up? Add an item below, or press ⌘N.")
+            .padding(.vertical, 64)
     }
 
     // MARK: Focus handling
@@ -521,9 +561,8 @@ private struct MacListView: View {
         if isEditField(old) && !isEditField(new) && editingItemID != nil {
             commitEdit()
         }
-        if isAddField(old) && !isAddField(new) && isAdding {
-            let trimmed = newItem.trimmingCharacters(in: .whitespaces)
-            if trimmed.isEmpty { cancelAdd() } else { commitAdd(refocus: false) }
+        if isAddField(old) && !isAddField(new) && draft.isAdding {
+            dismissAdd()
         }
     }
 
@@ -538,7 +577,7 @@ private struct MacListView: View {
         if voice.isActive {
             voice.stop()
         } else {
-            isAdding = false
+            draft.isAdding = false
             focusedField = nil
             voice.start(store: store, api: services.api)
         }
@@ -548,49 +587,62 @@ private struct MacListView: View {
         guard !voice.isActive else { return }
         voice.dismissFeedback()
         commitEdit()
-        guard !isAdding else { focusedField = .addName; return }
-        isAdding = true
+        guard !draft.isAdding else { focusedField = .addName; return }
+        draft.isAdding = true
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { focusedField = .addName }
     }
 
     private func commitAdd(refocus: Bool = true) {
-        let trimmed = newItem.trimmingCharacters(in: .whitespaces)
+        let trimmed = draft.newItem.trimmingCharacters(in: .whitespaces)
         guard !trimmed.isEmpty else {
             if !refocus { cancelAdd() }
             return
         }
-        let qty = newQty.trimmingCharacters(in: .whitespaces)
-        newItem = ""; newQty = ""
+        let qty = draft.newQty.trimmingCharacters(in: .whitespaces)
+        draft.newItem = ""; draft.newQty = ""
         if refocus {
             Task { @MainActor in focusedField = .addName }
         } else {
-            isAdding = false; focusedField = nil
+            draft.isAdding = false; focusedField = nil
         }
         Task {
             let names = ShoppingInputParser.split(trimmed)
+            var failed: [String] = []
             for name in names {
-                await store.addItem(name: name, quantity: names.count == 1 && !qty.isEmpty ? qty : nil)
+                if await store.addItem(name: name, quantity: names.count == 1 && !qty.isEmpty ? qty : nil) == nil { failed.append(name) }
+            }
+            if !failed.isEmpty {
+                let current = draft.newItem.trimmingCharacters(in: .whitespacesAndNewlines)
+                draft.newItem = ([current].filter { !$0.isEmpty } + failed).joined(separator: ", ")
+                if names.count == 1 && current.isEmpty { draft.newQty = qty }
+                draft.isAdding = true
             }
         }
     }
 
+    private func dismissAdd() {
+        // Collapse without submitting or losing an unfinished draft.
+        draft.isAdding = false
+        if isAddField(focusedField) { focusedField = nil }
+    }
+
     private func cancelAdd() {
-        newItem = ""; newQty = ""; isAdding = false; focusedField = nil
+        draft.newItem = ""; draft.newQty = ""; draft.isAdding = false; focusedField = nil
     }
 
     // MARK: Edit actions
 
     private func beginEditing(_ item: ShoppingItem) {
-        if isAdding {
-            let t = newItem.trimmingCharacters(in: .whitespaces)
-            if t.isEmpty { cancelAdd() } else { commitAdd() }
+        if draft.isAdding {
+            draft.isAdding = false
+            focusedField = nil
         }
         commitEdit()
         editingItemID = item.id
         editName  = item.name
         editQty   = item.quantity ?? ""
         editNotes = item.notes    ?? ""
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05) { focusedField = .editName }
+        focusedField = .editName
     }
 
     private func commitEdit() {
@@ -602,6 +654,7 @@ private struct MacListView: View {
         let trimNotes = editNotes.trimmingCharacters(in: .whitespaces)
         editingItemID = nil; focusedField = nil
         guard !trimName.isEmpty else { return }
+        guard trimName != item.name || trimQty != (item.quantity ?? "") || trimNotes != (item.notes ?? "") else { return }
         Task {
             await store.updateItem(
                 item,
@@ -619,12 +672,14 @@ private struct MacListView: View {
 
 // MARK: - Settings sheet
 
-private struct MacSettingsView: View {
+struct MacSettingsView: View {
     let household: Household
     @Environment(AppServices.self) private var services
     @Environment(\.dismiss) private var dismiss
     @State private var copied = false
     @State private var frequency: ShoppingFrequency
+    @AppStorage("mac_always_on_top") private var alwaysOnTop = true
+    @State private var confirmSignOut = false
 
     init(household: Household) {
         self.household = household
@@ -634,9 +689,9 @@ private struct MacSettingsView: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 20) {
             HStack {
-                Text("Settings").font(.title2.bold())
+                Text("Settings").font(.system(.title2, design: .rounded, weight: .bold))
                 Spacer()
-                Button("Done") { dismiss() }.buttonStyle(.borderedProminent)
+                Button("Done") { dismiss() }.buttonStyle(MacButtonStyle(.primary))
             }
 
             GroupBox("Household") {
@@ -654,10 +709,10 @@ private struct MacSettingsView: View {
                             copied = true
                             DispatchQueue.main.asyncAfter(deadline: .now() + 2) { copied = false }
                         } label: {
-                            Image(systemName: copied ? "checkmark" : "doc.on.doc")
+                            Image(hugeIcon: copied ? "checkmark" : "doc.on.doc")
                                 .foregroundStyle(copied ? .green : .accentColor)
                         }
-                        .buttonStyle(.plain)
+                        .buttonStyle(MacButtonStyle(.subtle, compact: true))
                     }
                     Text("Share this code with household partners so they can join.")
                         .font(.caption)
@@ -684,22 +739,25 @@ private struct MacSettingsView: View {
                 .padding(4)
             }
 
+            Toggle("Keep Trolley above other windows", isOn: $alwaysOnTop)
+            if let error = services.auth.error { Text(error).foregroundStyle(.red).font(.callout) }
+            LabeledContent("Signed in as", value: services.auth.currentUser?.email ?? "")
+            LabeledContent("Version", value: MacStyle.version)
             Spacer()
-
-            Button("Sign Out", role: .destructive) {
-                services.auth.logout()
-                dismiss()
-            }
+            Button("Sign Out…", role: .destructive) { confirmSignOut = true }
             .frame(maxWidth: .infinity)
         }
         .padding(24)
-        .frame(width: 340, height: 360)
+        .frame(width: 460, height: 500)
+        .confirmationDialog("Sign out of Trolley?", isPresented: $confirmSignOut) {
+            Button("Sign Out", role: .destructive) { services.auth.logout(); dismiss() }
+        }
     }
 }
 
 // MARK: - Mac History View
 
-private struct MacHistoryView: View {
+struct MacHistoryView: View {
     let householdId: String
     @Environment(AppServices.self) private var services
     @Environment(\.dismiss) private var dismiss
@@ -708,6 +766,7 @@ private struct MacHistoryView: View {
     @State private var dayItems: [HistoryItem] = []
     @State private var isLoadingDays = true
     @State private var isLoadingItems = false
+    @State private var historyError: String?
 
     private var groupedDayItems: [(category: ItemCategory, items: [HistoryItem])] {
         let grouped = Dictionary(grouping: dayItems) { ItemCategory(rawValue: $0.category) ?? .other }
@@ -725,6 +784,10 @@ private struct MacHistoryView: View {
                     .padding(.horizontal, 12)
                     .padding(.vertical, 10)
                 Divider()
+                if let historyError {
+                    Text(historyError).foregroundStyle(.red).padding(12)
+                    Button("Retry") { Task { await loadDays() } }.padding(.horizontal)
+                }
                 if isLoadingDays {
                     ProgressView().frame(maxWidth: .infinity).padding(.top, 20)
                 } else if days.isEmpty {
@@ -789,7 +852,7 @@ private struct MacHistoryView: View {
                                         }
                                     }
                                 } header: {
-                                    Label(group.category.rawValue, systemImage: group.category.sfSymbol)
+                                    Label { Text(group.category.rawValue) } icon: { Text(group.category.emoji) }
                                         .foregroundStyle(group.category.color)
                                 }
                             }
@@ -804,24 +867,125 @@ private struct MacHistoryView: View {
             }
             .frame(minWidth: 240, idealWidth: 300)
         }
-        .toolbar {
-            ToolbarItem(placement: .cancellationAction) {
-                Button("Done") { dismiss() }
+        .navigationTitle("Purchase history")
+        .frame(minWidth: 480, maxWidth: .infinity, minHeight: 360, maxHeight: .infinity)
+        .task { await loadDays() }
+        .task(id: selectedDate) {
+            guard let date = selectedDate else { return }
+            isLoadingItems = true; dayItems = []; historyError = nil
+            do {
+                let loaded = try await services.api.fetchHistoryDay(householdId: householdId, date: date)
+                guard !Task.isCancelled else { return }
+                dayItems = loaded
+            } catch { if !Task.isCancelled { historyError = error.localizedDescription } }
+            if !Task.isCancelled { isLoadingItems = false }
+        }
+    }
+    private func loadDays() async {
+        isLoadingDays = true; historyError = nil
+        do {
+            days = try await services.api.fetchHistoryDays(householdId: householdId)
+            if selectedDate == nil { selectedDate = days.first?.date }
+        } catch { historyError = error.localizedDescription }
+        isLoadingDays = false
+    }
+}
+
+// Observe clicks without consuming them, so the clicked control still receives
+// its normal action. Geometry is the actual editor, including its padded area.
+private struct MacClickOutside: NSViewRepresentable {
+    let active: Bool
+    let action: () -> Void
+    func makeNSView(context: Context) -> OutsideClickView { OutsideClickView() }
+    func updateNSView(_ view: OutsideClickView, context: Context) {
+        view.action = action
+        view.setActive(active)
+    }
+    static func dismantleNSView(_ view: OutsideClickView, coordinator: ()) { view.setActive(false) }
+
+    final class OutsideClickView: NSView {
+        var action: (() -> Void)?
+        private var monitor: Any?
+        override func hitTest(_ point: NSPoint) -> NSView? { nil }
+        func setActive(_ active: Bool) {
+            if !active, let monitor { NSEvent.removeMonitor(monitor); self.monitor = nil }
+            guard active, monitor == nil else { return }
+            monitor = NSEvent.addLocalMonitorForEvents(matching: [.leftMouseDown, .rightMouseDown]) { [weak self] event in
+                guard let self, let window = self.window, event.window === window else { return event }
+                if !self.bounds.contains(self.convert(event.locationInWindow, from: nil)) { self.action?() }
+                return event
             }
         }
-        .frame(width: 520, height: 400)
-        .task {
-            days = (try? await services.api.fetchHistoryDays(householdId: householdId)) ?? []
-            isLoadingDays = false
+    }
+}
+
+private struct MacCheckboxStyle: ButtonStyle {
+    func makeBody(configuration: Configuration) -> some View { Surface(configuration: configuration) }
+    private struct Surface: View {
+        let configuration: ButtonStyleConfiguration
+        @State private var hovered = false
+        var body: some View {
+            configuration.label
+                .background(Circle().fill(Color.accentColor.opacity(configuration.isPressed ? 0.24 : hovered ? 0.12 : 0)))
+                .contentShape(Circle())
+                .onHover { hovered = $0 }
+                .animation(.easeOut(duration: 0.12), value: hovered)
         }
-        .onChange(of: selectedDate) { _, date in
-            guard let date else { return }
-            isLoadingItems = true
-            dayItems = []
-            Task {
-                dayItems = (try? await services.api.fetchHistoryDay(householdId: householdId, date: date)) ?? []
-                isLoadingItems = false
+    }
+}
+
+// Native text field avoids SwiftUI's automatic select-all when a row enters edit
+// mode. Subsequent clicks still position the insertion point normally.
+private struct MacRowNameField: NSViewRepresentable {
+    @Binding var text: String
+    var focus: FocusState<MacFocusField?>.Binding
+    let onSubmit: () -> Void
+    let onCancel: () -> Void
+    func makeCoordinator() -> Coordinator { Coordinator(self) }
+    func makeNSView(context: Context) -> NameField {
+        let field = NameField()
+        field.isBordered = false
+        field.focusRingType = .none
+        field.drawsBackground = false
+        field.font = .systemFont(ofSize: NSFont.systemFontSize)
+        field.placeholderString = "Name"
+        field.setAccessibilityLabel("Name")
+        field.delegate = context.coordinator
+        field.setContentCompressionResistancePriority(.defaultLow, for: .horizontal)
+        return field
+    }
+    func updateNSView(_ field: NameField, context: Context) {
+        context.coordinator.parent = self
+        if field.stringValue != text { field.stringValue = text }
+        guard !context.coordinator.didFocus else { return }
+        context.coordinator.didFocus = true
+        DispatchQueue.main.async {
+            guard field.window != nil else { return }
+            field.selectText(nil)
+        }
+    }
+    final class NameField: NSTextField {
+        override func selectText(_ sender: Any?) {
+            super.selectText(sender)
+            if let editor = currentEditor() as? NSTextView {
+                editor.setSelectedRange(NSRange(location: stringValue.utf16.count, length: 0))
+                editor.isAutomaticTextCompletionEnabled = false
+                editor.isAutomaticSpellingCorrectionEnabled = false
             }
+        }
+    }
+    final class Coordinator: NSObject, NSTextFieldDelegate {
+        var parent: MacRowNameField
+        var didFocus = false
+        init(_ parent: MacRowNameField) { self.parent = parent }
+        func controlTextDidChange(_ notification: Notification) {
+            if let field = notification.object as? NSTextField { parent.text = field.stringValue }
+        }
+        func controlTextDidBeginEditing(_ notification: Notification) { parent.focus.wrappedValue = .editName }
+        func control(_ control: NSControl, textView: NSTextView, doCommandBy command: Selector) -> Bool {
+            if command == #selector(NSResponder.insertNewline(_:)) { parent.onSubmit(); return true }
+            if command == #selector(NSResponder.cancelOperation(_:)) { parent.onCancel(); return true }
+            return false
         }
     }
 }

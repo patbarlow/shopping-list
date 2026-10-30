@@ -48,8 +48,12 @@
 	<string>1</string>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>NSCameraUsageDescription</key>
+	<string>Take a receipt or price photo to check your shopping. Photos are not saved to your library.</string>
 	<key>NSMicrophoneUsageDescription</key>
 	<string>Used for voice input when adding items to your shopping list.</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>Suggest your latest screenshot or photo so you can quickly attach it to a price check.</string>
 	<key>NSSiriUsageDescription</key>
 	<string>Used to add items to your shopping list hands-free.</string>
 	<key>NSSpeechRecognitionUsageDescription</key>

@@ -12,6 +12,8 @@ struct ShoppingListView: View {
     @State private var showSettings = false
     let voice: VoiceEntryController
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     // ── Inline add ─────────────────────────────────────────────────────────────
     @State private var isAdding  = false
@@ -31,6 +33,8 @@ struct ShoppingListView: View {
 
     // ── Collapsible sections ───────────────────────────────────────────────────
     @State private var collapsedSections: Set<String> = []
+    @State private var fadedSections: Set<String> = []
+    @State private var statusHeight: CGFloat = 0
 
     // ── Pending complete (brief fill animation before item leaves) ─────────────
     @State private var pendingCompleteIDs: Set<String> = []
@@ -48,9 +52,6 @@ struct ShoppingListView: View {
     // ── Reference unit price (for the subtle "expected price" hint) ────────────
     @State private var unitPricesByName: [String: (value: Double, unit: String)] = [:]
 
-    // ── Empty-state visibility (debounced — see showEmptyStateIfSettled) ───────
-    @State private var showEmptyState = false
-    @State private var emptyStateTask: Task<Void, Never>? = nil
 
     private var store: ShoppingListStore { services.shopping }
 
@@ -67,28 +68,23 @@ struct ShoppingListView: View {
     var body: some View {
         NavigationStack {
             ZStack {
-                // Drawn first (behind) so the glass add-item accessory — added
-                // below via safeAreaInset, which renders on top of whatever
-                // it's attached to — can actually blur it, instead of this
-                // sitting in front of the glass with nothing to blur.
-                if showEmptyState {
-                    emptyState
-                        // Stable regardless of the keyboard or the accessory
-                        // growing taller (extra fields, toasts) — it's a ZStack
-                        // sibling, not nested inside mainList's own safe-area
-                        // reservation, so neither moves it.
-                        .ignoresSafeArea(.keyboard, edges: .bottom)
-                }
-
                 mainList
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        addItemAccessory
+                GeometryReader { geometry in
+                    if store.items.allSatisfy(\.checked), !isAdding, !isEditingItem, !voice.isActive {
+                        listStatus
+                            .frame(width: geometry.size.width, height: statusHeight > 0 ? statusHeight : geometry.size.height)
+                            .transition(.opacity)
                     }
+                }
+                .onGeometryChange(for: CGFloat.self) { $0.size.height } action: { height in
+                    // Hold the introduction in place while it fades, even as
+                    // the composer and keyboard change the available height.
+                    if !isAdding, !isEditingItem, !voice.isActive { statusHeight = height }
+                }
             }
-            .onChange(of: store.items.isEmpty || store.isLoading) { _, _ in
-                showEmptyStateIfSettled()
-            }
-            .task { showEmptyStateIfSettled() }
+            .animation(reduceMotion ? nil : .easeOut(duration: 0.15), value: isAdding || isEditingItem || voice.isActive)
+            .safeAreaInset(edge: .bottom, spacing: 0) { addItemAccessory }
+            .background(TrolleyStyle.canvas)
             .navigationTitle("")
                 .navigationBarTitleDisplayMode(.inline)
                 .toolbar { toolbarContent }
@@ -133,7 +129,7 @@ struct ShoppingListView: View {
             // Duplicate-item toast
             if let dupe = duplicateToastName {
                 Button { duplicateToastName = nil } label: {
-                    Label("\(dupe) is already on your list", systemImage: "exclamationmark.circle")
+                    Label("\(dupe) is already on your list", hugeIcon: "exclamationmark.circle")
                         .font(.subheadline.weight(.medium))
                         .padding(.horizontal, 16)
                         .padding(.vertical, 18)
@@ -146,9 +142,9 @@ struct ShoppingListView: View {
 
             // Undo toast — taller, with live countdown
             if !store.recentlyCompleted.isEmpty {
-                Button { store.undoLastComplete() } label: {
+                Button { AppHaptics.selection(); store.undoLastComplete() } label: {
                     HStack(spacing: 10) {
-                        Label("Undo", systemImage: "arrow.uturn.backward")
+                        Label("Undo", hugeIcon: "arrow.uturn.backward")
                             .font(.subheadline.weight(.medium))
                         if let deadline = store.undoDeadline {
                             TimelineView(.periodic(from: .now, by: 1)) { _ in
@@ -173,24 +169,16 @@ struct ShoppingListView: View {
             VStack(alignment: .leading, spacing: 0) {
                 // Name row
                 HStack(spacing: 12) {
-                    if isEditingItem {
-                        Image(systemName: "pencil")
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(.tint)
-                            .frame(width: 24, height: 24)
-                    } else if isAdding {
-                        Image(systemName: "circle")
-                            .foregroundStyle(.tertiary)
-                            .font(.body)
-                            .frame(width: 24, height: 24)
-                    } else {
-                        Image(systemName: "plus")
-                            .font(.body.weight(.semibold))
-                            .foregroundStyle(.tint)
-                            .frame(width: 24, height: 24)
-                            .contentShape(Rectangle())
-                            .onTapGesture { startAdding() }
-                    }
+                    // Keep one icon in the layout so it travels with the card
+                    // instead of inserting a checkbox at its final position.
+                    Image(hugeIcon: isEditingItem ? "pencil" : isAdding ? "circle" : "plus")
+                        .font(.body.weight(.semibold))
+                        .foregroundStyle(isAdding ? Color(.tertiaryLabel) : TrolleyStyle.accent)
+                        .frame(width: 24, height: 24)
+                        .contentTransition(.opacity)
+                        .contentShape(Circle())
+                        .onTapGesture { if !isEditingItem { startAdding() } }
+                        .accessibilityIdentifier("list-composer-icon")
                     if isEditingItem {
                         TextField("Item name", text: $editName)
                             .focused($focusedField, equals: .editName)
@@ -199,7 +187,7 @@ struct ShoppingListView: View {
                         Button {
                             cancelEditing()
                         } label: {
-                            Image(systemName: "xmark.circle.fill")
+                            Image(hugeIcon: "xmark.circle.fill")
                                 .foregroundStyle(.tertiary)
                         }
                         .buttonStyle(.plain)
@@ -208,9 +196,10 @@ struct ShoppingListView: View {
                             .contentShape(Rectangle())
                             .onTapGesture { startAdding() }
                     } else if isAdding {
-                        TextField("Items, separated by commas", text: $addText, axis: .vertical)
+                        TextField("Items, separated by commas", text: $addText)
+                            .accessibilityIdentifier("list-add-input")
                             .focused($focusedField, equals: .newName)
-                            .submitLabel(.done)
+                            .submitLabel(.send)
                             .onSubmit { commitAdd() }
                         if parsedAddItems.count > 1 {
                             Text("\(parsedAddItems.count) items")
@@ -267,29 +256,29 @@ struct ShoppingListView: View {
             }
             .fixedSize(horizontal: false, vertical: true)
             .frame(maxWidth: .infinity, alignment: .leading)
-            .glassEffect(in: RoundedRectangle(cornerRadius: 20))
-            .clipShape(RoundedRectangle(cornerRadius: 20))
-            .padding(.horizontal, 12)
+            .geometryGroup()
+            .trolleyComposer()
+            .padding(.horizontal, 16)
             .padding(.bottom, 10)
             .padding(.top, 6)
             .contentShape(Rectangle())
             .simultaneousGesture(
-                DragGesture(minimumDistance: 8, coordinateSpace: .local)
+                DragGesture(minimumDistance: 8, coordinateSpace: .global)
                     .onEnded { value in
-                        let dy = value.translation.height
-                        let dx = value.translation.width
-                        guard abs(dy) > abs(dx) * 0.8 else { return }
-                        if dy > 25 && focusedField != nil {
-                            focusedField = nil
-                        } else if dy < -20 && isAdding && focusedField == nil {
-                            focusedField = .newName
-                        } else if dy < -20 && isEditingItem && focusedField == nil {
-                            focusedField = .editName
-                        } else if dy < -20 && !isAdding && !isEditingItem {
-                            startAdding()
-                        }
+                        // Global coordinates stay stable while the keyboard moves
+                        // the composer. Local translation could flip sign and reopen it.
+                        guard value.translation.height < -20,
+                              abs(value.translation.height) > abs(value.translation.width),
+                              focusedField == nil else { return }
+                        if isAdding { focusedField = .newName }
+                        else if isEditingItem { focusedField = .editName }
+                        else { startAdding() }
                     }
             )
+            .background(ComposerKeyboardDismissal(enabled: focusedField != nil) {
+                isCommitting = false
+                focusedField = nil
+            })
             // Snappier and less bouncy than before — the keyboard's own rise
             // is a plain ~250ms ease, and the old spring's overshoot tail kept
             // visibly settling after the keyboard had already finished.
@@ -312,86 +301,49 @@ struct ShoppingListView: View {
     private var mainList: some View {
         Group {
             ScrollView {
-                LazyVStack(spacing: 10) {
+                LazyVStack(spacing: 18) {
                     ForEach(store.groupedItems, id: \.category) { group in
                         let catKey = group.category.rawValue
                         let isCollapsed = collapsedSections.contains(catKey)
 
-                        VStack(spacing: 0) {
+                        VStack(spacing: 8) {
                             // ── Section header ────────────────────────────────
                             Button {
-                                withAnimation(.easeInOut(duration: 0.2)) {
-                                    if isCollapsed { collapsedSections.remove(catKey) }
-                                    else { collapsedSections.insert(catKey) }
-                                }
+                                toggleSection(catKey)
                             } label: {
                                 HStack(spacing: 10) {
                                     Text(group.category.emoji)
                                         .font(.title3)
                                         .frame(width: 28, alignment: .center)
                                     Text(catKey)
-                                        .font(.body.weight(.semibold))
-                                        .foregroundStyle(group.category.color)
+                                        .font(.system(.body, design: .rounded, weight: .semibold))
+                                        .foregroundStyle(.primary)
                                     Spacer()
-                                    Image(systemName: "chevron.down")
+                                    Image(hugeIcon: "chevron.down")
                                         .font(.caption.weight(.semibold))
-                                        .foregroundStyle(group.category.color.opacity(0.7))
+                                        .foregroundStyle(.secondary)
                                         .rotationEffect(isCollapsed ? .degrees(-90) : .zero)
                                         .animation(.easeInOut(duration: 0.2), value: isCollapsed)
                                 }
-                                .padding(.horizontal, 14)
+                                .padding(.horizontal, 12)
                                 .padding(.vertical, 10)
                                 .contentShape(Rectangle())
                             }
                             .buttonStyle(.plain)
+                            .accessibilityIdentifier("list-section-\(catKey)")
 
                             // ── Items ─────────────────────────────────────────
                             if !isCollapsed {
-                                Divider()
-                                    .padding(.horizontal, 14)
-                                    .opacity(0.25)
-
-                                ForEach(Array(group.items.enumerated()), id: \.element.id) { index, item in
-                                    VStack(spacing: 0) {
-                                        if index > 0 {
-                                            Divider()
-                                                .padding(.leading, 52)
-                                                .opacity(0.15)
-                                        }
-                                        let offset = swipeOffsets[item.id] ?? 0
-                                        let progress = min(1.0, max(0, -offset / 100))
-                                        unifiedItemRow(for: item)
-                                            .padding(.horizontal, 14)
-                                            .padding(.vertical, 5)
-                                            .background {
-                                                Color(.systemBackground)
-                                                group.category.color.opacity(0.10)
-                                            }
-                                            .overlay { Color.red.opacity(progress) }
-                                            .overlay(alignment: .trailing) {
-                                                Text("Delete")
-                                                    .font(.footnote.weight(.semibold))
-                                                    .foregroundStyle(.white)
-                                                    .padding(.trailing, 28)
-                                                    .opacity(max(0, (progress - 0.3) / 0.4))
-                                            }
-                                            .offset(x: offset)
-                                            .frame(maxWidth: .infinity)
-                                            .gesture(swipeDeleteGesture(for: item))
-                                            .contextMenu {
-                                                Button(role: .destructive) {
-                                                    Task { await store.deleteItem(item) }
-                                                } label: {
-                                                    Label("Delete", systemImage: "trash")
-                                                }
-                                            }
-                                    }
+                                ForEach(group.items) { item in
+                                    shoppingRow(for: item)
+                                        .opacity(fadedSections.contains(catKey) ? 0 : 1)
+                                        .allowsHitTesting(!fadedSections.contains(catKey))
+                                        .transition(.opacity)
                                 }
-                                .padding(.bottom, 4)
                             }
                         }
-                        .background(group.category.color.opacity(0.10), in: RoundedRectangle(cornerRadius: 14))
-                        .clipShape(RoundedRectangle(cornerRadius: 14))
+                        .padding(10)
+                        .background(group.category.color.opacity(colorScheme == .dark ? 0.18 : 0.13), in: RoundedRectangle(cornerRadius: 28, style: .continuous))
                     }
 
                     Color.clear.frame(height: 16)
@@ -422,25 +374,81 @@ struct ShoppingListView: View {
 
     // MARK: - Unified item row (display + edit in one persistent view)
 
+    private func toggleSection(_ category: String) {
+        guard !fadedSections.contains(category) || collapsedSections.contains(category) else { return }
+        AppHaptics.selection()
+        if collapsedSections.contains(category) {
+            fadedSections.remove(category)
+            withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.2)) {
+                collapsedSections.remove(category)
+            }
+        } else {
+            // Fade the full-size rows before shrinking the section, so neither
+            // a changing mask nor the next aisle can reshape their corners.
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.09), completionCriteria: .removed) {
+                fadedSections.insert(category)
+            } completion: {
+                withAnimation(reduceMotion ? nil : .easeInOut(duration: 0.18)) {
+                    collapsedSections.insert(category)
+                }
+            }
+        }
+    }
+
+    private func shoppingRow(for item: ShoppingItem) -> some View {
+        let shape = RoundedRectangle(cornerRadius: 19, style: .continuous)
+        let offset = swipeOffsets[item.id] ?? 0
+        let progress = min(1, max(0, -offset / 100))
+        return unifiedItemRow(for: item)
+            .padding(.horizontal, 14)
+            .padding(.vertical, 14)
+            .frame(maxWidth: .infinity, alignment: .leading)
+            .background {
+                shape.fill(TrolleyStyle.canvas)
+                if editingItemID == item.id { shape.fill(TrolleyStyle.accent.opacity(0.12)) }
+            }
+            .clipShape(shape)
+            .compositingGroup()
+            .offset(x: offset)
+            .background {
+                ZStack(alignment: .trailing) {
+                    shape.fill(.red).opacity(offset < 0 ? 1 : 0)
+                    Text("Delete").font(.footnote.weight(.semibold)).foregroundStyle(.white)
+                        .padding(.trailing, 20).opacity(progress)
+                }
+            }
+            .clipShape(shape)
+            .contentShape(shape)
+            .fixedSize(horizontal: false, vertical: true)
+            .geometryGroup()
+            .accessibilityIdentifier("list-row-\(item.name)")
+            .gesture(swipeDeleteGesture(for: item))
+            .contextMenu {
+                Button(role: .destructive) { Task { await store.deleteItem(item) } } label: {
+                    Label("Delete", hugeIcon: "trash")
+                }
+            }
+    }
+
     private func unifiedItemRow(for item: ShoppingItem) -> some View {
-        let isEditing = editingItemID == item.id
         let isComplete = item.checked
         let isVisuallyComplete = isComplete || pendingCompleteIDs.contains(item.id)
         return VStack(alignment: .leading, spacing: 2) {
             HStack(alignment: .center, spacing: 10) {
-                Image(systemName: isVisuallyComplete ? "checkmark.circle.fill" : "circle")
-                    .foregroundStyle(isVisuallyComplete ? .green : Color(.systemGray3))
+                Image(hugeIcon: isVisuallyComplete ? "checkmark.circle.fill" : "circle")
+                    .foregroundStyle(isVisuallyComplete ? TrolleyStyle.accent : Color(.systemGray3))
                     .font(.title3)
                     .frame(width: 28, height: 28)
                     .contentShape(Circle())
                     .onTapGesture { triggerComplete(item) }
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(item.name)
+                        .font(.body.weight(.medium))
                         .foregroundStyle(isComplete ? .secondary : .primary)
                     if let qty = item.quantity, !qty.isEmpty {
                         Text(qty)
                             .font(.subheadline)
-                            .foregroundStyle(.tertiary)
+                            .foregroundStyle(.secondary)
                     }
                 }
                 .frame(maxWidth: .infinity, alignment: .leading)
@@ -461,11 +469,8 @@ struct ShoppingListView: View {
             }
         }
         .padding(.vertical, 1)
-        .padding(.horizontal, 6)
-        .background(isEditing ? Color.accentColor.opacity(0.10) : .clear, in: RoundedRectangle(cornerRadius: 8))
-        .padding(.horizontal, -6)
         .contentShape(Rectangle())
-        .onTapGesture { if !isEditing { beginEditing(item) } }
+        .onTapGesture { if editingItemID != item.id { beginEditing(item) } }
     }
 
     /// A faded in-aisle reference price — the number is what matters, so it
@@ -477,14 +482,28 @@ struct ShoppingListView: View {
 
     // MARK: - Empty state
 
+    @ViewBuilder private var listStatus: some View {
+        if !store.hasLoaded, let error = store.error {
+            VStack(spacing: 16) {
+                Text("Couldn't load your list").font(.title3.bold())
+                Text(error).font(.subheadline).foregroundStyle(.secondary)
+                Button("Try again") { Task { await store.fetch() } }
+            }.padding(32).frame(maxWidth: .infinity, maxHeight: .infinity)
+        } else if store.hasLoaded {
+            emptyState.accessibilityIdentifier("list-empty-state")
+        } else {
+            ProgressView("Loading your list…")
+                .accessibilityIdentifier("list-loading")
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+        }
+    }
+
     private var emptyState: some View {
         VStack(spacing: 20) {
-            Image(systemName: "cart")
-                .font(.system(size: 72, weight: .ultraLight))
-                .foregroundStyle(.quaternary)
-            Text("Your list is empty")
-                .font(.title3.weight(.medium))
-                .foregroundStyle(.secondary)
+            TrolleyMascot(size: 100)
+            Text("A fresh start.")
+                .font(.system(.title, design: .rounded, weight: .bold))
+            Text("What are we picking up?").foregroundStyle(.secondary)
         }
         .allowsHitTesting(false)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -496,9 +515,9 @@ struct ShoppingListView: View {
     private var toolbarContent: some ToolbarContent {
         ToolbarItem(placement: .navigationBarLeading) {
             Button { showSettings = true } label: {
-                Image(systemName: "gearshape")
+                Image(hugeIcon: "gearshape")
                     .frame(width: 22, height: 22)
-            }
+            }.accessibilityLabel("Settings")
         }
         ToolbarItem(placement: .navigationBarTrailing) {
             ReceiptImportToolbarButton(householdId: household.id)
@@ -555,28 +574,6 @@ struct ShoppingListView: View {
         f == .editName || f == .editQty || f == .editNotes
     }
 
-    // MARK: - Empty state visibility
-
-    /// A brief real reload (tab reappearing, a realtime reconnect refetch)
-    /// flips `isLoading`/`items` a couple of times in quick succession, and
-    /// each flip used to show/hide the empty-state graphic immediately —
-    /// visible as a flash. Hiding is instant (nothing to lose by reacting
-    /// fast), but showing only happens once the empty condition has actually
-    /// held for a moment.
-    private func showEmptyStateIfSettled() {
-        emptyStateTask?.cancel()
-        let isEmptyNow = store.items.isEmpty && !store.isLoading
-        guard isEmptyNow else {
-            showEmptyState = false
-            return
-        }
-        emptyStateTask = Task { @MainActor in
-            try? await Task.sleep(nanoseconds: 250_000_000)
-            guard !Task.isCancelled else { return }
-            showEmptyState = store.items.isEmpty && !store.isLoading
-        }
-    }
-
     // MARK: - Actions
 
     private func toggleVoice() {
@@ -591,6 +588,7 @@ struct ShoppingListView: View {
 
     private func startAdding() {
         guard !voice.isActive else { return }
+        AppHaptics.tap()
         voice.dismissFeedback()
         if let id = editingItemID, store.items.contains(where: { $0.id == id }) {
             commitCurrentEdit()
@@ -606,7 +604,7 @@ struct ShoppingListView: View {
     }
 
     private func commitAdd(refocus: Bool = true) {
-        let trimmed = addText.trimmingCharacters(in: .whitespaces)
+        let trimmed = addText.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             if !refocus { cancelAdd() }
             return
@@ -623,6 +621,7 @@ struct ShoppingListView: View {
         }
 
         isCommitting = true
+        AppHaptics.added()
         let qty = addQty.trimmingCharacters(in: .whitespaces)
         let note = addNotes.trimmingCharacters(in: .whitespaces)
 
@@ -714,6 +713,8 @@ struct ShoppingListView: View {
     }
 
     private func triggerComplete(_ item: ShoppingItem) {
+        guard !pendingCompleteIDs.contains(item.id) else { return }
+        AppHaptics.added()
         withAnimation(.easeInOut(duration: 0.2)) {
             _ = pendingCompleteIDs.insert(item.id)
         }
@@ -735,7 +736,7 @@ struct ShoppingListView: View {
                 if translation < 0 {
                     swipeOffsets[item.id] = translation
                     if translation < -100 {
-                        swipePassedThreshold.insert(item.id)
+                        if swipePassedThreshold.insert(item.id).inserted { AppHaptics.selection() }
                     } else {
                         swipePassedThreshold.remove(item.id)
                     }

@@ -7,7 +7,7 @@ struct VoiceInputControls: View {
 
     var body: some View {
         Button(action: toggle) {
-            Image(systemName: voice.isActive ? "stop.circle.fill" : "mic.fill")
+            Image(hugeIcon: voice.isActive ? "stop.circle.fill" : "mic.fill")
                 .font(.body.weight(.medium))
                 .frame(width: 32, height: 32)
                 .contentShape(Rectangle())

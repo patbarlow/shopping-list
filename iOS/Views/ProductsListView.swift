@@ -9,6 +9,8 @@ struct ProductsListView: View {
     @State private var products: [ProductInsight] = []
     @State private var isLoading = true
     @State private var errorMessage: String? = nil
+    @State private var search = ""
+    @State private var displayed: [ProductInsight] = []
     @State private var sort: Sort = .frequency
 
     enum Sort: String, CaseIterable, Identifiable {
@@ -19,26 +21,20 @@ struct ProductsListView: View {
         var id: String { rawValue }
     }
 
-    /// A soft periwinkle wash — same treatment as Insights' mint and Forecast's
-    /// coral, in a cooler tone for "what you buy" as distinct from spend or timing.
-    private static let headerGradient = LinearGradient(
-        stops: [
-            .init(color: Color(red: 0.72, green: 0.78, blue: 0.96), location: 0),
-            .init(color: Color(red: 0.76, green: 0.81, blue: 0.96).opacity(0.85), location: 0.2),
-            .init(color: Color(red: 0.80, green: 0.85, blue: 0.97).opacity(0.5), location: 0.45),
-            .init(color: Color(red: 0.84, green: 0.88, blue: 0.98).opacity(0.18), location: 0.7),
-            .init(color: Color(red: 0.84, green: 0.88, blue: 0.98).opacity(0), location: 1),
-        ],
-        startPoint: .top,
-        endPoint: .bottom
-    )
-
-    private var sorted: [ProductInsight] {
-        switch sort {
-        case .frequency: return products.sorted { $0.timesPurchased > $1.timesPurchased }
-        case .spend:     return products.sorted { ($0.totalSpend ?? 0) > ($1.totalSpend ?? 0) }
-        case .recent:    return products.sorted { ($0.lastPurchasedAt ?? "") > ($1.lastPurchasedAt ?? "") }
-        case .name:      return products.sorted { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+    private func updateDisplayed() {
+        let filtered = search.isEmpty ? products : products.filter { $0.name.localizedCaseInsensitiveContains(search) }
+        displayed = filtered.sorted {
+            switch sort {
+            case .frequency:
+                if $0.timesPurchased != $1.timesPurchased { return $0.timesPurchased > $1.timesPurchased }
+            case .spend:
+                if $0.totalSpend != $1.totalSpend { return ($0.totalSpend ?? 0) > ($1.totalSpend ?? 0) }
+            case .recent:
+                if $0.lastPurchasedAt != $1.lastPurchasedAt { return ($0.lastPurchasedAt ?? "") > ($1.lastPurchasedAt ?? "") }
+            case .name: break
+            }
+            let order = $0.name.localizedCaseInsensitiveCompare($1.name)
+            return order == .orderedSame ? $0.id < $1.id : order == .orderedAscending
         }
     }
 
@@ -47,53 +43,34 @@ struct ProductsListView: View {
             if isLoading {
                 ProgressView().frame(maxWidth: .infinity).padding(.vertical, 80)
             } else if let err = errorMessage {
-                ContentUnavailableView("Couldn't load products", systemImage: "exclamationmark.triangle", description: Text(err))
+                TrolleyUnavailableView("Couldn't load products", hugeIcon: "exclamationmark.triangle", description: Text(err))
             } else if products.isEmpty {
-                ContentUnavailableView(
+                TrolleyUnavailableView(
                     "No products yet",
-                    systemImage: "cart",
+                    hugeIcon: "cart",
                     description: Text("Scan a receipt and the things you buy will show up here with prices and how often you buy them.")
                 )
             } else {
-                ScrollView {
-                    card {
-                        LazyVStack(spacing: 0) {
-                            ForEach(Array(sorted.enumerated()), id: \.element.id) { i, product in
-                                if i > 0 { Divider().padding(.leading, 16) }
-                                NavigationLink {
-                                    ProductDetailView(householdId: householdId, productId: product.id, fallbackName: product.name)
-                                        .environment(services)
-                                } label: {
-                                    row(product)
-                                }
-                                .buttonStyle(.plain)
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 16)
-                    .padding(.top, 8)
-                    .padding(.bottom, 16)
+                List(displayed) { product in
+                    NavigationLink {
+                        ProductDetailView(householdId: householdId, productId: product.id, fallbackName: product.name)
+                            .environment(services)
+                    } label: { row(product) }
+                    .listRowInsets(EdgeInsets(top: 8, leading: 24, bottom: 8, trailing: 24))
+                    .listRowBackground(Color.clear)
                 }
+                .listStyle(.plain)
                 .scrollContentBackground(.hidden)
+                .overlay {
+                    if displayed.isEmpty { ContentUnavailableView.search(text: search) }
+                }
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // Attached via .background rather than as a ZStack sibling in front
-        // of the ScrollView — that arrangement kept the ScrollView from being
-        // recognized as the NavigationStack's scrollable content, so the
-        // large title's extra height never got automatically reserved for it
-        // (needing a hand-tuned top-padding fudge that was never quite right,
-        // and threw off the system's own scroll-to-top-on-tab-tap since it
-        // targets the real, automatic inset). As a .background this stays a
-        // passive layer behind the content without interfering with that.
-        .background {
-            ZStack(alignment: .top) {
-                Color(.systemGroupedBackground).ignoresSafeArea()
-                Self.headerGradient
-                    .frame(height: 700)
-                    .ignoresSafeArea(edges: .top)
-            }
-        }
+        .background(TrolleyStyle.canvas.ignoresSafeArea())
+        .searchable(text: $search, placement: .navigationBarDrawer(displayMode: .always), prompt: "Find a product")
+        .onChange(of: search) { _, _ in updateDisplayed() }
+        .onChange(of: sort) { _, _ in updateDisplayed() }
         .navigationTitle("Products")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
@@ -108,7 +85,7 @@ struct ProductsListView: View {
                         ForEach(Sort.allCases) { Text($0.rawValue).tag($0) }
                     }
                 } label: {
-                    Image(systemName: "arrow.up.arrow.down")
+                    Image(hugeIcon: "arrow.up.arrow.down")
                 }
                 .disabled(products.isEmpty)
             }
@@ -116,6 +93,7 @@ struct ProductsListView: View {
         .task {
             do {
                 products = try await services.api.fetchProductInsights(householdId: householdId)
+                updateDisplayed()
             } catch {
                 errorMessage = "Please try again."
             }
@@ -127,18 +105,10 @@ struct ProductsListView: View {
             Task {
                 if let fresh = try? await services.api.fetchProductInsights(householdId: householdId) {
                     products = fresh
+                    updateDisplayed()
                 }
             }
         }
-    }
-
-    // MARK: - Card container
-
-    private func card<Content: View>(@ViewBuilder content: () -> Content) -> some View {
-        content()
-            .padding(.vertical, 6)
-            .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .shadow(color: .black.opacity(0.05), radius: 8, y: 3)
     }
 
     // MARK: - Row
@@ -171,7 +141,6 @@ struct ProductsListView: View {
                 }
             }
         }
-        .padding(.horizontal, 16)
         .padding(.vertical, 8)
         .contentShape(Rectangle())
     }
@@ -188,8 +157,8 @@ struct ProductsListView: View {
     @ViewBuilder
     private func trendArrow(_ product: ProductInsight) -> some View {
         switch product.priceTrend {
-        case .up:   Image(systemName: "arrow.up").font(.caption2.bold()).foregroundStyle(.red)
-        case .down: Image(systemName: "arrow.down").font(.caption2.bold()).foregroundStyle(.green)
+        case .up:   Image(hugeIcon: "arrow.up").font(.caption2.bold()).foregroundStyle(.red)
+        case .down: Image(hugeIcon: "arrow.down").font(.caption2.bold()).foregroundStyle(.green)
         case nil:   EmptyView()
         }
     }
@@ -197,9 +166,7 @@ struct ProductsListView: View {
     private func subtitle(_ product: ProductInsight) -> String {
         var parts = ["\(product.timesPurchased)×"]
         if let last = product.lastPurchasedAt, let d = Self.dayFormatter.date(from: String(last.prefix(10))) {
-            let f = DateFormatter()
-            f.setLocalizedDateFormatFromTemplate("d MMM")
-            parts.append("last \(f.string(from: d))")
+            parts.append("last \(d.formatted(.dateTime.day().month(.abbreviated)))")
         }
         return parts.joined(separator: " · ")
     }

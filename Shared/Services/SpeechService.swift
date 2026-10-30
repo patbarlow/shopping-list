@@ -32,8 +32,9 @@ private final class SpeechAudioSink: @unchecked Sendable {
     var isSpeaking = false
     var onUtterance: ((String) -> Void)?
 
-    private let recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-AU"))
-    private let engine = AVAudioEngine()
+    // Viewing or switching tabs must not connect to the audio/speech services.
+    @ObservationIgnored private lazy var recognizer = SFSpeechRecognizer(locale: Locale(identifier: "en-AU"))
+    @ObservationIgnored private lazy var engine = AVAudioEngine()
     private let sink = SpeechAudioSink()
     private var request: SFSpeechAudioBufferRecognitionRequest?
     private var recognition: SFSpeechRecognitionTask?
@@ -41,7 +42,8 @@ private final class SpeechAudioSink: @unchecked Sendable {
     private var rolloverTask: Task<Void, Never>?
     private var hasTap = false
     private var generation = UUID()
-    private let synthesizer = AVSpeechSynthesizer()
+    @ObservationIgnored private lazy var synthesizer = AVSpeechSynthesizer()
+    private var audioSessionActive = false
     private var chimePlayer: AVAudioPlayer?
     private var resumeTask: Task<Void, Never>?
 
@@ -50,7 +52,6 @@ private final class SpeechAudioSink: @unchecked Sendable {
         isStarting = true
         error = nil
         transcript = ""
-        synthesizer.delegate = self
         let token = UUID()
         generation = token
         defer { isStarting = false }
@@ -79,6 +80,7 @@ private final class SpeechAudioSink: @unchecked Sendable {
             try session.setCategory(.playAndRecord, mode: .default, options: [.duckOthers, .defaultToSpeaker])
             try session.setActive(true)
             #endif
+            audioSessionActive = true
             let input = engine.inputNode
             let format = input.outputFormat(forBus: 0)
             guard format.sampleRate > 0, format.channelCount > 0 else {
@@ -177,19 +179,21 @@ private final class SpeechAudioSink: @unchecked Sendable {
     }
 
     func stop(flush: Bool = false) {
+        guard isRecording || isStarting || isSpeaking || audioSessionActive || hasTap || !transcript.isEmpty else { return }
         let finalPhrase = transcript.trimmingCharacters(in: .whitespacesAndNewlines)
         isRecording = false
         resumeTask?.cancel()
-        synthesizer.stopSpeaking(at: .immediate)
+        if isSpeaking { synthesizer.stopSpeaking(at: .immediate) }
         isSpeaking = false
         chimePlayer?.stop()
         cancelRecognition()
-        engine.stop()
+        if audioSessionActive || hasTap { engine.stop() }
         if hasTap { engine.inputNode.removeTap(onBus: 0); hasTap = false }
         level = 0
         #if os(iOS)
-        try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation)
+        if audioSessionActive { try? AVAudioSession.sharedInstance().setActive(false, options: .notifyOthersOnDeactivation) }
         #endif
+        audioSessionActive = false
         if flush && !finalPhrase.isEmpty { onUtterance?(finalPhrase) }
     }
 
@@ -204,6 +208,7 @@ private final class SpeechAudioSink: @unchecked Sendable {
         if !pending.isEmpty { onUtterance?(pending) }
         let utterance = AVSpeechUtterance(string: message)
         utterance.voice = AVSpeechSynthesisVoice(language: "en-AU")
+        synthesizer.delegate = self
         synthesizer.speak(utterance)
     }
 

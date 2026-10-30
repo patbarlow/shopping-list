@@ -1,0 +1,47 @@
+# Trolley for Mac
+
+The Mac product is **Trolley.app**. Its bundle identifier remains
+`com.patbarlow.shoppinglist.mac` so renaming it preserves the existing sandbox,
+sign-in and preferences. The Xcode target/scheme retains its internal name,
+`Shopping List macOS`, to keep existing build automation compatible.
+
+## Build and run against the live service
+
+From this checkout:
+
+```sh
+xcodegen generate
+xcodebuild -project 'Shopping List.xcodeproj' \
+  -scheme 'Shopping List macOS' -configuration Debug \
+  -derivedDataPath /tmp/trolley-mac-dev build
+open '/tmp/trolley-mac-dev/Build/Products/Debug/Trolley.app'
+```
+
+Do not set `TROLLEY_UI_TEST` for a real account session. Debug builds use the
+normal production service and existing session. A fresh session uses the same
+email-code sign-in as iPhone. Debug builds do not automatically check Sparkle.
+
+The desktop workspace includes List, Insights, Price check, Forecast, Purchase
+history and Recipes. Use **⌘1–6** to navigate, **⌘N** to add an item, **⌘I** to
+import a receipt, and **⌘,** for Settings. Return submits an item and keeps the
+field ready for the next one; Escape cancels editing. Price check accepts image
+files, dropped files and pasted images. Receipt import accepts images, text PDFs
+and scanned PDFs, with a review step before saving.
+
+The sidebar includes receipt import and Settings. Settings opens as an in-app
+modal. The window can narrow to 380 points; below 760 points the sidebar opens
+over the content and closes after navigation. Clicking outside an editor dismisses
+it; unfinished new-item text is retained for when you reopen it. Use **⇧⌘S** to toggle the sidebar. The window floats above other windows
+by default; this can be turned off in Settings.
+
+Photo-only price checks identify the offer and match original receipt descriptions
+to the same brand and variant, even when the list uses a generic product name.
+Comparisons use only matched purchase records and normalize pack sizes.
+
+## Development builds versus released updates
+
+The 1.9.0 release uses Mac build 207. Creating or running a local build does not
+publish a Sparkle update; the signed and notarized package and appcast must both
+be published. The iOS and macOS targets have independent release paths. Xcode
+Cloud assigns iPhone builds `1000 + CI_BUILD_NUMBER` to avoid collisions with
+previous locally uploaded 200-series builds.

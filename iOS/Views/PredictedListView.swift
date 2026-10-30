@@ -17,35 +17,21 @@ struct PredictedListView: View {
     @State private var onListNames: Set<String> = []
     @State private var showSettings = false
 
-    /// A coral/salmon wash — same treatment as Spend Trends' mint, in the warm
-    /// tone that distinguishes "what's coming up" from "what happened."
-    private static let headerGradient = LinearGradient(
-        stops: [
-            .init(color: Color(red: 0.97, green: 0.62, blue: 0.53), location: 0),
-            .init(color: Color(red: 0.97, green: 0.68, blue: 0.60).opacity(0.85), location: 0.2),
-            .init(color: Color(red: 0.97, green: 0.74, blue: 0.68).opacity(0.5), location: 0.45),
-            .init(color: Color(red: 0.97, green: 0.80, blue: 0.76).opacity(0.18), location: 0.7),
-            .init(color: Color(red: 0.97, green: 0.80, blue: 0.76).opacity(0), location: 1),
-        ],
-        startPoint: .top,
-        endPoint: .bottom
-    )
-
     var body: some View {
         Group {
             if isLoading {
                 ProgressView().frame(maxWidth: .infinity).padding(.vertical, 80)
             } else if let err = errorMessage {
-                ContentUnavailableView("Couldn't load forecast", systemImage: "exclamationmark.triangle", description: Text(err))
+                TrolleyUnavailableView("Couldn't load forecast", hugeIcon: "exclamationmark.triangle", description: Text(err))
             } else if let response, response.items.isEmpty {
-                ContentUnavailableView(
+                TrolleyUnavailableView(
                     "Not enough data yet",
-                    systemImage: "calendar.badge.clock",
+                    hugeIcon: "calendar.badge.clock",
                     description: Text("Scan a few more receipts and we'll start predicting what you'll need before your next big shop.")
                 )
             } else if let response {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 24) {
                         summaryCard(response)
 
                         let (dueNow, upcoming) = splitItems(response.items)
@@ -66,28 +52,13 @@ struct PredictedListView: View {
             }
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        // Attached via .background rather than as a ZStack sibling in front
-        // of the ScrollView — that arrangement kept the ScrollView from being
-        // recognized as the NavigationStack's scrollable content, so the
-        // large title's extra height never got automatically reserved for it
-        // (needing a hand-tuned top-padding fudge that was never quite right,
-        // and threw off the system's own scroll-to-top-on-tab-tap since it
-        // targets the real, automatic inset). As a .background this stays a
-        // passive layer behind the content without interfering with that.
-        .background {
-            ZStack(alignment: .top) {
-                Color(.systemGroupedBackground).ignoresSafeArea()
-                Self.headerGradient
-                    .frame(height: 700)
-                    .ignoresSafeArea(edges: .top)
-            }
-        }
+        .background(TrolleyStyle.canvas.ignoresSafeArea())
         .navigationTitle("Forecast")
         .navigationBarTitleDisplayMode(.large)
         .toolbar {
             ToolbarItem(placement: .navigationBarLeading) {
                 Button { showSettings = true } label: {
-                    Image(systemName: "gearshape")
+                    Image(hugeIcon: "gearshape")
                         .frame(width: 22, height: 22)
                 }
             }
@@ -125,9 +96,10 @@ struct PredictedListView: View {
     // MARK: - Summary
 
     private func summaryCard(_ response: PredictedListResponse) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
+        VStack(alignment: .leading, spacing: 12) {
+            Text("Estimated next shop").font(.subheadline).foregroundStyle(.secondary)
             Text(currencyRounded(response.predictedTotal))
-                .font(.title.weight(.heavy))
+                .font(.system(.largeTitle, design: .rounded, weight: .bold))
             Text("^[\(response.items.count) item](inflect: true) likely due through \(displayDate(response.range.end))")
                 .font(.subheadline)
                 .foregroundStyle(.secondary)
@@ -137,25 +109,24 @@ struct PredictedListView: View {
                 Button {
                     addAll(pending)
                 } label: {
-                    Label("Add ^[\(pending.count) item](inflect: true) to list", systemImage: "plus")
+                    Label("Add ^[\(pending.count) item](inflect: true) to list", hugeIcon: "plus")
                         .font(.subheadline.weight(.semibold))
                         .frame(maxWidth: .infinity)
                 }
-                .buttonStyle(.borderedProminent)
+                .buttonStyle(.borderedProminent).buttonBorderShape(.capsule).controlSize(.large)
                 .padding(.top, 8)
             }
         }
         .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(16)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .shadow(color: .black.opacity(0.05), radius: 6, y: 3)
+        .padding(24)
+        .background(TrolleyStyle.softGreen, in: RoundedRectangle(cornerRadius: 24))
     }
 
     // MARK: - Card container
 
     private func sectionHeader(_ title: String) -> some View {
         Text(title)
-            .font(.title3.weight(.bold))
+            .font(.system(.title3, design: .rounded, weight: .bold))
             .foregroundStyle(.primary)
     }
 
@@ -164,8 +135,7 @@ struct PredictedListView: View {
             content()
         }
         .padding(.vertical, 6)
-        .background(Color(.secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
-        .shadow(color: .black.opacity(0.05), radius: 8, y: 3)
+        .trolleyCard()
     }
 
     // MARK: - Rows
@@ -196,18 +166,18 @@ struct PredictedListView: View {
             }
 
             if isOnList(item) {
-                Image(systemName: "checkmark.circle.fill")
+                Image(hugeIcon: "checkmark.circle.fill")
                     .font(.title3)
                     .foregroundStyle(.green)
             } else {
                 Button {
                     addAll([item])
                 } label: {
-                    Image(systemName: "plus.circle")
+                    Image(hugeIcon: "plus.circle")
                         .font(.title3)
-                        .foregroundStyle(.blue)
+                        .foregroundStyle(TrolleyStyle.accent)
                 }
-                .buttonStyle(.borderless)
+                .buttonStyle(.borderless).accessibilityLabel("Add \(item.name) to list")
             }
         }
         .padding(.horizontal, 16)
@@ -221,6 +191,7 @@ struct PredictedListView: View {
     }
 
     private func addAll(_ items: [PredictedItem]) {
+        AppHaptics.added()
         // Optimistic: tick immediately, revert any that fail.
         for item in items { onListNames.insert(item.name.lowercased()) }
         Task {
@@ -228,6 +199,7 @@ struct PredictedListView: View {
                 do {
                     _ = try await services.api.createItem(householdId: householdId, name: item.name)
                 } catch {
+                    AppHaptics.error()
                     onListNames.remove(item.name.lowercased())
                 }
             }

@@ -56,3 +56,95 @@ struct ReceiptTests {
         #expect(printer.lines.first?.isIncluded == false)
     }
 }
+
+struct ReceiptStreamRegressionTests {
+    @Test func preservesEmptyDelimitersAndUnicode() throws {
+        let wire = "event: store\r\ndata: {\"store_name\":\"Café\"}\r\n\r\nevent: matched\ndata: {\"items\": []}\n\n"
+        var parser = ServerSentEvents()
+        let events = try wire.utf8.compactMap { try parser.append($0) }
+        #expect(events.map(\.name) == ["store", "matched"])
+        #expect(String(decoding: events[0].data, as: UTF8.self) == #"{"store_name":"Café"}"#)
+    }
+    @Test func joinsDataLinesAndDoesNotDispatchIncompleteFrames() throws {
+        var parser = ServerSentEvents()
+        let wire = ": heartbeat\nevent: matched\ndata: {\ndata: \"items\": []}\n\nevent: item\ndata: truncated"
+        let events = try wire.utf8.compactMap { try parser.append($0) }
+        #expect(events.count == 1)
+        #expect(String(decoding: events[0].data, as: UTF8.self) == "{\n\"items\": []}")
+    }
+}
+
+struct PriceComparisonTests {
+    private func purchase(value: Double?, unit: String?) throws -> ProductPurchase {
+        let json: [String: Any] = ["id": "receipt-red-bull", "purchased_at": "2026-10-17", "price_paid": 7.8,
+            "unit_price": value as Any? ?? NSNull(), "unit_price_unit": unit as Any? ?? NSNull()]
+        return try JSONDecoder().decode(ProductPurchase.self, from: JSONSerialization.data(withJSONObject: json))
+    }
+    @Test func redBullAcceptanceCase() throws {
+        let offer = PriceOffer(name: "Red Bull 4 × 250mL", price: 9.83, size: 1000, unit: "mL")
+        let comparison = PriceComparison(offer: offer, purchases: [try purchase(value: 0.78, unit: "100mL")])
+        #expect(offer.packSizeLabel == "1 L")
+        #expect(abs(offer.baseline!.value - 0.983) < 0.00001)
+        #expect(abs(comparison.changeFromLast! - 26.025641) < 0.00001)
+        #expect(comparison.comparable.count == 1)
+    }
+    @Test func missingSizesAndDifferentDimensionsNeverCompare() throws {
+        let offer = PriceOffer(name: "Red Bull", price: 9.83, size: 1000, unit: "mL")
+        let comparison = PriceComparison(offer: offer, purchases: [try purchase(value: nil, unit: nil), try purchase(value: 0.78, unit: "100g")])
+        #expect(comparison.changeFromLast == nil)
+        #expect(PriceOffer(name: "Unknown", price: 9.83, size: nil, unit: "mL").baseline == nil)
+        #expect(PriceOffer(name: "Invalid", price: 9.83, size: 0, unit: "mL").baseline == nil)
+    }
+}
+
+struct PriceSummaryTests {
+    private func purchase(_ value: Double, unit: String = "100mL") throws -> ProductPurchase {
+        let data = try JSONSerialization.data(withJSONObject: ["id": UUID().uuidString, "purchased_at": "2026-10-17", "unit_price": value, "unit_price_unit": unit])
+        return try JSONDecoder().decode(ProductPurchase.self, from: data)
+    }
+    @Test func averageAndModeUseCompatiblePrices() throws {
+        let offer = PriceOffer(name: "Red Bull", price: 9.83, size: 1000, unit: "mL")
+        let comparison = PriceComparison(offer: offer, purchases: try [purchase(0.78), purchase(0.78), purchase(0.9), purchase(20, unit: "100g")])
+        #expect(abs(comparison.average! - 0.82) < 0.00001)
+        #expect(comparison.usual == 0.78)
+        #expect(abs(comparison.priceForOfferPack(comparison.average!)! - 8.2) < 0.00001)
+        #expect(abs(comparison.changeFromAverage! - 19.8780488) < 0.00001)
+    }
+    @Test func singleOrTiedModeDoesNotInventUsualPrice() throws {
+        let offer = PriceOffer(name: "Milk", price: 3, size: 1000, unit: "mL")
+        #expect(PriceComparison(offer: offer, purchases: [try purchase(0.3)]).usual == nil)
+        #expect(PriceComparison(offer: offer, purchases: try [purchase(0.3), purchase(0.3), purchase(0.4), purchase(0.4)]).usual == nil)
+    }
+    @Test func exactMatchingKeepsVariantsSeparate() throws {
+        let data = Data(#"[{"id":"1","name":"Red Bull Energy Drink","category":"Drinks","times_purchased":1},{"id":"2","name":"Red Bull Sugar Free","category":"Drinks","times_purchased":1}]"#.utf8)
+        let products = try JSONDecoder().decode([ProductInsight].self, from: data)
+        #expect(PriceProductMatcher.exactMatch(name: "Red Bull Energy Drink", products: products)?.id == "1")
+        #expect(PriceProductMatcher.exactMatch(name: "Red Bull", products: products) == nil)
+        #expect(PriceProductMatcher.exactMatch(name: "Red Bull Energy Drink", products: products + products) == nil)
+    }
+}
+
+
+struct RecentPhotoTests {
+    @Test func onlySuggestPhotosFromLastThirtyMinutes() {
+        let now = Date(timeIntervalSince1970: 100_000)
+        #expect(RecentPhotoPolicy.isEligible(now, now: now))
+        #expect(RecentPhotoPolicy.isEligible(now.addingTimeInterval(-1799), now: now))
+        #expect(!RecentPhotoPolicy.isEligible(now.addingTimeInterval(-1800), now: now))
+        #expect(!RecentPhotoPolicy.isEligible(now.addingTimeInterval(-86400), now: now))
+        #expect(!RecentPhotoPolicy.isEligible(now.addingTimeInterval(1), now: now))
+        #expect(!RecentPhotoPolicy.isEligible(nil, now: now))
+    }
+}
+
+struct PriceReceiptIdentityTests {
+    @Test func genericProductComparisonUsesOnlyMatchedBrandReceipts() throws {
+        let data = Data(#"{"name":"Red Bull Energy Drink","price":9.83,"size":1000,"unit":"mL","question":null,"historyMatches":[{"productId":"energy","purchaseIds":["red"],"receiptDescriptions":["REDBULL 4X250ML"]}]}"#.utf8)
+        let offer = try JSONDecoder().decode(PriceOffer.self, from: data)
+        let purchases = try JSONDecoder().decode([ProductPurchase].self, from: Data(#"[{"id":"red","purchased_at":"2026-10-01","price_paid":6.5,"quantity":"1","variant":"REDBULL 4X250ML","unit_price":0.65,"unit_price_unit":"100mL"},{"id":"v","purchased_at":"2026-10-02","price_paid":4,"quantity":"1","variant":"V BLUE","unit_price":0.4,"unit_price_unit":"100mL"}]"#.utf8))
+        let matched = offer.matchingPurchases(purchases, productId: "energy")
+        #expect(matched.map(\.id) == ["red"])
+        #expect(PriceComparison(offer: offer, purchases: matched).average == 0.65)
+        #expect(offer.matchingPurchases(purchases, productId: "unrelated").isEmpty)
+    }
+}

@@ -1,94 +1,64 @@
 import SwiftUI
 import PhotosUI
 
-/// Holds the "a scan is ready to review" state at the app root — instantiated
-/// once in ShoppingListApp and handed down via `.environment(...)`, entirely
-/// independent of any particular toolbar button's own lifecycle.
-///
-/// The scanner sheet used to be presented straight off `@State` living on
-/// ReceiptImportToolbarButton itself. That looked fine in isolation, but that
-/// button sits inside a `.toolbar { }` closure that recomputes on every
-/// re-render of its host tab (list refetches, realtime reconnects, anything),
-/// and evidence from real-device logs (repeated "glassEffect() tried to
-/// update multiple times per frame" warnings right as a scan was in flight)
-/// points at the button occasionally being torn down and rebuilt during that
-/// churn — which tears down its `.sheet` and cancels the in-flight scan
-/// request with it, right as ReceiptScannerView's own retry-proofing
-/// (`hasStartedProcessing`) was making sure that first attempt couldn't just
-/// quietly be retried by a second one anymore. Anchoring the state — and the
-/// `.sheet` itself, in ShoppingListView — to something that isn't rebuilt by
-/// that churn removes the failure mode instead of racing around it.
+/// Media and receipt review presentation live at the app root, so toolbar
+/// rebuilds or tab changes cannot cancel a capture or an in-flight import.
 @MainActor
 @Observable final class ReceiptImportCoordinator {
-    var pendingCapture: ReceiptScannerView.InitialCapture? = nil
+    var pendingCapture: ReceiptScannerView.InitialCapture?
+    var mediaPicker: MediaPickerSource?
+    var transitionNamespace: Namespace.ID?
+    private var queuedCapture: ReceiptScannerView.InitialCapture?
+
+    func finishMedia(_ image: UIImage) {
+        guard pendingCapture == nil, queuedCapture == nil else { return }
+        queuedCapture = .images([image])
+        mediaPicker = nil
+    }
+
+    func presentQueuedCapture() {
+        guard pendingCapture == nil else { queuedCapture = nil; return }
+        pendingCapture = queuedCapture
+        queuedCapture = nil
+    }
 }
 
-/// The "receipt" toolbar menu (Scan Receipt / Photo Library / Files) — shared
-/// across every top-level tab so it appears in the same place everywhere, the
-/// way the settings button does.
-///
-/// The native picker for the chosen source is triggered directly from here,
-/// not from inside ReceiptScannerView — that way there's no intermediate
-/// "choose a source" card that has to appear and then immediately get covered
-/// by the real picker. ReceiptScannerView is only presented once real content
-/// (a scanned page, photo, or PDF) is in hand, opening straight into its
-/// scanning/reading state — from ShoppingListView, off the coordinator above,
-/// not from here.
 struct ReceiptImportToolbarButton: View {
     let householdId: String
     @Environment(ReceiptImportCoordinator.self) private var coordinator
 
-    @State private var showDocumentScanner = false
-    @State private var showPhotoPicker = false
     @State private var showFilePicker = false
-    @State private var selectedPhoto: PhotosPickerItem? = nil
+    @Namespace private var mediaTransition
 
     var body: some View {
         Menu {
             Button {
-                showDocumentScanner = true
+                AppHaptics.tap()
+                coordinator.transitionNamespace = mediaTransition
+                coordinator.mediaPicker = .scan
             } label: {
-                Label("Scan Receipt", systemImage: "doc.viewfinder")
+                Label("Scan Receipt", hugeIcon: "doc.viewfinder")
             }
             Button {
-                showPhotoPicker = true
+                AppHaptics.tap()
+                coordinator.transitionNamespace = mediaTransition
+                coordinator.mediaPicker = .photos
             } label: {
-                Label("Photo Library", systemImage: "photo.on.rectangle")
+                Label("Photo Library", hugeIcon: "photo.on.rectangle")
             }
             Button {
+                AppHaptics.tap()
                 showFilePicker = true
             } label: {
-                Label("Files", systemImage: "folder")
+                Label("Files", hugeIcon: "folder")
             }
         } label: {
-            Image(systemName: "receipt")
+            Image(hugeIcon: "receipt")
                 .frame(width: 22, height: 22)
         }
-        .fullScreenCover(isPresented: $showDocumentScanner) {
-            DocumentScannerCapture { images in
-                showDocumentScanner = false
-                present(.images(images))
-            } onCancel: {
-                showDocumentScanner = false
-            }
-            .ignoresSafeArea()
-        }
-        .photosPicker(isPresented: $showPhotoPicker, selection: $selectedPhoto, matching: .images)
-        .onChange(of: selectedPhoto) { _, item in
-            // PhotosPicker's onChange is known to sometimes fire twice for a
-            // single pick. Clearing the binding synchronously, before the
-            // async load even starts, means a second firing for the same
-            // pick sees nil and no-ops — without it, both firings raced to
-            // load and present, tearing the first one down mid-request (its
-            // now-cancelled network call surfaced as a flashed error) right
-            // before the second took over and finished normally.
-            guard let item else { return }
-            selectedPhoto = nil
-            Task {
-                guard let data = try? await item.loadTransferable(type: Data.self) else { return }
-                present(.photoData(data))
-            }
-        }
+        .accessibilityLabel("Import receipt")
+        .matchedTransitionSource(id: "receipt", in: mediaTransition)
+        .simultaneousGesture(TapGesture().onEnded { AppHaptics.tap() })
         .fileImporter(
             isPresented: $showFilePicker,
             allowedContentTypes: [.pdf],
