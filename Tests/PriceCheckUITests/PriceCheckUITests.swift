@@ -1,4 +1,6 @@
 import XCTest
+import Photos
+import UIKit
 
 final class PriceCheckUITests: XCTestCase {
     @MainActor func testFullAppNavigation() {
@@ -297,7 +299,8 @@ final class PriceCheckUITests: XCTestCase {
         capture(app, named: "Image-only price check reply")
     }
 
-    @MainActor func testCompactPhotoGridScrollDoesNotExpandAndCameraOptions() {
+    @MainActor func testCompactPhotoGridScrollDoesNotExpandAndCameraOptions() throws {
+        try seedScrollablePhotoLibrary()
         let app = XCUIApplication()
         app.launchEnvironment["TROLLEY_UI_TEST"] = "price"
         app.launch()
@@ -309,7 +312,8 @@ final class PriceCheckUITests: XCTestCase {
         let firstImage = app.images.matching(identifier: "PXGGridLayout-Info").firstMatch
         let topBefore = firstImage.frame.minY
         let firstLabel = firstImage.label
-        let start = app.coordinate(withNormalizedOffset: .zero).withOffset(CGVector(dx: 200, dy: close.frame.minY - 35))
+        capture(app, named: "Compact photo grid before scrolling")
+        let start = grid.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.65))
         start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -180)))
         XCTAssertTrue(app.buttons["All Photos"].exists)
         XCTAssertFalse(app.buttons["Recents"].exists)
@@ -420,6 +424,42 @@ final class PriceCheckUITests: XCTestCase {
             app.tabBars.buttons["List"].tap()
             XCTAssertTrue(app.staticTexts["Bananas"].waitForExistence(timeout: 3))
         }
+    }
+
+    /// Only the simulator test runner writes these fixtures; the shipping app
+    /// never requests add access or changes the user's photo library.
+    @MainActor private func seedScrollablePhotoLibrary() throws {
+        #if targetEnvironment(simulator)
+        if PHPhotoLibrary.authorizationStatus(for: .addOnly) == .notDetermined {
+            let authorized = expectation(description: "Photo fixture authorization")
+            PHPhotoLibrary.requestAuthorization(for: .addOnly) { _ in authorized.fulfill() }
+            let allow = XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.buttons["Allow"]
+            XCTAssertTrue(allow.waitForExistence(timeout: 10))
+            allow.tap()
+            wait(for: [authorized], timeout: 10)
+        }
+        guard PHPhotoLibrary.authorizationStatus(for: .addOnly) == .authorized else {
+            XCTFail("The simulator test runner needs add-only access for photo fixtures")
+            return
+        }
+        let images = (0..<30).map { index in
+            UIGraphicsImageRenderer(size: CGSize(width: 240, height: 240)).image { context in
+                UIColor(hue: CGFloat(index) / 30, saturation: 0.65, brightness: 0.9, alpha: 1).setFill()
+                context.fill(CGRect(x: 0, y: 0, width: 240, height: 240))
+                ("Fixture \(index + 1)" as NSString).draw(at: CGPoint(x: 24, y: 100), withAttributes: [
+                    .font: UIFont.boldSystemFont(ofSize: 28), .foregroundColor: UIColor.black
+                ])
+            }
+        }
+        try PHPhotoLibrary.shared().performChangesAndWait {
+            for (index, image) in images.enumerated() {
+                let request = PHAssetChangeRequest.creationRequestForAsset(from: image)
+                request.creationDate = Date(timeIntervalSince1970: 1_700_000_000 + Double(index * 60))
+            }
+        }
+        #else
+        throw XCTSkip("Photo library fixtures are restricted to simulators")
+        #endif
     }
 
     @MainActor private func waitForPhotoGrid(_ app: XCUIApplication) {
