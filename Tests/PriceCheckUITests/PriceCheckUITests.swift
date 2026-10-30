@@ -313,7 +313,9 @@ final class PriceCheckUITests: XCTestCase {
         start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -180)))
         XCTAssertTrue(app.buttons["All Photos"].exists)
         XCTAssertFalse(app.buttons["Recents"].exists)
-        XCTAssertGreaterThan(grid.frame.minY, 250)
+        // Compact presentation preserves space above the picker on every
+        // screen size, including the shorter iPhone SE used by Xcode Cloud.
+        XCTAssertGreaterThan(grid.frame.minY - app.frame.minY, app.frame.height * 0.2)
         XCTAssertEqual(grid.frame.minY, gridBefore.minY, accuracy: 2)
         XCTAssertEqual(grid.frame.height, gridBefore.height, accuracy: 2)
         XCTAssertTrue(firstImage.label != firstLabel || abs(firstImage.frame.minY - topBefore) > 10)
