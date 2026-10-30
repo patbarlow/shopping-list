@@ -40,7 +40,7 @@ Comparisons use only matched purchase records and normalize pack sizes.
 
 ## Development builds versus released updates
 
-Version 1.9.0 (206) is a local Mac development build. Creating or running it does
+Version 1.9.0 (207) is a local Mac development build. Creating or running it does
 not publish a Sparkle update. The public appcast still points at the released
 1.8.0 (200) package until a separate signed, notarized release is published.
 The iOS and macOS targets have independent version settings and release paths.

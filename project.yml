@@ -173,7 +173,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.patbarlow.shoppinglist.mac
         PRODUCT_NAME: Trolley
         MARKETING_VERSION: "1.9.0"
-        CURRENT_PROJECT_VERSION: "206"
+        CURRENT_PROJECT_VERSION: "207"
         MACOSX_DEPLOYMENT_TARGET: "14.0"
         CODE_SIGN_STYLE: Automatic
         ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
