@@ -40,7 +40,8 @@ Comparisons use only matched purchase records and normalize pack sizes.
 
 ## Development builds versus released updates
 
-Version 1.9.0 (207) is a local Mac development build. Creating or running it does
-not publish a Sparkle update. The public appcast still points at the released
-1.8.0 (200) package until a separate signed, notarized release is published.
-The iOS and macOS targets have independent version settings and release paths.
+The 1.9.0 release uses Mac build 207. Creating or running a local build does not
+publish a Sparkle update; the signed and notarized package and appcast must both
+be published. The iOS and macOS targets have independent release paths. Xcode
+Cloud assigns iPhone builds `1000 + CI_BUILD_NUMBER` to avoid collisions with
+previous locally uploaded 200-series builds.
