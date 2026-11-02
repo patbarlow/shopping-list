@@ -1,7 +1,7 @@
 import Foundation
 
 @MainActor
-final class APIService {
+final class APIService: ShoppingListAPI {
     static let defaultBaseURL = "https://shopping-list-api.pat-barlow.workers.dev"
 
     var baseURL: String {
@@ -112,6 +112,10 @@ final class APIService {
 
     func deleteItem(id: String) async throws {
         try await delete("/v1/items/\(id)")
+    }
+
+    func undoCompleteItem(id: String) async throws -> ShoppingItem {
+        try await post("/v1/items/\(id)/undo-complete", body: [:])
     }
 
     func createBulkItems(householdId: String, items: [[String: Any]]) async throws -> [ShoppingItem] {

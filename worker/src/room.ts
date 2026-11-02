@@ -1,5 +1,8 @@
 export class HouseholdRoom {
-  private sessions = new Map<string, WritableStreamDefaultWriter<Uint8Array>>();
+  private sessions = new Map<string, {
+    writer: WritableStreamDefaultWriter<Uint8Array>;
+    dispose: () => void;
+  }>();
 
   async fetch(request: Request): Promise<Response> {
     const url = new URL(request.url);
@@ -21,16 +24,24 @@ export class HouseholdRoom {
     const writer = writable.getWriter();
     const encoder = new TextEncoder();
 
-    this.sessions.set(sessionId, writer);
-
-    request.signal.addEventListener("abort", () => {
-      writer.close().catch(() => {});
+    const dispose = () => {
+      clearInterval(heartbeat);
+      request.signal.removeEventListener("abort", dispose);
       this.sessions.delete(sessionId);
-    });
+      writer.abort().catch(() => {});
+    };
+    // Keep idle foreground connections live and detect abandoned readers.
+    const heartbeat = setInterval(() => {
+      void this.send(sessionId, encoder.encode(": heartbeat\n\n"));
+    }, 20_000);
+    this.sessions.set(sessionId, { writer, dispose });
+    request.signal.addEventListener("abort", dispose, { once: true });
+    writer.closed.catch(dispose);
+    if (request.signal.aborted) dispose();
 
     // Send an initial comment so the client knows the connection is live.
     // The Swift side treats the first bytes as the "connected" signal.
-    writer.write(encoder.encode(": connected\n\n")).catch(() => {});
+    void this.send(sessionId, encoder.encode(": connected\n\n"));
 
     return new Response(readable, {
       headers: {
@@ -45,16 +56,27 @@ export class HouseholdRoom {
     const message = await request.text();
     const encoded = new TextEncoder().encode(message);
 
-    const dead: string[] = [];
-    for (const [id, writer] of this.sessions) {
-      try {
-        await writer.write(encoded);
-      } catch {
-        dead.push(id);
-      }
-    }
-    dead.forEach((id) => this.sessions.delete(id));
+    // A suspended phone must not hold up every other household member.
+    await Promise.all([...this.sessions.keys()].map((id) => this.send(id, encoded)));
 
     return new Response("ok");
+  }
+
+  private async send(id: string, data: Uint8Array): Promise<void> {
+    const session = this.sessions.get(id);
+    if (!session) return;
+    let timeout: ReturnType<typeof setTimeout> | undefined;
+    try {
+      await Promise.race([
+        session.writer.write(data),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(() => reject(new Error("slow_realtime_reader")), 5_000);
+        }),
+      ]);
+    } catch {
+      session.dispose();
+    } finally {
+      if (timeout !== undefined) clearTimeout(timeout);
+    }
   }
 }
