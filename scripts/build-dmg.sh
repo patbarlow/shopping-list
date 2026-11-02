@@ -5,7 +5,9 @@ APP_NAME="Trolley"
 APP_BINARY="Trolley"
 SCHEME="Shopping List macOS"
 BUILD_DIR="${TMPDIR}shoppinglist-build"
-APP_PATH="${BUILD_DIR}/Build/Products/Release/${APP_BINARY}.app"
+ARCHIVE_PATH="${BUILD_DIR}/${APP_BINARY}.xcarchive"
+EXPORT_DIR="${BUILD_DIR}/export"
+APP_PATH="${EXPORT_DIR}/${APP_BINARY}.app"
 DMG_NAME="ShoppingList.dmg"
 DMG_PATH="${BUILD_DIR}/${DMG_NAME}"
 
@@ -14,25 +16,42 @@ SIGN_IDENTITY="Developer ID Application: Pat Barlow (T544U3WVL6)"
 echo "==> Cleaning build directory..."
 rm -rf "${BUILD_DIR}"
 
-echo "==> Building ${APP_NAME} (Release)..."
+echo "==> Archiving ${APP_NAME} (Release)..."
 xcodebuild \
     -project "Shopping List.xcodeproj" \
     -scheme "${SCHEME}" \
     -configuration Release \
     -derivedDataPath "${BUILD_DIR}" \
+    -archivePath "${ARCHIVE_PATH}" \
     -arch arm64 -arch x86_64 \
     ONLY_ACTIVE_ARCH=NO \
-    clean build
+    clean archive
+
+# Archive/export signs Sparkle's nested helpers correctly and preserves the
+# app sandbox. Re-signing the whole app with --deep strips these entitlements.
+cat > "${BUILD_DIR}/ExportOptions.plist" <<'PLIST'
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0"><dict>
+    <key>method</key><string>developer-id</string>
+    <key>signingStyle</key><string>manual</string>
+    <key>signingCertificate</key><string>Developer ID Application</string>
+    <key>teamID</key><string>T544U3WVL6</string>
+</dict></plist>
+PLIST
+
+echo "==> Exporting with: ${SIGN_IDENTITY}"
+xcodebuild -exportArchive \
+    -archivePath "${ARCHIVE_PATH}" \
+    -exportPath "${EXPORT_DIR}" \
+    -exportOptionsPlist "${BUILD_DIR}/ExportOptions.plist"
 
 if [ ! -d "${APP_PATH}" ]; then
     echo "Error: Build failed — ${APP_PATH} not found"
     exit 1
 fi
 
-echo "==> Signing with: ${SIGN_IDENTITY}"
-codesign --force --deep --options runtime \
-    --sign "${SIGN_IDENTITY}" \
-    "${APP_PATH}"
+codesign --verify --deep --strict "${APP_PATH}"
 
 echo "==> Creating DMG..."
 STAGING_DIR="${BUILD_DIR}/dmg-staging"

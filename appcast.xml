@@ -3,6 +3,15 @@
     <channel>
         <title>Trolley</title>
         <item>
+            <title>Trolley 1.9.1</title>
+            <pubDate>Mon, 02 Nov 2026 13:04:36 +1100</pubDate>
+            <sparkle:version>211</sparkle:version>
+            <sparkle:shortVersionString>1.9.1</sparkle:shortVersionString>
+            <sparkle:minimumSystemVersion>14.0</sparkle:minimumSystemVersion>
+            <description><![CDATA[<ul><li>Live shopping-list syncing with iPhone: adds, edits, check-offs, deletes, and Undo appear promptly on other open devices.</li><li>Check for Updates now responds in locally installed development builds too.</li><li>Correct updater permissions and preserve the app sandbox in signed releases.</li><li>Update iPhone to Trolley 1.8.2 (210) or later in TestFlight for the full cross-device experience.</li></ul>]]></description>
+            <enclosure url="https://github.com/patbarlow/shopping-list/releases/download/v1.9.1/ShoppingList.dmg" sparkle:edSignature="lQ8WG+ev7MX1NGR/Sj3vjXuRxyn1wnhHnB29jX7jvRWN5FYt2kQVQ2Q/f0KmvDqhwiSgXUE9GHfvGiZUV0rtAg==" length="5986172" type="application/octet-stream"/>
+        </item>
+        <item>
             <title>Trolley 1.9.0</title>
             <pubDate>Fri, 30 Oct 2026 11:24:47 +1100</pubDate>
             <sparkle:version>207</sparkle:version>

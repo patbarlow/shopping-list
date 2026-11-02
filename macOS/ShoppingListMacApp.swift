@@ -5,15 +5,8 @@ import Sparkle
 @main
 struct ShoppingListMacApp: App {
     @State private var services = AppServices()
-    private let updaterController = SPUStandardUpdaterController(startingUpdater: !Self.isDevelopmentBuild, updaterDelegate: nil, userDriverDelegate: nil)
-
-    private static var isDevelopmentBuild: Bool {
-        #if DEBUG
-        true
-        #else
-        false
-        #endif
-    }
+    // Manual update checks must also work in locally installed development builds.
+    private let updaterController = SPUStandardUpdaterController(startingUpdater: true, updaterDelegate: nil, userDriverDelegate: nil)
 
     init() {
         ShoppingCore.migrateIfNeeded()
