@@ -18,6 +18,7 @@
 		19B028D9B5CECC4BD262ACE0 /* MacInsightsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 413EB8CF18940606BF3A953E /* MacInsightsView.swift */; };
 		1AF982FB6A6A18F6D34A77BA /* ShoppingItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B06687513055194F342B4B7 /* ShoppingItem.swift */; };
 		1B39CC9B68D8B19A0AEBD25A /* ShoppingShortcuts.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35810A47D0E0633BD5C86836 /* ShoppingShortcuts.swift */; };
+		22366271EBB1E442C444CAE9 /* ShoppingListStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AF17166DF5B1CFFFE31976C /* ShoppingListStore.swift */; };
 		23F7F290999F820638D40FE7 /* PriceCheck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7625ED8A089438C8BDB01BDF /* PriceCheck.swift */; };
 		260512F6E3EB7B161DB155B1 /* Recipe.swift in Sources */ = {isa = PBXBuildFile; fileRef = D23ADCBB565D2A872DBAB12E /* Recipe.swift */; };
 		27D3D356E97A515C79C4E31B /* ComposerKeyboardDismissal.swift in Sources */ = {isa = PBXBuildFile; fileRef = CAFFA43CF4DF9E61EB679C1A /* ComposerKeyboardDismissal.swift */; };
@@ -27,6 +28,7 @@
 		2CB334C874C3D08D8D49DBD8 /* RecipeImportView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 062C0A12F70785A98F6A0CA8 /* RecipeImportView.swift */; };
 		2D3515C3F0FDFBCE06187D00 /* ShoppingCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F35CA9A2CAC50DD6E1FD1145 /* ShoppingCore.swift */; };
 		3006F1C130CE6774B3CFB412 /* RealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 145A5C2183790DA7F940227E /* RealtimeService.swift */; };
+		30B1CC0DC82B36EECFD4640C /* ShoppingItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B06687513055194F342B4B7 /* ShoppingItem.swift */; };
 		31F67DAD2CF7D982B130E2C7 /* ShoppingInputParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DB7234E1985A5C9AC38A447 /* ShoppingInputParser.swift */; };
 		33F8FB0CFC64968558F7CE70 /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 611148128D2D216B5C6F751B /* SpeechService.swift */; };
 		40C0B4FEFA74C52440E526B5 /* ShoppingCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F35CA9A2CAC50DD6E1FD1145 /* ShoppingCore.swift */; };
@@ -47,6 +49,7 @@
 		5EF900C113554B153E366C35 /* PriceCheck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7625ED8A089438C8BDB01BDF /* PriceCheck.swift */; };
 		5F955F0F95DCF9384020D382 /* VoiceShoppingParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = E69802945D406EBD8113A863 /* VoiceShoppingParser.swift */; };
 		6844FE9AEEF9464DDFEF2AD2 /* AddItemIntents.swift in Sources */ = {isa = PBXBuildFile; fileRef = 472F1E2215F1364F1486B646 /* AddItemIntents.swift */; };
+		6C1578E1EC9D316D595ABFC6 /* ShoppingSyncTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 04D4CD6832880B31C7FA6754 /* ShoppingSyncTests.swift */; };
 		6C5B8151613D48A138177D19 /* History.swift in Sources */ = {isa = PBXBuildFile; fileRef = 663DBFAB12E403F8ABFC8AA5 /* History.swift */; };
 		6C9869BDEFCCFDCF7EB77920 /* ShoppingItemEntity.swift in Sources */ = {isa = PBXBuildFile; fileRef = C64433691FD9E88F95570581 /* ShoppingItemEntity.swift */; };
 		6ED76CC4E00A14815FC0707E /* SpendTrendsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F90ED6AE48BC99A0C35E43C6 /* SpendTrendsView.swift */; };
@@ -78,6 +81,7 @@
 		A9F21AE0984A2DDDCA63783C /* SpeechService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 611148128D2D216B5C6F751B /* SpeechService.swift */; };
 		AD4EC800179EB1391B793460 /* VoiceEntryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03B12B46E2B858336A3FBEE9 /* VoiceEntryView.swift */; };
 		ADC5B8146523EAB681CBEB9F /* ShoppingInputParser.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DB7234E1985A5C9AC38A447 /* ShoppingInputParser.swift */; };
+		BAD555A9489EE0F85FEEA416 /* Household.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBEC057EB44C2C3C2778B9C3 /* Household.swift */; };
 		BB854FA51974F86190EEB55E /* SentryHelpers.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97B1734E7407EC373454F34A /* SentryHelpers.swift */; };
 		BC032B773815D22A3A604589 /* ShoppingListStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2AF17166DF5B1CFFFE31976C /* ShoppingListStore.swift */; };
 		BCBD961F5DE1628DBF9343C1 /* Recipe.swift in Sources */ = {isa = PBXBuildFile; fileRef = D23ADCBB565D2A872DBAB12E /* Recipe.swift */; };
@@ -85,6 +89,7 @@
 		C034A449B3BA2DDE332A27CD /* PriceCheck.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7625ED8A089438C8BDB01BDF /* PriceCheck.swift */; };
 		C2066F40B513F05484129B77 /* Config.plist in Resources */ = {isa = PBXBuildFile; fileRef = 51AC4475E61BFC0BEDF456BE /* Config.plist */; };
 		C353F7364DD8CD159053DFD2 /* ShoppingListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 073DB8A85B43FA938555C6E5 /* ShoppingListView.swift */; };
+		C3FFA83945434D8322AF2267 /* ShoppingCore.swift in Sources */ = {isa = PBXBuildFile; fileRef = F35CA9A2CAC50DD6E1FD1145 /* ShoppingCore.swift */; };
 		C409642069B6CD2AD15F9F9C /* HugeIcon.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1E6C06FC21909C494D69786 /* HugeIcon.swift */; };
 		C949EB6936EACF8E22E8CE3F /* Household.swift in Sources */ = {isa = PBXBuildFile; fileRef = EBEC057EB44C2C3C2778B9C3 /* Household.swift */; };
 		C9BB9CA8700E2772ACE687BF /* ReceiptScannerView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BE7C88D1E1D959B22BB226D5 /* ReceiptScannerView.swift */; };
@@ -123,6 +128,7 @@
 /* Begin PBXFileReference section */
 		00D4833C3DEA4099449458E8 /* Shopping List macOS.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = "Shopping List macOS.app"; sourceTree = BUILT_PRODUCTS_DIR; };
 		03B12B46E2B858336A3FBEE9 /* VoiceEntryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VoiceEntryView.swift; sourceTree = "<group>"; };
+		04D4CD6832880B31C7FA6754 /* ShoppingSyncTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingSyncTests.swift; sourceTree = "<group>"; };
 		062C0A12F70785A98F6A0CA8 /* RecipeImportView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RecipeImportView.swift; sourceTree = "<group>"; };
 		06F2BB5B6C31DA284866EB49 /* PriceCheckUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PriceCheckUITests.swift; sourceTree = "<group>"; };
 		073DB8A85B43FA938555C6E5 /* ShoppingListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShoppingListView.swift; sourceTree = "<group>"; };
@@ -281,6 +287,7 @@
 			children = (
 				13AA957076815F07770DD059 /* ReceiptTests.swift */,
 				6C3F48ABA864A02F896576EE /* ShoppingInputTests.swift */,
+				04D4CD6832880B31C7FA6754 /* ShoppingSyncTests.swift */,
 			);
 			path = ReceiptTests;
 			sourceTree = "<group>";
@@ -596,14 +603,19 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				BAD555A9489EE0F85FEEA416 /* Household.swift in Sources */,
 				57651823F6BBD55B8E8417BF /* Insights.swift in Sources */,
 				5EF900C113554B153E366C35 /* PriceCheck.swift in Sources */,
 				46CE688C534A27EB2F44D373 /* ReceiptPrinter.swift in Sources */,
 				50E9A8720A20B92565161300 /* ReceiptTests.swift in Sources */,
 				260512F6E3EB7B161DB155B1 /* Recipe.swift in Sources */,
 				11573C5AF4501F2E03D3935C /* ServerSentEvents.swift in Sources */,
+				C3FFA83945434D8322AF2267 /* ShoppingCore.swift in Sources */,
 				31F67DAD2CF7D982B130E2C7 /* ShoppingInputParser.swift in Sources */,
 				866D18987DC91A573350366E /* ShoppingInputTests.swift in Sources */,
+				30B1CC0DC82B36EECFD4640C /* ShoppingItem.swift in Sources */,
+				22366271EBB1E442C444CAE9 /* ShoppingListStore.swift in Sources */,
+				6C1578E1EC9D316D595ABFC6 /* ShoppingSyncTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -816,7 +828,7 @@
 				CODE_SIGN_ENTITLEMENTS = "iOS/Shopping List.entitlements";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 205;
+				CURRENT_PROJECT_VERSION = 209;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -826,7 +838,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.8.1;
+				MARKETING_VERSION = 1.8.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.patbarlow.shoppinglist;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -968,7 +980,7 @@
 				CODE_SIGN_ENTITLEMENTS = "iOS/Shopping List.entitlements";
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				CURRENT_PROJECT_VERSION = 205;
+				CURRENT_PROJECT_VERSION = 209;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GENERATE_INFOPLIST_FILE = YES;
@@ -978,7 +990,7 @@
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				MARKETING_VERSION = 1.8.1;
+				MARKETING_VERSION = 1.8.2;
 				PRODUCT_BUNDLE_IDENTIFIER = com.patbarlow.shoppinglist;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = "1,2";

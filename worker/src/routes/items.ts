@@ -24,7 +24,7 @@ async function broadcastToHousehold(
   try {
     const id = env.HOUSEHOLD_ROOMS.idFromName(householdId);
     const stub = env.HOUSEHOLD_ROOMS.get(id);
-    const message = `data: ${JSON.stringify({ action, record })}\n\n`;
+    const message = `data: ${JSON.stringify({ action, record: toResponse(record) })}\n\n`;
     await stub.fetch(
       new Request("http://do/broadcast", { method: "POST", body: message }),
     );
@@ -199,8 +199,8 @@ app.post("/", async (c) => {
     .bind(id, householdId, product.id, product.name, item.quantity, item.notes, product.category, product.aisle_order, user.id, now, now)
     .run();
 
-  void broadcastToHousehold(c.env, householdId, "create", item);
-  void notifyHomeAssistant(c.env, "create", item);
+  c.executionCtx.waitUntil(broadcastToHousehold(c.env, householdId, "create", item));
+  c.executionCtx.waitUntil(notifyHomeAssistant(c.env, "create", item));
 
   return c.json(toResponse(item), 201);
 });
@@ -221,23 +221,64 @@ app.post("/:id/complete", async (c) => {
     return c.json({ error: "forbidden" }, 403);
   }
 
-  if (existing.product_id) {
-    const historyId = crypto.randomUUID();
-    await c.env.DB
-      .prepare(
-        `INSERT INTO purchase_history (id, household_id, product_id, quantity, purchased_by, purchased_at)
-         VALUES (?, ?, ?, ?, ?, ?)`,
-      )
-      .bind(historyId, existing.household_id, existing.product_id, existing.quantity, user.id, nowISO())
-      .run();
+  // Keep the checked row so Undo can restore it immediately. Using a stable
+  // history key and a transaction makes retries / two phones ticking together
+  // record exactly one purchase. Existing clients still receive a delete event.
+  const now = nowISO();
+  await c.env.DB.batch([
+    c.env.DB.prepare(
+      `INSERT INTO purchase_history (id, household_id, product_id, quantity, purchased_by, purchased_at)
+       SELECT ?, household_id, product_id, quantity, ?, ? FROM shopping_items
+       WHERE id = ? AND checked = 0 AND product_id IS NOT NULL
+       ON CONFLICT(id) DO NOTHING`,
+    ).bind(`list:${itemId}`, user.id, now, itemId),
+    c.env.DB.prepare("UPDATE shopping_items SET checked = 1, updated_at = ? WHERE id = ? AND checked = 0")
+      .bind(now, itemId),
+  ]);
+
+  const completed = await c.env.DB.prepare("SELECT * FROM shopping_items WHERE id = ?")
+    .bind(itemId).first<ShoppingItem>();
+  if (completed) {
+    const action = completed.checked === 1 ? "delete" : "update";
+    c.executionCtx.waitUntil(broadcastToHousehold(c.env, existing.household_id, action, completed));
+    c.executionCtx.waitUntil(notifyHomeAssistant(c.env, action, completed));
   }
 
-  await c.env.DB.prepare("DELETE FROM shopping_items WHERE id = ?").bind(itemId).run();
-
-  void broadcastToHousehold(c.env, existing.household_id, "delete", existing);
-  void notifyHomeAssistant(c.env, "delete", existing);
-
   return c.body(null, 204);
+});
+
+// POST /v1/items/:id/undo-complete — restore the row and reverse only its purchase.
+app.post("/:id/undo-complete", async (c) => {
+  const user = c.var.user;
+  const itemId = c.req.param("id");
+  const existing = await c.env.DB.prepare("SELECT * FROM shopping_items WHERE id = ?")
+    .bind(itemId).first<ShoppingItem>();
+  if (!existing) return c.json({ error: "not_found" }, 404);
+  if (!(await assertMember(c.env, existing.household_id, user.id))) {
+    return c.json({ error: "forbidden" }, 403);
+  }
+
+  const historyId = `list:${itemId}`;
+  // Once a receipt has priced the purchase it is no longer a reversible tick.
+  // Keep both its history and receipt linkage intact.
+  const receipt = await c.env.DB.prepare(
+    "SELECT id FROM receipt_line_items WHERE purchase_history_id = ? LIMIT 1",
+  ).bind(historyId).first();
+  if (receipt) return c.json({ error: "purchase_has_receipt" }, 409);
+
+  const now = nowISO();
+  await c.env.DB.batch([
+    c.env.DB.prepare("DELETE FROM purchase_history WHERE id = ? AND household_id = ?")
+      .bind(historyId, existing.household_id),
+    c.env.DB.prepare("UPDATE shopping_items SET checked = 0, updated_at = ? WHERE id = ? AND checked = 1")
+      .bind(now, itemId),
+  ]);
+  const restored = await c.env.DB.prepare("SELECT * FROM shopping_items WHERE id = ?")
+    .bind(itemId).first<ShoppingItem>();
+  if (!restored) return c.json({ error: "not_found" }, 404);
+  c.executionCtx.waitUntil(broadcastToHousehold(c.env, existing.household_id, "update", restored));
+  c.executionCtx.waitUntil(notifyHomeAssistant(c.env, "create", restored));
+  return c.json(toResponse(restored));
 });
 
 // PATCH /v1/items/:id
@@ -269,23 +310,24 @@ app.patch("/:id", async (c) => {
     updated_at: nowISO(),
   };
 
-  await c.env.DB
+  const saved = await c.env.DB
     .prepare(
       `UPDATE shopping_items
        SET name=?, quantity=?, notes=?, category=?, aisle_order=?, updated_at=?
-       WHERE id=?`,
+       WHERE id=? RETURNING *`,
     )
     .bind(
       updated.name, updated.quantity, updated.notes,
       updated.category, updated.aisle_order,
       updated.updated_at, itemId,
     )
-    .run();
+    .first<ShoppingItem>();
 
-  void broadcastToHousehold(c.env, existing.household_id, "update", updated);
-  void notifyHomeAssistant(c.env, "update", updated);
+  if (!saved) return c.json({ error: "not_found" }, 404);
+  c.executionCtx.waitUntil(broadcastToHousehold(c.env, existing.household_id, "update", saved));
+  c.executionCtx.waitUntil(notifyHomeAssistant(c.env, "update", saved));
 
-  return c.json(toResponse(updated));
+  return c.json(toResponse(saved));
 });
 
 // DELETE /v1/items/:id — removes item without recording a purchase ("didn't buy it")
@@ -306,8 +348,8 @@ app.delete("/:id", async (c) => {
 
   await c.env.DB.prepare("DELETE FROM shopping_items WHERE id = ?").bind(itemId).run();
 
-  void broadcastToHousehold(c.env, existing.household_id, "delete", existing);
-  void notifyHomeAssistant(c.env, "delete", existing);
+  c.executionCtx.waitUntil(broadcastToHousehold(c.env, existing.household_id, "delete", { ...existing, updated_at: nowISO() }));
+  c.executionCtx.waitUntil(notifyHomeAssistant(c.env, "delete", existing));
 
   return c.body(null, 204);
 });
@@ -404,8 +446,8 @@ app.post("/bulk", async (c) => {
   );
 
   for (const item of validItems) {
-    void broadcastToHousehold(c.env, householdId, "create", item);
-    void notifyHomeAssistant(c.env, "create", item);
+    c.executionCtx.waitUntil(broadcastToHousehold(c.env, householdId, "create", item));
+    c.executionCtx.waitUntil(notifyHomeAssistant(c.env, "create", item));
   }
 
   return c.json({ items: validItems.map(toResponse) }, 201);

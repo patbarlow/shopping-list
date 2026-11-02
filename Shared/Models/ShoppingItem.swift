@@ -134,6 +134,7 @@ struct ShoppingItem: Codable, Identifiable, Equatable {
     let householdId: String
     let addedBy: String
     let created: String
+    let updatedAt: String
 
     enum CodingKeys: String, CodingKey {
         case id, name, category, checked, created, quantity, notes
@@ -141,6 +142,7 @@ struct ShoppingItem: Codable, Identifiable, Equatable {
         case aisleOrder   = "aisle_order"
         case householdId  = "household_id"
         case addedBy      = "added_by"
+        case updatedAt    = "updated_at"
     }
 
     init(id: String, name: String, quantity: String?, notes: String?,
@@ -156,6 +158,7 @@ struct ShoppingItem: Codable, Identifiable, Equatable {
         self.householdId = householdId
         self.addedBy     = addedBy
         self.created     = ""
+        self.updatedAt   = ""
     }
 
     init(from decoder: Decoder) throws {
@@ -165,10 +168,16 @@ struct ShoppingItem: Codable, Identifiable, Equatable {
         name        = try c.decode(String.self, forKey: .name)
         quantity    = try c.decodeIfPresent(String.self, forKey: .quantity)
         notes       = try c.decodeIfPresent(String.self, forKey: .notes)
-        checked     = try c.decodeIfPresent(Bool.self, forKey: .checked) ?? false
+        // Older servers broadcast SQLite's 0/1 even though REST returns Bool.
+        if let value = try? c.decode(Bool.self, forKey: .checked) {
+            checked = value
+        } else {
+            checked = try c.decodeIfPresent(Int.self, forKey: .checked) == 1
+        }
         householdId = try c.decodeIfPresent(String.self, forKey: .householdId) ?? ""
         addedBy     = try c.decodeIfPresent(String.self, forKey: .addedBy) ?? ""
         created     = try c.decodeIfPresent(String.self, forKey: .created) ?? ""
+        updatedAt   = try c.decodeIfPresent(String.self, forKey: .updatedAt) ?? ""
         let rawCat  = try c.decodeIfPresent(String.self, forKey: .category) ?? ""
         category    = ItemCategory(rawValue: rawCat) ?? .other
         aisleOrder  = try c.decodeIfPresent(Int.self, forKey: .aisleOrder) ?? category.aisleOrder

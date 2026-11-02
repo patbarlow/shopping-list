@@ -79,8 +79,8 @@ targets:
       base:
         GENERATE_INFOPLIST_FILE: YES
         PRODUCT_BUNDLE_IDENTIFIER: com.patbarlow.shoppinglist
-        MARKETING_VERSION: "1.8.1"
-        CURRENT_PROJECT_VERSION: "205"
+        MARKETING_VERSION: "1.8.2"
+        CURRENT_PROJECT_VERSION: "209"
         TARGETED_DEVICE_FAMILY: "1,2"
         IPHONEOS_DEPLOYMENT_TARGET: "26.0"
         CODE_SIGN_STYLE: Automatic
@@ -135,6 +135,10 @@ targets:
       - path: Shared/Models/PriceCheck.swift
       - path: Shared/Models/Insights.swift
       - path: Shared/Models/ShoppingInputParser.swift
+      - path: Shared/Models/ShoppingItem.swift
+      - path: Shared/Models/Household.swift
+      - path: Shared/ShoppingCore.swift
+      - path: Shared/Stores/ShoppingListStore.swift
     settings:
       base:
         GENERATE_INFOPLIST_FILE: YES
